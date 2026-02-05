@@ -299,11 +299,17 @@ PREDICTIVE SIGNALS:
                         max_tokens=self.max_tokens,
                     )
                     content = response.choices[0].message.content
-                    return (content or "").strip() or "Error: Could not generate summary."
+                    return (
+                        content or ""
+                    ).strip() or "Error: Could not generate summary."
                 except Exception as e:
                     last_error = e
                     err_str = str(e).lower()
-                    is_retryable = "connection" in err_str or "timeout" in err_str or "connection" in type(e).__name__.lower()
+                    is_retryable = (
+                        "connection" in err_str
+                        or "timeout" in err_str
+                        or "connection" in type(e).__name__.lower()
+                    )
                     if is_retryable and attempt < 2:
                         await asyncio.sleep(1.0 * (attempt + 1))  # 1s, 2s backoff
                         continue
