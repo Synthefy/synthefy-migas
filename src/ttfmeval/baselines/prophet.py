@@ -6,8 +6,29 @@ import torch
 from tqdm import tqdm
 
 
-def evaluate_prophet(loader, device, pred_len: int = 4, freq: str = "D"):
-    """Evaluate Prophet baseline."""
+def evaluate_prophet(
+    loader,
+    device,
+    pred_len: int = 4,
+    freq: str = "D",
+) -> dict:
+    """Evaluate Prophet baseline on a data loader.
+
+    Fits Prophet per series (with additive seasonality) and predicts the next
+    pred_len steps. On fit failure, falls back to last observed value.
+
+    Args:
+        loader: DataLoader yielding batches with "ts" (B, T) and optional "text".
+        device: Torch device (unused; Prophet runs on CPU).
+        pred_len: Number of steps to forecast. Defaults to 4.
+        freq: Pandas frequency for dates (e.g. "D" for daily). Defaults to "D".
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict mapping "prophet" -> (N, pred_len) float tensor.
+    """
     from prophet import Prophet
     import warnings
 

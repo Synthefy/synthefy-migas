@@ -28,6 +28,15 @@ from ttfmeval.model import build_model
 
 
 def get_mean_and_median_metrics(pred: np.ndarray, gt: np.ndarray) -> dict:
+    """Compute mean and median MSE, MAE, and MAPE per sample then over samples.
+
+    Args:
+        pred: Predictions, shape (N, pred_len) or (N, pred_len, 1).
+        gt: Ground truth, same shape as pred.
+
+    Returns:
+        Dict with keys mean_mse, mean_mae, mean_mape, median_mse, median_mae, median_mape (scalars).
+    """
     mse = (pred - gt) ** 2
     mae = np.abs(pred - gt)
     mape = np.abs((pred - gt) / (np.abs(gt) + 1e-8))
@@ -50,6 +59,20 @@ def compute_unscaled_mape(
     history_means: np.ndarray,
     history_stds: np.ndarray,
 ) -> np.ndarray:
+    """Compute MAPE in original scale using per-sample history mean/std.
+
+    Unscales pred and gt then computes |pred - gt| / (|gt| + 1e-8), averaged over
+    horizon per sample, then * 100. Shape (N,) returned.
+
+    Args:
+        pred: Scaled predictions (N, pred_len) or (N, pred_len, 1).
+        gt: Scaled ground truth, same shape as pred.
+        history_means: Per-sample history mean, shape (N,) or (N, 1).
+        history_stds: Per-sample history std, shape (N,) or (N, 1).
+
+    Returns:
+        MAPE per sample in percent, shape (N,).
+    """
     if pred.ndim == 2:
         history_mean = history_means[:, np.newaxis]
         history_std = history_stds[:, np.newaxis]
@@ -69,6 +92,20 @@ def compute_unscaled_mape(
 def compute_directional_accuracy(
     input_arr: np.ndarray, pred_arr: np.ndarray, gt_arr: np.ndarray, step: int
 ) -> float:
+    """Fraction (0-100) of samples where prediction direction matches ground truth at step.
+
+    Direction: sign(pred[step] - last_input) vs sign(gt[step] - last_input). Only
+    samples with gt_direction != 0 are counted.
+
+    Args:
+        input_arr: Last context value per sample (N,) or (N, 1) or (N, pred_len, 1).
+        pred_arr: Predictions (N, pred_len) or (N, pred_len, 1).
+        gt_arr: Ground truth, same shape as pred_arr.
+        step: 1-based step index (1 = first forecast step).
+
+    Returns:
+        Percentage of correct directions, or nan if step out of range, or 0.0 if no valid samples.
+    """
     if input_arr.ndim == 3:
         input_arr = input_arr[..., 0]
     if pred_arr.ndim == 3:
@@ -91,6 +128,19 @@ def compute_directional_accuracy(
 def compute_step_to_step_directional_accuracy(
     pred_arr: np.ndarray, gt_arr: np.ndarray, step: int
 ) -> float:
+    """Fraction (0-100) of samples where step-to-step direction matches at given step.
+
+    Direction: sign(pred[step] - pred[step-1]) vs sign(gt[step] - gt[step-1]). Only
+    samples with gt_direction != 0 are counted.
+
+    Args:
+        pred_arr: Predictions (N, pred_len) or (N, pred_len, 1).
+        gt_arr: Ground truth, same shape as pred_arr.
+        step: 1-based step index (must be >= 2).
+
+    Returns:
+        Percentage of correct step-to-step directions, or nan if step < 2 or out of range.
+    """
     if step < 2:
         return float("nan")
     if pred_arr.ndim == 3:
@@ -111,6 +161,19 @@ def compute_step_to_step_directional_accuracy(
 
 
 def compute_all_metrics(results: dict, pred_len: int = 4) -> dict:
+    """Compute scaled metrics and directional accuracy for each model in results.
+
+    Args:
+        results: Dict with "input", "gt" (tensors), "predictions" (dict of name -> tensor).
+        pred_len: Forecast horizon (for directional accuracy per step). Defaults to 4.
+
+    Returns:
+        Dict mapping model_name -> {
+            "scaled": get_mean_and_median_metrics output,
+            "directional_acc": {step: pct},
+            "step_directional_acc": {step: pct},
+        }.
+    """
     input_arr = results["input"].numpy()
     gt_arr = results["gt"].numpy()
     all_metrics = {}
@@ -140,6 +203,12 @@ def compute_all_metrics(results: dict, pred_len: int = 4) -> dict:
 
 
 def parse_args():
+    """Parse command-line arguments for the evaluation script.
+
+    Returns:
+        Namespace with seq_len, pred_len, batch_size, datasets_dir, output_dir,
+        device, checkpoint, baseline flags (--eval_<name>), and extra baseline options.
+    """
     p = argparse.ArgumentParser(
         description="Evaluate TTFM and baselines on CSV datasets (standalone)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -194,16 +263,42 @@ def parse_args():
 
 
 def extract_dataset_name(csv_path: str) -> str:
+    """Get dataset name from CSV path (basename without .csv).
+
+    Args:
+        csv_path: Full path to a CSV file.
+
+    Returns:
+        Basename of the file without extension.
+    """
     return os.path.splitext(os.path.basename(csv_path))[0]
 
 
 def get_dataset_output_dir(output_dir: str, dataset_name: str) -> str:
+    """Return and create the per-dataset output directory (output_dir/outputs/dataset_name).
+
+    Args:
+        output_dir: Root results directory.
+        dataset_name: Name of the dataset (e.g. from extract_dataset_name).
+
+    Returns:
+        Path to the dataset output directory (created if needed).
+    """
     dataset_output_dir = os.path.join(output_dir, "outputs", dataset_name)
     os.makedirs(dataset_output_dir, exist_ok=True)
     return dataset_output_dir
 
 
-def load_per_dataset_results(output_dir: str, dataset_name: str) -> dict:
+def load_per_dataset_results(output_dir: str, dataset_name: str) -> dict | None:
+    """Load cached results for a dataset (input.npy, gt.npy, *_pred.npy).
+
+    Args:
+        output_dir: Root results directory.
+        dataset_name: Name of the dataset.
+
+    Returns:
+        Dict with "input", "gt" (tensors), "predictions" (dict of name -> tensor), or None if missing/incomplete.
+    """
     dataset_dir = get_dataset_output_dir(output_dir, dataset_name)
     input_path = os.path.join(dataset_dir, "input.npy")
     gt_path = os.path.join(dataset_dir, "gt.npy")
@@ -223,7 +318,14 @@ def load_per_dataset_results(output_dir: str, dataset_name: str) -> dict:
     return results if results["predictions"] else None
 
 
-def save_per_dataset_results(output_dir: str, dataset_name: str, results: dict):
+def save_per_dataset_results(output_dir: str, dataset_name: str, results: dict) -> None:
+    """Save results to output_dir/outputs/dataset_name (input.npy, gt.npy, *_pred.npy).
+
+    Args:
+        output_dir: Root results directory.
+        dataset_name: Name of the dataset.
+        results: Dict with "input", "gt", "predictions" (same format as baseline eval returns).
+    """
     dataset_dir = get_dataset_output_dir(output_dir, dataset_name)
     np.save(os.path.join(dataset_dir, "input.npy"), results["input"].numpy())
     np.save(os.path.join(dataset_dir, "gt.npy"), results["gt"].numpy())
@@ -235,6 +337,14 @@ def save_per_dataset_results(output_dir: str, dataset_name: str, results: dict):
 
 
 def get_enabled_baselines(args) -> list:
+    """Return list of baseline names for which --eval_<name> was set.
+
+    Args:
+        args: Parsed namespace from parse_args().
+
+    Returns:
+        List of baseline names (e.g. ["chronos2", "ttfmlf"]).
+    """
     enabled = []
     for name in BASELINE_REGISTRY:
         if getattr(args, f"eval_{name}", False):
@@ -243,6 +353,14 @@ def get_enabled_baselines(args) -> list:
 
 
 def get_expected_prediction_keys(args) -> list:
+    """Return all prediction keys that will be produced by enabled baselines.
+
+    Args:
+        args: Parsed namespace from parse_args().
+
+    Returns:
+        List of unique prediction keys (e.g. ["chronos_univar", "ttfm", "timeseries"]).
+    """
     keys = []
     for name in get_enabled_baselines(args):
         keys.extend(BASELINE_REGISTRY[name].prediction_keys)
@@ -251,7 +369,18 @@ def get_expected_prediction_keys(args) -> list:
 
 def check_cache_status(
     output_dir: str, dataset_name: str, expected_n_samples: int, args
-) -> tuple:
+) -> tuple[bool, list]:
+    """Check if cached results exist and match expected sample count and keys.
+
+    Args:
+        output_dir: Root results directory.
+        dataset_name: Name of the dataset.
+        expected_n_samples: Expected number of samples (from get_expected_sample_count).
+        args: Parsed namespace (used for get_expected_prediction_keys).
+
+    Returns:
+        (is_complete, missing_keys): True if all expected *_pred.npy exist and input shape matches; else False and list of missing prediction keys.
+    """
     dataset_dir = os.path.join(output_dir, "outputs", dataset_name)
     if not os.path.exists(dataset_dir):
         return False, []
@@ -270,6 +399,16 @@ def check_cache_status(
 
 
 def get_expected_sample_count(csv_path: str, args, LateFusionDataset) -> int:
+    """Return the number of test windows for a dataset CSV with current args.
+
+    Args:
+        csv_path: Path to the dataset CSV.
+        args: Parsed namespace (seq_len, pred_len, etc.).
+        LateFusionDataset: The dataset class (to avoid circular import).
+
+    Returns:
+        len(dataset) for split="test" with that single CSV.
+    """
     dataset = LateFusionDataset(
         args.seq_len + args.pred_len,
         args.pred_len,
@@ -283,7 +422,18 @@ def get_expected_sample_count(csv_path: str, args, LateFusionDataset) -> int:
 
 def compute_raw_mean_std_for_dataset(
     csv_path: str, args, LateFusionDataset, late_fusion_collate
-) -> tuple:
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute per-sample history mean and std for all test windows of a dataset.
+
+    Args:
+        csv_path: Path to the dataset CSV.
+        args: Parsed namespace (seq_len, pred_len).
+        LateFusionDataset: Dataset class.
+        late_fusion_collate: Collate function for the dataloader.
+
+    Returns:
+        (history_means, history_stds): Each shape (n_test_windows,) for that CSV.
+    """
     dataset = LateFusionDataset(
         args.seq_len + args.pred_len,
         args.pred_len,
@@ -315,8 +465,27 @@ def evaluate_single_dataset(
     late_fusion_collate,
     models: dict,
     baselines_to_eval: list,
-    precomputed_results: dict = None,
-):
+    precomputed_results: dict | None = None,
+) -> dict | None:
+    """Run enabled baselines on a single dataset CSV and merge results.
+
+    Builds a test DataLoader for the CSV, runs each baseline in baselines_to_eval
+    (respecting depends_on order), and merges predictions into one result dict.
+    If precomputed_results is provided, existing predictions are kept and only
+    missing baselines are run.
+
+    Args:
+        csv_path: Path to the dataset CSV.
+        args: Parsed namespace (batch_size, pred_len, device, etc.).
+        LateFusionDataset: Dataset class.
+        late_fusion_collate: Collate function.
+        models: Dict of loaded models (e.g. {"model": ttfmlf}).
+        baselines_to_eval: List of baseline names to run.
+        precomputed_results: Optional cached result dict to update. Defaults to None.
+
+    Returns:
+        Dict with "input", "gt", "predictions", or None if dataset is empty or evaluation fails.
+    """
     dataset = LateFusionDataset(
         args.seq_len + args.pred_len,
         args.pred_len,
@@ -338,6 +507,16 @@ def evaluate_single_dataset(
     all_results = precomputed_results.copy() if precomputed_results else {}
     if "predictions" not in all_results:
         all_results["predictions"] = {}
+
+    # Sort so dependencies run before dependents. Example: chronos2_gpt needs
+    # gpt_forecast predictions; _run_after_deps(b) is True for dependents (they
+    # have a dep in the list), False for baselines with no dep, so sorting by
+    # this key puts no-dep first (gpt_forecast) then dependents (chronos2_gpt).
+    def _run_after_deps(b):
+        d = BASELINE_REGISTRY[b].depends_on
+        return d is not None and d in baselines_to_eval
+
+    baselines_to_eval = sorted(baselines_to_eval, key=_run_after_deps)
 
     univariate_model = "chronos"
     if getattr(args, "univariate_model", None):
@@ -422,6 +601,17 @@ def evaluate_single_dataset(
 
 
 def flatten_metrics_for_csv(dataset_name: str, metrics: dict, pred_len: int) -> dict:
+    """Flatten per-model metrics into a single row for CSV export.
+
+    Args:
+        dataset_name: Name of the dataset.
+        metrics: Output of compute_all_metrics (model_name -> scaled/directional_acc/step_directional_acc).
+        pred_len: Number of steps (for directional columns).
+
+    Returns:
+        Dict with dataset_name, and columns like {model}_scaled_mean_mae, {model}_dir_acc_step1, etc.
+        If both "timeseries" and "ttfm" exist, adds mae_improvement_pct.
+    """
     row = {"dataset_name": dataset_name}
     for model_name, model_metrics in metrics.items():
         for key in [
@@ -454,6 +644,16 @@ def flatten_metrics_for_csv(dataset_name: str, metrics: dict, pred_len: int) -> 
 def get_sample_indices_after_date(
     csv_path: str, window_len: int, cutoff_date: str = "2024-06-01"
 ) -> np.ndarray:
+    """Return indices of windows whose first date is on or after cutoff_date.
+
+    Args:
+        csv_path: Path to CSV with column "t" (parseable dates).
+        window_len: Length of each window (seq_len + pred_len).
+        cutoff_date: Only windows starting at or after this date. Defaults to "2024-06-01".
+
+    Returns:
+        1D array of start indices (0 <= i <= len(df) - window_len).
+    """
     df = pd.read_csv(csv_path)
     df["t_date"] = pd.to_datetime(df["t"], errors="coerce")
     df = df[df["t_date"].notna()]
@@ -467,7 +667,19 @@ def get_sample_indices_after_date(
 
 def generate_overall_stats_csv(
     output_dir: str, args, LateFusionDataset, late_fusion_collate
-):
+) -> None:
+    """Write per-dataset summary CSVs (all samples and June 2024+ filtered).
+
+    Reads cached results from output_dir, computes MAE/MSE/MAPE and TTFM vs timeseries
+    improvement, and writes stats_Context_<seq_len>_allsamples.csv and
+    stats_Context_<seq_len>_june2024plus.csv.
+
+    Args:
+        output_dir: Root results directory.
+        args: Parsed namespace (seq_len, datasets_dir).
+        LateFusionDataset: Dataset class.
+        late_fusion_collate: Collate function (for raw mean/std for MAPE).
+    """
     dataset_csvs = list_csv_files(args.datasets_dir)
     model_order = []
     for config in BASELINE_REGISTRY.values():
@@ -638,6 +850,17 @@ def generate_overall_stats_csv(
 
 
 def load_models(args) -> dict:
+    """Load TTFM (and TTFM-TimesFM) checkpoints for enabled baselines.
+
+    Args:
+        args: Parsed namespace with checkpoint, checkpoint_timesfm, device, text_embedder, etc.
+
+    Returns:
+        Dict with keys "model" and/or "model_timesfm" (TTFMLF instances). Empty if neither baseline enabled.
+
+    Raises:
+        FileNotFoundError: If --eval_ttfmlf or --eval_ttfmlf_timesfm is set but checkpoint is missing.
+    """
     models = {}
     enabled = get_enabled_baselines(args)
 
@@ -696,7 +919,8 @@ def load_models(args) -> dict:
 # =============================================================================
 
 
-def main():
+def main() -> None:
+    """Entry point: parse args, run enabled baselines on datasets, save results and summary CSVs."""
     args = parse_args()
 
     datasets_dir_name = os.path.basename(os.path.normpath(args.datasets_dir))

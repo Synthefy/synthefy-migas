@@ -1,5 +1,7 @@
 """Chronos-2 baseline with GPT forecast covariates."""
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import torch
@@ -12,9 +14,31 @@ def evaluate_chronos2_with_gpt_forecast(
     device,
     pred_len: int = 4,
     noise_std: float = 0.05,
-    precomputed_gpt_forecasts: np.ndarray = None,
-):
-    """Evaluate Chronos-2 with pre-computed GPT forecasts as covariates."""
+    precomputed_gpt_forecasts: Optional[np.ndarray] = None,
+) -> dict:
+    """Evaluate Chronos-2 with pre-computed GPT forecasts as covariates.
+
+    Uses LLM forecasts as known future covariates (with optional noise). Produces
+    chronos_gpt_cov and chronos_gpt_dir_cov (magnitude+direction from GPT series).
+
+    Args:
+        loader: DataLoader with "ts" (batch order must match precomputed_gpt_forecasts).
+        device: Torch device for the pipeline and tensors.
+        pred_len: Forecast horizon. Defaults to 4.
+        noise_std: Std of Gaussian noise added to covariate values. Defaults to 0.05.
+        precomputed_gpt_forecasts: (N, pred_len) float array; required. Run gpt_forecast
+            first or load from cache (e.g. gpt_forecast_pred.npy).
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict with "chronos_gpt_cov" and "chronos_gpt_dir_cov",
+              each (N, pred_len) float tensor.
+
+    Raises:
+        ValueError: If precomputed_gpt_forecasts is None.
+    """
     from chronos import BaseChronosPipeline
 
     if precomputed_gpt_forecasts is None:

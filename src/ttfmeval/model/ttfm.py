@@ -35,9 +35,11 @@ CONTEXT_SUMMARIZER = ContextSummarizer(
 
 
 class TTFMLF(nn.Module):
-    """
-    TTFM Late Fusion model with configurable univariate forecaster.
-    Combines univariate forecast, LLM summaries, and learned fusion.
+    """TTFM Late Fusion model: univariate forecaster + LLM summaries + learned fusion.
+
+    Combines a configurable univariate forecaster (Chronos/TimesFM/Prophet/ensemble)
+    with LLM-generated factual/predictive summaries and residual fusion layers to
+    produce a final forecast.
     """
 
     SUPPORTED_UNIVARIATE_MODELS = ["chronos", "timesfm", "prophet", "ensemble"]
@@ -52,6 +54,17 @@ class TTFMLF(nn.Module):
         use_separate_summary_embedders: bool = True,
         use_multiple_horizon_embedders: bool = True,
     ):
+        """Initialize TTFMLF and embedders.
+
+        Args:
+            pred_len: Maximum forecast horizon (e.g. 16).
+            device: Torch device for the fusion model. Defaults to "cuda".
+            chronos_device: Device for Chronos when used. Defaults to "cuda:0".
+            text_embedder_name: Name of text embedder (qwen8b, qwen, finbert). Defaults to "qwen8b".
+            text_embedder_device: Device for text embedder. Defaults to None.
+            use_separate_summary_embedders: Use separate fact vs prediction embedders. Defaults to True.
+            use_multiple_horizon_embedders: Use horizon-specific heads (4/8/16). Defaults to True.
+        """
         super().__init__()
         self.device = device
         self.chronos_device = chronos_device
@@ -129,7 +142,23 @@ class TTFMLF(nn.Module):
         training: bool = True,
         univariate_model: UnivariateModel = "chronos",
         trim_text: bool = True,
-    ):
+    ) -> tuple:
+        """Run one forward pass: univariate forecast + text fusion -> TTFM forecast.
+
+        Args:
+            x: (B, seq_len) context time series.
+            text: Per-sample list of per-timestep text strings, length B.
+            pred_len: Requested forecast horizon.
+            timestamps: Optional per-sample timestamps for summarization. Defaults to None.
+            summaries: Pre-computed LLM summaries (skips CONTEXT_SUMMARIZER if set). Defaults to None.
+            training: If True and univariate is ensemble, sample model at random. Defaults to True.
+            univariate_model: "chronos", "timesfm", "prophet", or "ensemble". Defaults to "chronos".
+            trim_text: Whether to trim context to last 64 steps for summarization. Defaults to True.
+
+        Returns:
+            Either (pred_4, pred_8, pred_16, timeseries_forecast) when use_multiple_horizon_embedders,
+            or (pred_forecast, timeseries_forecast). All prediction tensors (B, horizon, 1).
+        """
         B = x.shape[0]
         univariate_pred_len = (
             self.pred_len if self.use_multiple_horizon_embedders else pred_len
@@ -221,6 +250,14 @@ class TTFMLF(nn.Module):
         return pred_forecast, timeseries_forecast
 
     def _split_summaries(self, summaries: List[str]) -> tuple:
+        """Split "FACTUAL SUMMARY:" / "PREDICTIVE SIGNALS:" sections from each summary.
+
+        Args:
+            summaries: List of strings from the context summarizer.
+
+        Returns:
+            (fact_summaries, prediction_summaries): Two lists of strings, same length as summaries.
+        """
         fact_summaries = []
         prediction_summaries = []
         for summary in summaries:
@@ -245,6 +282,14 @@ class TTFMLF(nn.Module):
         return fact_summaries, prediction_summaries
 
     def postprocess_predictions(self, preds: torch.Tensor) -> torch.Tensor:
+        """Optional post-processing of predictions (identity by default). Override in subclasses.
+
+        Args:
+            preds: (B, pred_len, 1) forecast tensor.
+
+        Returns:
+            Same shape tensor (default implementation returns preds unchanged).
+        """
         return preds
 
 
@@ -258,7 +303,21 @@ def build_model(
     use_multiple_horizon_embedders: bool = True,
     **kwargs,
 ) -> TTFMLF:
-    """Build a TTFMLF model with the given configuration."""
+    """Build a TTFMLF model with the given configuration.
+
+    Args:
+        pred_len: Maximum forecast horizon. Defaults to 16.
+        device: Torch device for the model. Defaults to "cuda".
+        chronos_device: Device for Chronos. Defaults to "cuda:0".
+        text_embedder: Embedder name (qwen8b, qwen, finbert). Defaults to "qwen8b".
+        text_embedder_device: Device for embedder. Defaults to None.
+        use_separate_summary_embedders: Use separate fact/prediction embedders. Defaults to True.
+        use_multiple_horizon_embedders: Use 4/8/16 horizon heads. Defaults to True.
+        **kwargs: Ignored (for API compatibility).
+
+    Returns:
+        Configured TTFMLF instance.
+    """
     return TTFMLF(
         pred_len=pred_len,
         device=device,

@@ -5,8 +5,24 @@ import torch
 from tqdm import tqdm
 
 
-def evaluate_naive(loader, device, pred_len: int = 4):
-    """Naive baseline: predict last observed value for all future steps."""
+def evaluate_naive(
+    loader,
+    device,
+    pred_len: int = 4,
+) -> dict:
+    """Naive baseline: predict last observed value for all future steps.
+
+    Args:
+        loader: DataLoader yielding batches with "ts" (B, T).
+        device: Torch device (unused).
+        pred_len: Number of steps to forecast. Defaults to 4.
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict mapping "naive" -> (N, pred_len) float tensor.
+    """
     print("Evaluating Naive (last value) baseline...")
 
     all_inputs = []

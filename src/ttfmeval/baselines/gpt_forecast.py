@@ -6,7 +6,21 @@ import torch
 from tqdm import tqdm
 
 
-def _get_llm_forecast_prompt(text_list, values, pred_len):
+def _get_llm_forecast_prompt(
+    text_list: list,
+    values: list,
+    pred_len: int,
+) -> str:
+    """Build a prompt for LLM-based forecasting from history and text.
+
+    Args:
+        text_list: Per-timestep text annotations (length = len(values)).
+        values: Historical time series values.
+        pred_len: Number of future steps to request.
+
+    Returns:
+        Single string prompt for the LLM to return pred_len comma-separated numbers.
+    """
     seq_len = len(values)
     all_values_str = ", ".join([f"{v:.4f}" for v in values])
     text_window = min(10, seq_len)
@@ -54,8 +68,25 @@ def evaluate_gpt_forecast(
     pred_len: int = 4,
     llm_base_url: str = "http://localhost:8004/v1",
     llm_model: str = "openai/gpt-oss-120b",
-):
-    """Evaluate standalone GPT/LLM forecast baseline."""
+) -> dict:
+    """Evaluate standalone GPT/LLM forecast baseline.
+
+    Uses history + text annotations to request pred_len comma-separated numbers
+    from the LLM. Values are unscaled for the prompt and scaled back for metrics.
+
+    Args:
+        loader: DataLoader with "ts", "text", "history_means", "history_stds".
+        device: Torch device for tensors.
+        pred_len: Forecast horizon. Defaults to 4.
+        llm_base_url: OpenAI-compatible API base URL. Defaults to localhost:8004.
+        llm_model: Model name for chat completions. Defaults to openai/gpt-oss-120b.
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict mapping "gpt_forecast" -> (N, pred_len) float tensor.
+    """
     from openai import AsyncOpenAI
 
     all_inputs = []

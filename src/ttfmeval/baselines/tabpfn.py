@@ -8,8 +8,29 @@ from tqdm import tqdm
 
 
 @torch.no_grad()
-def evaluate_tabpfn(loader, device, pred_len: int = 4):
-    """Evaluate TabPFN 2.5 time-series. Requires HF_TOKEN for gated model."""
+def evaluate_tabpfn(
+    loader,
+    device,
+    pred_len: int = 4,
+) -> dict:
+    """Evaluate TabPFN 2.5 time-series baseline.
+
+    Requires HF_TOKEN environment variable for the gated Hugging Face model.
+
+    Args:
+        loader: DataLoader yielding batches with "ts" (B, T).
+        device: Torch device for tensors.
+        pred_len: Forecast horizon. Defaults to 4.
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict mapping "tabpfn_ts" -> (N, pred_len) float tensor.
+
+    Raises:
+        RuntimeError: If HF_TOKEN is not set.
+    """
     if not os.environ.get("HF_TOKEN"):
         raise RuntimeError(
             "HF_TOKEN environment variable required for TabPFN. Set it with your Hugging Face token."

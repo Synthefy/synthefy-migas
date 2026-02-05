@@ -10,6 +10,14 @@ TOTO_FORECASTER = None
 
 
 def load_toto_model(device):
+    """Load Toto forecaster once and cache it globally.
+
+    Args:
+        device: Torch device for the model.
+
+    Returns:
+        TotoForecaster: Loaded Toto forecaster (cached).
+    """
     from toto.model.toto import Toto
     from toto.inference.forecaster import TotoForecaster
 
@@ -23,8 +31,29 @@ def load_toto_model(device):
 
 
 @torch.no_grad()
-def evaluate_toto(loader, device, pred_len: int = 4, num_samples: int = 64):
-    """Evaluate Toto baseline (univariate and with FinBERT embeddings)."""
+def evaluate_toto(
+    loader,
+    device,
+    pred_len: int = 4,
+    num_samples: int = 64,
+) -> dict:
+    """Evaluate Toto baseline (univariate and with FinBERT text embeddings).
+
+    Produces toto_univar (time series only) and toto_emb (series + per-timestep
+    FinBERT embeddings as covariates).
+
+    Args:
+        loader: DataLoader with "ts" and "text".
+        device: Torch device for the forecaster and tensors.
+        pred_len: Forecast horizon. Defaults to 4.
+        num_samples: Number of samples for probabilistic forecast (median used). Defaults to 64.
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict with "toto_univar" and "toto_emb", each (N, pred_len) float tensor.
+    """
     from toto.data.util.dataset import MaskedTimeseries
 
     forecaster = load_toto_model(device)

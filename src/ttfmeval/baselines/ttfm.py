@@ -14,10 +14,27 @@ def eval_ttfm(
     prediction_key: str = "ttfm",
     use_timestamps: bool = False,
     univariate_model: str = "chronos",
-):
-    """
-    Evaluate TTFM model on validation set.
-    Returns dict with input, gt, predictions (ttfm, timeseries).
+) -> dict:
+    """Evaluate TTFM (late fusion) model on a data loader.
+
+    Runs the model in eval mode and collects TTFM and univariate (timeseries)
+    forecasts, with optional timestamps and configurable univariate backend.
+
+    Args:
+        model: TTFMLF or compatible module (forward(x, text, pred_len=..., ...)).
+        loader: DataLoader with "ts", "text", and optionally "timestamps".
+        device: Torch device for model and tensors.
+        pred_len: Forecast horizon. Defaults to 4.
+        model_type: Model variant (e.g. "ttfm", "ttfmlf"). Defaults to "ttfmlf".
+        prediction_key: Key under which to store TTFM predictions. Defaults to "ttfm".
+        use_timestamps: Whether to pass timestamps into the model. Defaults to False.
+        univariate_model: Univariate backend ("chronos", "timesfm", "prophet"). Defaults to "chronos".
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict with prediction_key and "timeseries", each (N, pred_len) float tensor.
     """
     model.eval()
 

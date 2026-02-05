@@ -11,6 +11,14 @@ CHRONOS2_PIPELINE = None
 
 
 def load_chronos2_pipeline(device):
+    """Load the Chronos-2 pipeline once and cache it globally.
+
+    Args:
+        device: Torch device or device_map for the pipeline.
+
+    Returns:
+        BaseChronosPipeline: Loaded Chronos-2 pipeline (cached).
+    """
     from chronos import BaseChronosPipeline
 
     global CHRONOS2_PIPELINE
@@ -27,11 +35,28 @@ def load_chronos2_pipeline(device):
 
 @torch.no_grad()
 def evaluate_chronos2_with_covariates(
-    loader, device, pred_len: int = 4, eval_multivar: bool = False
-):
-    """
-    Evaluate Chronos-2 baseline with optional covariates.
-    Returns dict with input, gt, predictions (chronos_univar, optionally chronos_multivar, chronos_emb).
+    loader,
+    device,
+    pred_len: int = 4,
+    eval_multivar: bool = False,
+) -> dict:
+    """Evaluate Chronos-2 baseline with optional covariates.
+
+    Univariate: context + target only. If eval_multivar, also runs magnitude+direction
+    and FinBERT text-embedding covariates.
+
+    Args:
+        loader: DataLoader with "ts", and "text" when eval_multivar is True.
+        device: Torch device for the pipeline and tensors.
+        pred_len: Forecast horizon. Defaults to 4.
+        eval_multivar: If True, also compute chronos_multivar and chronos_emb. Defaults to False.
+
+    Returns:
+        Dict with keys:
+            - "input": (N, seq_len) float tensor of context.
+            - "gt": (N, pred_len) float tensor of ground truth.
+            - "predictions": dict with "chronos_univar", and optionally
+              "chronos_multivar" and "chronos_emb", each (N, pred_len) float tensor.
     """
     pipeline = load_chronos2_pipeline(device)
 

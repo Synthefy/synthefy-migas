@@ -16,7 +16,10 @@ from openai import AsyncOpenAI
 
 
 class PositionalEmbedding(nn.Module):
+    """Sinusoidal positional embeddings up to max_len positions."""
+
     def __init__(self, d_model: int, max_len: int = 5000):
+        """Args: d_model: Embedding dimension. max_len: Maximum sequence length. Defaults to 5000."""
         super().__init__()
         pe = torch.zeros(max_len, d_model).float()
         pe.requires_grad = False
@@ -30,11 +33,15 @@ class PositionalEmbedding(nn.Module):
         self.register_buffer("pe", pe)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Return positional embeddings for the sequence length of x. Shape: (1, x.size(1), d_model)."""
         return self.pe[:, : x.size(1)]
 
 
 class ResidualBlock(nn.Module):
+    """Linear block with SiLU hidden layer and residual connection to output."""
+
     def __init__(self, input_dims: int, hidden_dims: int, output_dims: int):
+        """Args: input_dims: Input size. hidden_dims: Hidden layer size. output_dims: Output size."""
         super().__init__()
         self.hidden_layer = nn.Sequential(
             nn.Linear(input_dims, hidden_dims),
@@ -44,6 +51,7 @@ class ResidualBlock(nn.Module):
         self.residual_layer = nn.Linear(input_dims, output_dims)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward: hidden_layer(x) -> output_layer + residual_layer(x). Returns same shape as output_dims."""
         hidden = self.hidden_layer(x)
         output = self.output_layer(hidden)
         residual = self.residual_layer(x)
@@ -60,8 +68,13 @@ _text_embedder_name = None
 
 def set_text_embedder(
     text_embedder_name: str, text_embedder_device: Optional[str] = None
-):
-    """Initialize the global text embedder."""
+) -> None:
+    """Initialize the global text embedder (finbert, qwen, qwen8b).
+
+    Args:
+        text_embedder_name: One of "finbert", "qwen", "qwen8b".
+        text_embedder_device: Device for the embedder (e.g. "cuda"). Defaults to None (uses default).
+    """
     global _text_embedder, _text_embedder_name
     if _text_embedder is not None:
         return
@@ -89,7 +102,15 @@ def set_text_embedder(
 
 
 def encode_texts(texts: List[str], batch_size: int = 32) -> np.ndarray:
-    """Encode texts using the configured text embedder."""
+    """Encode texts using the globally configured text embedder.
+
+    Args:
+        texts: List of strings to embed.
+        batch_size: Batch size for embedder calls. Defaults to 32.
+
+    Returns:
+        Array of shape (len(texts), embedding_dim) with dtype float.
+    """
     global _text_embedder, _text_embedder_name
 
     if _text_embedder_name == "qwen":
@@ -134,7 +155,17 @@ def encode_texts(texts: List[str], batch_size: int = 32) -> np.ndarray:
 
 
 def get_text_embedding_size(text_embedder_name: str) -> int:
-    """Get the embedding dimension for a given text embedder."""
+    """Get the embedding dimension for a given text embedder name.
+
+    Args:
+        text_embedder_name: One of "finbert" (768), "qwen" (2560), "qwen8b" (4096).
+
+    Returns:
+        Embedding dimension (int).
+
+    Raises:
+        ValueError: If text_embedder_name is not supported.
+    """
     sizes = {
         "finbert": 768,
         "qwen": 2560,
@@ -151,7 +182,7 @@ def get_text_embedding_size(text_embedder_name: str) -> int:
 
 
 class ContextSummarizer:
-    """LLM-based context summarizer using vLLM server."""
+    """LLM-based context summarizer: turns time-series text context into FACTUAL SUMMARY / PREDICTIVE SIGNALS."""
 
     def __init__(
         self,
@@ -161,6 +192,7 @@ class ContextSummarizer:
         max_tokens: int = 10000,
         temperature: float = 0.0,
     ):
+        """Args: base_url: OpenAI-compatible API URL. model_name: Model name. max_concurrent: Concurrency limit. max_tokens: Max tokens per reply. temperature: Sampling temperature. Defaults to 0.0."""
         self.base_url = base_url
         self.model_name = model_name
         self.max_concurrent = max_concurrent
@@ -256,18 +288,29 @@ PREDICTIVE SIGNALS:
         semaphore: asyncio.Semaphore,
     ) -> str:
         async with semaphore:
-            try:
-                prompt = self._create_prompt(timestamps, text_list, values)
-                response = await self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                )
-                return response.choices[0].message.content.strip()
-            except Exception as e:
-                print(f"Summarization error: {e}")
-                return "Error: Could not generate summary."
+            prompt = self._create_prompt(timestamps, text_list, values)
+            last_error = None
+            for attempt in range(3):  # retry up to 3 times on connection errors
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                    )
+                    content = response.choices[0].message.content
+                    return (content or "").strip() or "Error: Could not generate summary."
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e).lower()
+                    is_retryable = "connection" in err_str or "timeout" in err_str or "connection" in type(e).__name__.lower()
+                    if is_retryable and attempt < 2:
+                        await asyncio.sleep(1.0 * (attempt + 1))  # 1s, 2s backoff
+                        continue
+                    print(f"Summarization error: {e}")
+                    return "Error: Could not generate summary."
+            print(f"Summarization error: {last_error}")
+            return "Error: Could not generate summary."
 
     async def _summarize_batch_async(
         self,
@@ -290,6 +333,16 @@ PREDICTIVE SIGNALS:
         values_batch: Optional[List[List[float]]] = None,
         timestamps_batch: Optional[List[List[str]]] = None,
     ) -> List[str]:
+        """Summarize each sample's text (and optional values/timestamps) into FACTUAL + PREDICTIVE sections.
+
+        Args:
+            text_batch: Per-sample list of per-timestep text strings.
+            values_batch: Optional per-sample list of values for context. Defaults to None.
+            timestamps_batch: Optional per-sample list of timestamps. Defaults to None.
+
+        Returns:
+            List of summary strings, one per sample.
+        """
         try:
             asyncio.get_running_loop()  # detect if already in event loop (e.g. Jupyter)
             import nest_asyncio

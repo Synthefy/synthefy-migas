@@ -11,7 +11,17 @@ from torch.utils.data import Dataset
 
 
 def list_csv_files(data_dir: str) -> List[str]:
-    """Find all CSV files in directory (recursively), skipping derived files."""
+    """Find all CSV files in a directory (recursively), skipping derived files.
+
+    Skips files whose basename (without .csv) ends with _embeddings, _original,
+    _temp, _results, or _temp_results.
+
+    Args:
+        data_dir: Root directory to walk for CSV files.
+
+    Returns:
+        Sorted list of full paths to CSV files that pass the filter.
+    """
     all_files = []
     for root, _dirs, files in os.walk(data_dir):
         for file in files:
@@ -34,7 +44,12 @@ def list_csv_files(data_dir: str) -> List[str]:
 
 
 class LateFusionDataset(Dataset):
-    """Dataset for late fusion evaluation with text context."""
+    """Dataset for late fusion evaluation with time series and text context.
+
+    Each item is a window of length seq_len + pred_len from a CSV (t, y_t, text).
+    History is normalized per-window (mean/std). For test split, windows are
+    enumerated with stride; for train/val, random windows are sampled each __getitem__.
+    """
 
     def __init__(
         self,
@@ -46,6 +61,17 @@ class LateFusionDataset(Dataset):
         stride: int = 1,
         test_cutoff: str = "20221231",
     ):
+        """Initialize the dataset.
+
+        Args:
+            seq_len: Length of context (history) in each window.
+            pred_len: Length of prediction horizon (last pred_len steps are targets).
+            datasets: List of paths to CSV files (columns: t, y_t, text).
+            split: "train", "val", or "test". Defaults to "train".
+            val_length: Effective length per epoch for train/val (number of __getitem__ calls). Defaults to 1000.
+            stride: Step between consecutive test windows. Defaults to 1.
+            test_cutoff: Only use rows with t <= this date (YYYYMMDD) for train/val. Defaults to "20221231".
+        """
         self.seq_len = seq_len
         self.pred_len = pred_len
         self.csvs = datasets
@@ -69,7 +95,7 @@ class LateFusionDataset(Dataset):
             return len(self.windows)
         return self.epoch_length
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> dict:
         if self.split == "test":
             csv, df = self.windows[index]
         else:
@@ -119,7 +145,15 @@ class LateFusionDataset(Dataset):
 
 
 def collate_fn(batch: List[dict]) -> dict:
-    """Collate function for late fusion dataset."""
+    """Collate a list of LateFusionDataset items into a batch dict.
+
+    Args:
+        batch: List of dicts from __getitem__ (ts, text, index, dataset_name, history_mean, history_std, timestamps).
+
+    Returns:
+        Dict with "ts" (stacked tensor), "text" (list of lists), "index", "dataset_name",
+        "history_means", "history_stds", "timestamps" (lists).
+    """
     ts_batch = torch.stack(
         [torch.tensor(s["ts"], dtype=torch.float32) for s in batch], dim=0
     )
