@@ -69,12 +69,15 @@ def main() -> int:
         results_dir = Path(args.results_dir)
     if args.config and Path(args.config).exists():
         import yaml
+
         with open(args.config) as f:
             cfg = yaml.safe_load(f) or {}
         if not results_dir and cfg.get("results_dir"):
             results_dir = Path(cfg["results_dir"]).resolve()
     if not results_dir or not results_dir.is_dir():
-        print("Error: need --results_dir or --config with results_dir pointing to an existing directory.")
+        print(
+            "Error: need --results_dir or --config with results_dir pointing to an existing directory."
+        )
         return 1
 
     stats_csv = discover_stats_csv(results_dir)
@@ -87,6 +90,7 @@ def main() -> int:
 
     # Count datasets and models from CSV
     import pandas as pd
+
     df = pd.read_csv(stats_csv)
     n_datasets = len(df)
     model_cols = [c for c in df.columns if c.endswith("_mean_mae")]
@@ -107,11 +111,14 @@ def main() -> int:
     # Run bar plots
     if not args.skip_plots:
         import subprocess
+
         cmd = [
             sys.executable,
             str(_script_dir / "plot_bars.py"),
-            "--results_dir", str(results_dir),
-            "--out_dir", str(out_dir),
+            "--results_dir",
+            str(results_dir),
+            "--out_dir",
+            str(out_dir),
         ]
         if args.config:
             cmd.extend(["--config", str(args.config)])
@@ -119,11 +126,17 @@ def main() -> int:
         if r.returncode == 0:
             report_lines.append("### Bar plots")
             report_lines.append("")
-            report_lines.append("- [bar_aggregate_mean_mae.pdf](bar_aggregate_mean_mae.pdf)")
-            report_lines.append("- [bar_grouped_mean_mae.pdf](bar_grouped_mean_mae.pdf)")
+            report_lines.append(
+                "- [bar_aggregate_mean_mae.pdf](bar_aggregate_mean_mae.pdf)"
+            )
+            report_lines.append(
+                "- [bar_grouped_mean_mae.pdf](bar_grouped_mean_mae.pdf)"
+            )
             report_lines.append("- [bar_ttfm_win_pct.pdf](bar_ttfm_win_pct.pdf)")
             report_lines.append("- [bar_improvement_pct.pdf](bar_improvement_pct.pdf)")
-            report_lines.append("- [bar_elo_mean_mae.pdf](bar_elo_mean_mae.pdf) (if multielo installed)")
+            report_lines.append(
+                "- [bar_elo_mean_mae.pdf](bar_elo_mean_mae.pdf) (if multielo installed)"
+            )
             report_lines.append("")
         else:
             report_lines.append("Bar plots failed or skipped.")
@@ -135,12 +148,15 @@ def main() -> int:
     # Optional LaTeX table
     if args.latex_config and Path(args.latex_config).exists():
         import subprocess
+
         latex_dir = _script_dir / "latex"
         cmd = [
             sys.executable,
             str(latex_dir / "generate_table.py"),
-            "--config", str(Path(args.latex_config).resolve()),
-            "--output", str(out_dir / "results_table.tex"),
+            "--config",
+            str(Path(args.latex_config).resolve()),
+            "--output",
+            str(out_dir / "results_table.tex"),
         ]
         r = subprocess.run(cmd, cwd=str(latex_dir))
         if r.returncode == 0:
@@ -152,7 +168,9 @@ def main() -> int:
             report_lines.append("LaTeX table generation failed.")
             report_lines.append("")
     else:
-        report_lines.append("To add a LaTeX table, run with `--latex_config scripts/latex/config_example.yaml` (and point csv_path in that config to this results dir).")
+        report_lines.append(
+            "To add a LaTeX table, run with `--latex_config scripts/latex/config_example.yaml` (and point csv_path in that config to this results dir)."
+        )
         report_lines.append("")
 
     report_lines.append("---")

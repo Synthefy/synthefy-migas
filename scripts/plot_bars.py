@@ -26,9 +26,11 @@ import pandas as pd
 
 try:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import matplotlib as mpl
+
     mpl.rcParams["pdf.fonttype"] = 42
     mpl.rcParams["ps.fonttype"] = 42
     mpl.rcParams["font.family"] = "sans-serif"
@@ -131,11 +133,15 @@ def plot_aggregate_metric_by_model(
 
     fig, ax = plt.subplots(figsize=(max(6, len(labels) * 0.6), 4))
     x = np.arange(len(labels))
-    bars = ax.bar(x, values, color="#2ca02c", edgecolor="black", linewidth=0.8, width=0.7)
+    bars = ax.bar(
+        x, values, color="#2ca02c", edgecolor="black", linewidth=0.8, width=0.7
+    )
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=45, ha="right")
     ax.set_ylabel(metric.replace("_", " ").title())
-    ax.set_title(f"Aggregate {metric.replace('_', ' ').title()} by Model (mean over datasets)")
+    ax.set_title(
+        f"Aggregate {metric.replace('_', ' ').title()} by Model (mean over datasets)"
+    )
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
     fig.savefig(out_dir / f"bar_aggregate_{metric}.pdf", dpi=150, bbox_inches="tight")
@@ -354,8 +360,12 @@ def plot_single_dataset_models(
     plt.tight_layout()
     suffix = dataset_name or "average"
     safe = re.sub(r"[^\w\-]", "_", suffix)[:40]
-    fig.savefig(out_dir / f"bar_single_{safe}_{metric}.pdf", dpi=150, bbox_inches="tight")
-    fig.savefig(out_dir / f"bar_single_{safe}_{metric}.png", dpi=150, bbox_inches="tight")
+    fig.savefig(
+        out_dir / f"bar_single_{safe}_{metric}.pdf", dpi=150, bbox_inches="tight"
+    )
+    fig.savefig(
+        out_dir / f"bar_single_{safe}_{metric}.png", dpi=150, bbox_inches="tight"
+    )
     plt.close()
 
 
@@ -380,7 +390,14 @@ def main() -> None:
         "--metric",
         type=str,
         default="mean_mae",
-        choices=["mean_mae", "median_mae", "mean_mse", "median_mse", "mean_mape", "median_mape"],
+        choices=[
+            "mean_mae",
+            "median_mae",
+            "mean_mse",
+            "median_mse",
+            "mean_mape",
+            "median_mape",
+        ],
         help="Metric column suffix for model columns",
     )
     parser.add_argument(
@@ -430,6 +447,7 @@ def main() -> None:
     model_display = None
     if args.config and Path(args.config).exists():
         import yaml
+
         with open(args.config) as f:
             cfg = yaml.safe_load(f) or {}
         dataset_display = cfg.get("dataset_display_names")
@@ -441,7 +459,10 @@ def main() -> None:
 
     plot_aggregate_metric_by_model(df, models, args.metric, out_dir, model_display)
     plot_grouped_metric_by_dataset(
-        df, models, args.metric, out_dir,
+        df,
+        models,
+        args.metric,
+        out_dir,
         max_datasets=args.max_datasets,
         dataset_display=dataset_display,
         model_display=model_display,
@@ -449,10 +470,15 @@ def main() -> None:
     plot_ttfm_win_rate_per_dataset(df, out_dir, dataset_display)
     plot_improvement_per_dataset(df, out_dir, dataset_display)
     plot_elo_bars(df, models, args.metric, out_dir, model_display)
-    plot_single_dataset_models(df, models, args.metric, out_dir, dataset_name=None, model_display=model_display)
+    plot_single_dataset_models(
+        df, models, args.metric, out_dir, dataset_name=None, model_display=model_display
+    )
     if args.single_dataset:
         plot_single_dataset_models(
-            df, models, args.metric, out_dir,
+            df,
+            models,
+            args.metric,
+            out_dir,
             dataset_name=args.single_dataset,
             model_display=model_display,
         )
