@@ -1,0 +1,16 @@
+# Optional post-eval config: used by generate_report.py and plot_bars.py (--config)
+# Paths are relative to the script's working directory or this file.
+
+# Directory containing stats_Context_*_allsamples.csv and outputs/
+results_dir: "./results/suite/context_64"
+
+# Directory containing dataset CSVs (for qualitative plots)
+datasets_dir: "./data/test/suite"
+
+# Optional display names (overrides built-in names)
+# dataset_display_names:
+#   OIL_fred_with_text: "Crude Oil Price"
+#   SP500_fred_with_text: "S&P 500"
+# model_display_names:
+#   ttfm: "TTFM"
+#   chronos_univar: "Chronos2"
