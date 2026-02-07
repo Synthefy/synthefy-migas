@@ -7,6 +7,7 @@ Fully standalone: no dependency on the training repo.
 
 import argparse
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import torch
@@ -230,6 +231,18 @@ def parse_args():
         help="Output directory for predictions and metrics",
     )
     p.add_argument("--device", type=str, default="cuda")
+    p.add_argument(
+        "--max_workers",
+        type=int,
+        default=1,
+        help="Number of worker processes for dataset-level parallelism (1=sequential)",
+    )
+    p.add_argument(
+        "--device_ids",
+        type=str,
+        default="",
+        help="Comma-separated GPU IDs for workers (e.g. '0,1,2,7'). If set, workers use cuda:<id> in round-robin.",
+    )
 
     default_checkpoint = os.environ.get("TTFM_CHECKPOINT", "")
     p.add_argument(
@@ -915,6 +928,65 @@ def load_models(args) -> dict:
 
 
 # =============================================================================
+# PARALLEL WORKER HELPERS
+# =============================================================================
+
+# Module-level state for worker process (one model load per process).
+_worker_models = None
+_worker_args = None
+
+
+def _args_to_dict(args) -> dict:
+    """Serialize args Namespace to a plain dict for process pool (picklable)."""
+    return {k: v for k, v in vars(args).items()}
+
+
+def _dict_to_args(d: dict):
+    """Reconstruct argparse.Namespace from dict (in worker process)."""
+    return argparse.Namespace(**d)
+
+
+def _run_chunk(args_tuple) -> list:
+    """Process a chunk of datasets in a worker process. Returns list of (dataset_name, status, detail)."""
+    global _worker_models, _worker_args
+    chunk, output_dir, args_dict, device_id = args_tuple
+    # Lazy-load models once per process with correct device
+    if _worker_models is None:
+        args = _dict_to_args(args_dict)
+        if device_id is not None:
+            args.device = f"cuda:{device_id}"
+        _worker_args = args
+        _worker_models = load_models(args)
+    results = []
+    for item in chunk:
+        csv_path = item["csv_path"]
+        dataset_name = item["dataset_name"]
+        baselines_to_eval = item["baselines_to_eval"]
+        is_partial = item["is_partial"]
+        precomputed = (
+            load_per_dataset_results(output_dir, dataset_name) if is_partial else None
+        )
+        try:
+            res = evaluate_single_dataset(
+                csv_path,
+                _worker_args,
+                LateFusionDataset,
+                late_fusion_collate,
+                _worker_models,
+                baselines_to_eval,
+                precomputed_results=precomputed,
+            )
+            if res is None:
+                results.append((dataset_name, "failed", "no results"))
+                continue
+            save_per_dataset_results(output_dir, dataset_name, res)
+            results.append((dataset_name, "success", res["gt"].shape[0]))
+        except Exception as e:
+            results.append((dataset_name, "failed", str(e)))
+    return results
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -941,12 +1013,22 @@ def main() -> None:
 
     print(f"\nEnabled baselines: {', '.join(enabled_baselines)}")
     print(f"Expected prediction keys: {get_expected_prediction_keys(args)}")
-
-    models = load_models(args)
+    if args.max_workers > 1:
+        device_ids = [
+            int(x.strip()) for x in args.device_ids.split(",") if x.strip()
+        ] if args.device_ids else None
+        print(f"Parallel: max_workers={args.max_workers}, device_ids={device_ids}")
+    else:
+        models = load_models(args)
 
     print("\n" + "=" * 80)
     print("EVALUATION PLAN")
     print("=" * 80)
+    n_skipped = sum(
+        1
+        for csv_path in dataset_csvs
+        if get_expected_sample_count(csv_path, args, LateFusionDataset) <= 0
+    )
     evaluation_plan = []
     for csv_path in dataset_csvs:
         dataset_name = extract_dataset_name(csv_path)
@@ -961,6 +1043,7 @@ def main() -> None:
         if use_cache:
             evaluation_plan.append(
                 {
+                    "csv_path": csv_path,
                     "dataset": dataset_name,
                     "samples": expected_n_samples,
                     "status": "cached",
@@ -974,6 +1057,7 @@ def main() -> None:
                     baselines_to_run.add(baseline)
             evaluation_plan.append(
                 {
+                    "csv_path": csv_path,
                     "dataset": dataset_name,
                     "samples": expected_n_samples,
                     "status": "partial",
@@ -983,10 +1067,11 @@ def main() -> None:
         else:
             evaluation_plan.append(
                 {
+                    "csv_path": csv_path,
                     "dataset": dataset_name,
                     "samples": expected_n_samples,
                     "status": "full",
-                    "to_eval": enabled_baselines,
+                    "to_eval": list(enabled_baselines),
                 }
             )
 
@@ -1001,82 +1086,117 @@ def main() -> None:
     print("STARTING EVALUATION")
     print("=" * 80 + "\n")
 
-    stats = {"successful": 0, "cached": 0, "failed": 0, "skipped": 0}
+    stats = {"successful": 0, "cached": 0, "failed": 0, "skipped": n_skipped}
 
-    for csv_path in tqdm(dataset_csvs, desc="Datasets"):
-        dataset_name = extract_dataset_name(csv_path)
-        expected_n_samples = get_expected_sample_count(
-            csv_path, args, LateFusionDataset
-        )
-        if expected_n_samples <= 0:
-            stats["skipped"] += 1
+    # Handle cached datasets (always in main process)
+    for plan in evaluation_plan:
+        if plan["status"] != "cached":
             continue
-
-        use_cache, missing_keys = check_cache_status(
-            output_dir, dataset_name, expected_n_samples, args
-        )
-
-        if use_cache:
-            cached_results = load_per_dataset_results(output_dir, dataset_name)
-            if cached_results:
-                metrics = compute_all_metrics(cached_results, args.pred_len)
-                stats["cached"] += 1
-                print(
-                    f"\n{dataset_name} (cached): {cached_results['gt'].shape[0]} samples"
-                )
-                for model_name in sorted(cached_results["predictions"].keys()):
-                    if model_name in metrics:
-                        print(
-                            f"  {model_name}: MAE={metrics[model_name]['scaled']['mean_mae']:.4f}"
-                        )
-                continue
-
-        if missing_keys:
-            baselines_to_eval = []
-            for key in missing_keys:
-                baseline = get_baseline_for_prediction_key(key)
-                if baseline and baseline in enabled_baselines:
-                    baselines_to_eval.append(baseline)
-            baselines_to_eval = list(set(baselines_to_eval))
-            for baseline in baselines_to_eval.copy():
-                dep = BASELINE_REGISTRY[baseline].depends_on
-                if dep and dep not in baselines_to_eval and dep in enabled_baselines:
-                    baselines_to_eval.insert(0, dep)
-        else:
-            baselines_to_eval = enabled_baselines.copy()
-
-        cached_results = (
-            load_per_dataset_results(output_dir, dataset_name) if missing_keys else None
-        )
-
-        try:
-            results = evaluate_single_dataset(
-                csv_path,
-                args,
-                LateFusionDataset,
-                late_fusion_collate,
-                models,
-                baselines_to_eval,
-                precomputed_results=cached_results,
+        dataset_name = plan["dataset"]
+        cached_results = load_per_dataset_results(output_dir, dataset_name)
+        if cached_results:
+            metrics = compute_all_metrics(cached_results, args.pred_len)
+            stats["cached"] += 1
+            print(
+                f"\n{dataset_name} (cached): {cached_results['gt'].shape[0]} samples"
             )
-        except Exception as e:
-            print(f"\n{dataset_name} failed: {e}")
-            stats["failed"] += 1
-            continue
+            for model_name in sorted(cached_results["predictions"].keys()):
+                if model_name in metrics:
+                    print(
+                        f"  {model_name}: MAE={metrics[model_name]['scaled']['mean_mae']:.4f}"
+                    )
 
-        if results is None:
-            stats["failed"] += 1
+    # Build to_run with dependency-ordered baselines
+    to_run = []
+    for plan in evaluation_plan:
+        if plan["status"] == "cached":
             continue
+        baselines_to_eval = list(plan["to_eval"])
+        for baseline in baselines_to_eval.copy():
+            dep = BASELINE_REGISTRY[baseline].depends_on
+            if dep and dep not in baselines_to_eval and dep in enabled_baselines:
+                baselines_to_eval.insert(0, dep)
+        to_run.append({
+            "csv_path": plan["csv_path"],
+            "dataset_name": plan["dataset"],
+            "expected_n_samples": plan["samples"],
+            "baselines_to_eval": baselines_to_eval,
+            "is_partial": plan["status"] == "partial",
+        })
 
-        stats["successful"] += 1
-        save_per_dataset_results(output_dir, dataset_name, results)
-        metrics = compute_all_metrics(results, args.pred_len)
-        print(f"\n{dataset_name}: {results['gt'].shape[0]} samples")
-        for model_name in sorted(results["predictions"].keys()):
-            if model_name in metrics:
-                print(
-                    f"  {model_name}: MAE={metrics[model_name]['scaled']['mean_mae']:.4f}"
+    if args.max_workers == 1:
+        # Sequential: run in main process with already-loaded models
+        for item in tqdm(to_run, desc="Datasets"):
+            csv_path = item["csv_path"]
+            dataset_name = item["dataset_name"]
+            baselines_to_eval = item["baselines_to_eval"]
+            is_partial = item["is_partial"]
+            precomputed = (
+                load_per_dataset_results(output_dir, dataset_name)
+                if is_partial else None
+            )
+            try:
+                results = evaluate_single_dataset(
+                    csv_path,
+                    args,
+                    LateFusionDataset,
+                    late_fusion_collate,
+                    models,
+                    baselines_to_eval,
+                    precomputed_results=precomputed,
                 )
+            except Exception as e:
+                print(f"\n{dataset_name} failed: {e}")
+                stats["failed"] += 1
+                continue
+            if results is None:
+                stats["failed"] += 1
+                continue
+            stats["successful"] += 1
+            save_per_dataset_results(output_dir, dataset_name, results)
+            metrics = compute_all_metrics(results, args.pred_len)
+            print(f"\n{dataset_name}: {results['gt'].shape[0]} samples")
+            for model_name in sorted(results["predictions"].keys()):
+                if model_name in metrics:
+                    print(
+                        f"  {model_name}: MAE={metrics[model_name]['scaled']['mean_mae']:.4f}"
+                    )
+    else:
+        # Parallel: distribute chunks to workers
+        device_ids = [
+            int(x.strip()) for x in args.device_ids.split(",") if x.strip()
+        ] if args.device_ids else None
+        args_dict = _args_to_dict(args)
+        # Split to_run into max_workers chunks (round-robin for balance)
+        n_workers = min(args.max_workers, len(to_run)) if to_run else 0
+        chunks = [[] for _ in range(n_workers)]
+        for i, item in enumerate(to_run):
+            chunks[i % n_workers].append(item)
+        tasks = []
+        for chunk_index, chunk in enumerate(chunks):
+            if not chunk:
+                continue
+            device_id = (
+                device_ids[chunk_index % len(device_ids)]
+                if device_ids else None
+            )
+            tasks.append((chunk, output_dir, args_dict, device_id))
+        if tasks:
+            with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                futures = {executor.submit(_run_chunk, t): t for t in tasks}
+                for future in tqdm(as_completed(futures), total=len(futures), desc="Workers"):
+                    try:
+                        chunk_results = future.result()
+                        for dataset_name, status, detail in chunk_results:
+                            if status == "success":
+                                stats["successful"] += 1
+                                print(f"\n{dataset_name}: {detail} samples")
+                            else:
+                                stats["failed"] += 1
+                                print(f"\n{dataset_name} failed: {detail}")
+                    except Exception as e:
+                        stats["failed"] += len(futures[future][0])
+                        print(f"\nWorker error: {e}")
 
     generate_overall_stats_csv(output_dir, args, LateFusionDataset, late_fusion_collate)
 
