@@ -235,7 +235,9 @@ def parse_args():
         "--max_workers",
         type=int,
         default=1,
-        help="Number of worker processes for dataset-level parallelism (1=sequential)",
+        help="Number of worker processes for dataset-level parallelism (1=sequential). "
+        "With --eval_ttfmlf, all workers share the same vLLM server; start vLLM with "
+        "--max-num-seqs >= max_workers so multiple workers can progress in parallel.",
     )
     p.add_argument(
         "--device_ids",
@@ -592,12 +594,14 @@ def evaluate_single_dataset(
                     "  Warning: gpt_forecast not available for chronos2_gpt, skipping"
                 )
                 continue
+            # pred_len already passed positionally; omit from kwargs to avoid duplicate
+            kwargs_no_pred_len = {k: v for k, v in kwargs.items() if k != "pred_len"}
             result = config.eval_func(
                 dataloader,
                 args.device,
                 args.pred_len,
                 precomputed_gpt_forecasts=gpt_forecasts,
-                **kwargs,
+                **kwargs_no_pred_len,
             )
         else:
             result = config.eval_func(dataloader, args.device, **kwargs)
@@ -1018,6 +1022,11 @@ def main() -> None:
             int(x.strip()) for x in args.device_ids.split(",") if x.strip()
         ] if args.device_ids else None
         print(f"Parallel: max_workers={args.max_workers}, device_ids={device_ids}")
+        if "ttfmlf" in enabled_baselines:
+            print(
+                "  (TTFM uses vLLM for summaries; start vLLM with --max-num-seqs >= "
+                f"{args.max_workers} so all workers can run in parallel.)"
+            )
     else:
         models = load_models(args)
 

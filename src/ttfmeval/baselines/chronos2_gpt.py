@@ -71,10 +71,10 @@ def evaluate_chronos2_with_gpt_forecast(
         future_start = context_range[-1] + pd.Timedelta(days=1)
         future_range = pd.date_range(start=future_start, periods=pred_len, freq="D")
 
-        xb_np = xb.cpu().numpy()
+        xb_np = xb.cpu().numpy().astype(np.float64)
         llm_forecasts_scaled = precomputed_gpt_forecasts[
             sample_idx : sample_idx + batch_size
-        ]
+        ].astype(np.float64)
         sample_idx += batch_size
 
         context_parts = []
@@ -82,7 +82,7 @@ def evaluate_chronos2_with_gpt_forecast(
         for i in range(batch_size):
             series_id = f"series_{i}"
             history_values_with_noise = (
-                xb_np[i, 1:] + np.random.randn(seq_len - 1) * noise_std
+                xb_np[i, 1:] + np.random.randn(seq_len - 1).astype(np.float64) * noise_std
             )
             history_cov = np.concatenate(
                 [history_values_with_noise, [llm_forecasts_scaled[i, 0]]]
@@ -96,7 +96,8 @@ def evaluate_chronos2_with_gpt_forecast(
                 )
             else:
                 future_cov = np.array(
-                    [llm_forecasts_scaled[i, -1] + np.random.randn() * noise_std]
+                    [llm_forecasts_scaled[i, -1] + np.random.randn() * noise_std],
+                    dtype=np.float64,
                 )
             ctx = pd.DataFrame(
                 {
@@ -137,15 +138,17 @@ def evaluate_chronos2_with_gpt_forecast(
         future_parts_dir = []
         for i in range(batch_size):
             series_id = f"series_{i}"
-            history_with_noise = xb_np[i, :] + np.random.randn(seq_len) * noise_std
+            history_with_noise = (
+                xb_np[i, :] + np.random.randn(seq_len).astype(np.float64) * noise_std
+            )
             combined_series = np.concatenate(
                 [history_with_noise, llm_forecasts_scaled[i, :]]
             )
             all_changes = np.diff(combined_series, prepend=combined_series[:1])
-            history_magnitude = np.abs(all_changes[:seq_len])
-            history_direction = np.sign(all_changes[:seq_len])
-            future_magnitude = np.abs(all_changes[seq_len:])
-            future_direction = np.sign(all_changes[seq_len:])
+            history_magnitude = np.abs(all_changes[:seq_len]).astype(np.float64)
+            history_direction = np.sign(all_changes[:seq_len]).astype(np.float64)
+            future_magnitude = np.abs(all_changes[seq_len:]).astype(np.float64)
+            future_direction = np.sign(all_changes[seq_len:]).astype(np.float64)
             ctx = pd.DataFrame(
                 {
                     "id": series_id,
