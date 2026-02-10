@@ -1018,9 +1018,11 @@ def main() -> None:
     print(f"\nEnabled baselines: {', '.join(enabled_baselines)}")
     print(f"Expected prediction keys: {get_expected_prediction_keys(args)}")
     if args.max_workers > 1:
-        device_ids = [
-            int(x.strip()) for x in args.device_ids.split(",") if x.strip()
-        ] if args.device_ids else None
+        device_ids = (
+            [int(x.strip()) for x in args.device_ids.split(",") if x.strip()]
+            if args.device_ids
+            else None
+        )
         print(f"Parallel: max_workers={args.max_workers}, device_ids={device_ids}")
         if "ttfmlf" in enabled_baselines:
             print(
@@ -1106,9 +1108,7 @@ def main() -> None:
         if cached_results:
             metrics = compute_all_metrics(cached_results, args.pred_len)
             stats["cached"] += 1
-            print(
-                f"\n{dataset_name} (cached): {cached_results['gt'].shape[0]} samples"
-            )
+            print(f"\n{dataset_name} (cached): {cached_results['gt'].shape[0]} samples")
             for model_name in sorted(cached_results["predictions"].keys()):
                 if model_name in metrics:
                     print(
@@ -1125,13 +1125,15 @@ def main() -> None:
             dep = BASELINE_REGISTRY[baseline].depends_on
             if dep and dep not in baselines_to_eval and dep in enabled_baselines:
                 baselines_to_eval.insert(0, dep)
-        to_run.append({
-            "csv_path": plan["csv_path"],
-            "dataset_name": plan["dataset"],
-            "expected_n_samples": plan["samples"],
-            "baselines_to_eval": baselines_to_eval,
-            "is_partial": plan["status"] == "partial",
-        })
+        to_run.append(
+            {
+                "csv_path": plan["csv_path"],
+                "dataset_name": plan["dataset"],
+                "expected_n_samples": plan["samples"],
+                "baselines_to_eval": baselines_to_eval,
+                "is_partial": plan["status"] == "partial",
+            }
+        )
 
     if args.max_workers == 1:
         # Sequential: run in main process with already-loaded models
@@ -1142,7 +1144,8 @@ def main() -> None:
             is_partial = item["is_partial"]
             precomputed = (
                 load_per_dataset_results(output_dir, dataset_name)
-                if is_partial else None
+                if is_partial
+                else None
             )
             try:
                 results = evaluate_single_dataset(
@@ -1172,9 +1175,11 @@ def main() -> None:
                     )
     else:
         # Parallel: distribute chunks to workers
-        device_ids = [
-            int(x.strip()) for x in args.device_ids.split(",") if x.strip()
-        ] if args.device_ids else None
+        device_ids = (
+            [int(x.strip()) for x in args.device_ids.split(",") if x.strip()]
+            if args.device_ids
+            else None
+        )
         args_dict = _args_to_dict(args)
         # Split to_run into max_workers chunks (round-robin for balance)
         n_workers = min(args.max_workers, len(to_run)) if to_run else 0
@@ -1186,14 +1191,15 @@ def main() -> None:
             if not chunk:
                 continue
             device_id = (
-                device_ids[chunk_index % len(device_ids)]
-                if device_ids else None
+                device_ids[chunk_index % len(device_ids)] if device_ids else None
             )
             tasks.append((chunk, output_dir, args_dict, device_id))
         if tasks:
             with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 futures = {executor.submit(_run_chunk, t): t for t in tasks}
-                for future in tqdm(as_completed(futures), total=len(futures), desc="Workers"):
+                for future in tqdm(
+                    as_completed(futures), total=len(futures), desc="Workers"
+                ):
                     try:
                         chunk_results = future.result()
                         for dataset_name, status, detail in chunk_results:

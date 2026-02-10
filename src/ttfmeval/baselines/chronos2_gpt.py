@@ -82,7 +82,8 @@ def evaluate_chronos2_with_gpt_forecast(
         for i in range(batch_size):
             series_id = f"series_{i}"
             history_values_with_noise = (
-                xb_np[i, 1:] + np.random.randn(seq_len - 1).astype(np.float64) * noise_std
+                xb_np[i, 1:]
+                + np.random.randn(seq_len - 1).astype(np.float64) * noise_std
             )
             history_cov = np.concatenate(
                 [history_values_with_noise, [llm_forecasts_scaled[i, 0]]]
