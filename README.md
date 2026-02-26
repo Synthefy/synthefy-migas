@@ -1,6 +1,7 @@
 # TTFM: Text-and-Time-Series Fusion Model
 
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Dataset-FFD21E)](https://huggingface.co/datasets/bekzatajan/fnspid/tree/main)
+
 
 This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference and evaluation. TTFM combines a univariate time-series backbone (Chronos-2, TimesFM, or Prophet) with LLM-generated context summaries to produce text-conditioned forecasts. You can run benchmarks across TTFM and baselines on CSV datasets, or load pre-trained weights and run inference in Python or notebooks.
 
