@@ -36,7 +36,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -114,9 +113,7 @@ def load_config(config_path: str) -> dict:
         for source in setting.get("sources", []):
             csv_path = source["csv"]
             if not os.path.isabs(csv_path):
-                source["csv"] = os.path.normpath(
-                    os.path.join(config_dir, csv_path)
-                )
+                source["csv"] = os.path.normpath(os.path.join(config_dir, csv_path))
 
     return config
 
@@ -220,9 +217,7 @@ def generate_comparison_table(config: dict) -> str:
     highlight_sources = set(config.get("highlight_sources", []))
     highlight_color = config.get("highlight_color", "EFEFEF")
 
-    has_multiple_settings = (
-        len(settings) > 1 or settings[0].get("label") is not None
-    )
+    has_multiple_settings = len(settings) > 1 or settings[0].get("label") is not None
 
     settings_loaded = []
     columns = []
@@ -246,9 +241,7 @@ def generate_comparison_table(config: dict) -> str:
             valid_models = []
             for model in src_models:
                 missing = [
-                    f"{model}_{m}"
-                    for m in metrics
-                    if f"{model}_{m}" not in df.columns
+                    f"{model}_{m}" for m in metrics if f"{model}_{m}" not in df.columns
                 ]
                 if missing:
                     print(f"Warning: Columns missing in {csv_path}: {missing}")
@@ -257,9 +250,7 @@ def generate_comparison_table(config: dict) -> str:
                 key = (src_label, model)
                 if key not in col_seen:
                     col_seen.add(key)
-                    columns.append(
-                        (src_label, model, src_label in highlight_sources)
-                    )
+                    columns.append((src_label, model, src_label in highlight_sources))
 
             sources_data.append(
                 {
@@ -351,9 +342,7 @@ def generate_comparison_table(config: dict) -> str:
 
     h1 = [""] * first_cols
     for metric in metrics:
-        mlabel = metric_labels.get(
-            metric, metric.replace("_", " ").title()
-        )
+        mlabel = metric_labels.get(metric, metric.replace("_", " ").title())
         h1.append(f"\\multicolumn{{{n_cols}}}{{c}}{{{mlabel}}}")
     lines.append(" & ".join(h1) + " \\\\")
 
@@ -402,13 +391,9 @@ def generate_comparison_table(config: dict) -> str:
         first_in_group = True
         for row in rows_data:
             ds_name = row["dataset_name"]
-            display_name = latex_escape(
-                dataset_names_map.get(ds_name, ds_name)
-            )
+            display_name = latex_escape(dataset_names_map.get(ds_name, ds_name))
             n_str = (
-                str(row["n_eval_samples"])
-                if row["n_eval_samples"] is not None
-                else "-"
+                str(row["n_eval_samples"]) if row["n_eval_samples"] is not None else "-"
             )
 
             if has_multiple_settings:
@@ -440,9 +425,7 @@ def generate_comparison_table(config: dict) -> str:
                     is_best = best_key == (src_label, model_key)
                     fmt = format_value(v, is_best, precision)
                     if hl and v is not None:
-                        fmt = (
-                            f"\\cellcolor[HTML]{{{highlight_color}}}{{{fmt}}}"
-                        )
+                        fmt = f"\\cellcolor[HTML]{{{highlight_color}}}{{{fmt}}}"
                     parts.append(fmt)
 
             lines.append(" & ".join(parts) + " \\\\")
@@ -474,17 +457,10 @@ def generate_comparison_table(config: dict) -> str:
     for metric in metrics:
         col_means = {}
         for src_label, model_key, _ in columns:
-            vals = [
-                r.get((src_label, model_key, metric), None)
-                for r in all_rows_flat
-            ]
+            vals = [r.get((src_label, model_key, metric), None) for r in all_rows_flat]
             vals = [v for v in vals if v is not None]
-            col_means[(src_label, model_key)] = (
-                np.mean(vals) if vals else None
-            )
-        best = min(
-            (v for v in col_means.values() if v is not None), default=None
-        )
+            col_means[(src_label, model_key)] = np.mean(vals) if vals else None
+        best = min((v for v in col_means.values() if v is not None), default=None)
         for src_label, model_key, _ in columns:
             v = col_means[(src_label, model_key)]
             if v is not None:
@@ -508,9 +484,7 @@ def generate_comparison_table(config: dict) -> str:
             col_wmeans[(src_label, model_key)] = (
                 np.average(vals, weights=weights) if vals else None
             )
-        best = min(
-            (v for v in col_wmeans.values() if v is not None), default=None
-        )
+        best = min((v for v in col_wmeans.values() if v is not None), default=None)
         for src_label, model_key, _ in columns:
             v = col_wmeans[(src_label, model_key)]
             if v is not None:
@@ -563,7 +537,8 @@ def compile_to_pdf(table_content: str, output_pdf: str) -> bool:
     standalone = table_content.replace("\\begin{table*}[t]", "\\begin{table}[h]")
     standalone = standalone.replace("\\end{table*}", "\\end{table}")
 
-    doc = r"""\documentclass[10pt]{article}
+    doc = (
+        r"""\documentclass[10pt]{article}
 \usepackage[margin=0.3in,landscape,paperwidth=48in,paperheight=11in]{geometry}
 \usepackage{booktabs}
 \usepackage{multirow}
@@ -575,10 +550,13 @@ def compile_to_pdf(table_content: str, output_pdf: str) -> bool:
 \pagestyle{empty}
 \thispagestyle{empty}
 
-""" + standalone + r"""
+"""
+        + standalone
+        + r"""
 
 \end{document}
 """
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tex_path = os.path.join(tmpdir, "table.tex")
