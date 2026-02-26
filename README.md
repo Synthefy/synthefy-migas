@@ -3,7 +3,7 @@
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Dataset-FFD21E)](https://huggingface.co/datasets/bekzatajan/fnspid/tree/main)
 
 
-This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference and evaluation. TTFM combines a univariate time-series backbone (Chronos-2, TimesFM, or Prophet) with LLM-generated context summaries to produce text-conditioned forecasts. You can run benchmarks across TTFM and baselines on CSV datasets, or load pre-trained weights and run inference in Python or notebooks.
+This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference and evaluation. TTFM combines a univariate time-series backbone (Chronos-2, TimesFM, or Prophet) with LLM-generated context summaries to produce text-conditioned forecasts. You can run benchmarks across TTFM and baselines on CSV datasets, or run inference in Python or notebooks.
 
 ---
 
@@ -48,7 +48,12 @@ For TTFM evaluation or inference with context summarization, vLLM is included by
 
 ### 1. Running evaluations
 
-Run the evaluation CLI on a directory of CSV files or on a Hugging Face dataset repo. Each CSV must have columns `t`, `y_t`, and `text` (see [Data format](#data-format)).
+Run the evaluation CLI on your time-series data. Each CSV must have columns `t`, `y_t`, and `text` (see [Data format](#data-format)).
+
+**Data sources:** You can pass data in either way (no need to use Hugging Face):
+
+- **Local directory (default)** — Put CSV files in a folder and pass `--datasets_dir /path/to/folder`. The default is `./data/test` (or set `TTFM_EVAL_DATASETS_DIR`).
+- **Hugging Face dataset (optional)** — Use `--datasets_hf REPO_ID` (and optionally `--datasets_hf_subdir data`) to download a dataset repo from the Hub and use it as the data source. Useful for shared or published datasets.
 
 **Example: baselines only (no TTFM, no LLM)**
 
@@ -65,16 +70,15 @@ uv run python -m ttfmeval.evaluation \
   --eval_naive
 ```
 
-**Example: with TTFM and optional Hugging Face data/weights**
+**Example: with TTFM (local data or Hugging Face)**
 
-Evaluating TTFM requires the TTFM checkpoint. Pass the Hugging Face repo id (e.g. `bekzatajan/ttfm`). For private repos, set `HF_TOKEN`. You can also use a Hugging Face dataset repo as the data source with `--datasets_hf`.
+Evaluating TTFM requires the TTFM checkpoint from the Hub: pass `--checkpoint bekzatajan/ttfm` (for private repos, set `HF_TOKEN`). You can use the same local `--datasets_dir` as above, or switch to a Hugging Face dataset with `--datasets_hf`.
 
 ```bash
 export HF_TOKEN=your_token   # only for private model/dataset repos
 
 uv run python -m ttfmeval.evaluation \
-  --datasets_hf bekzatajan/fnspid \
-  --datasets_hf_subdir data \
+  --datasets_dir ./data/test \
   --output_dir ./results \
   --seq_len 384 \
   --pred_len 16 \
@@ -82,7 +86,8 @@ uv run python -m ttfmeval.evaluation \
   --eval_ttfmlf \
   --eval_chronos2 \
   --eval_timesfm \
-  --checkpoint bekzatajan/ttfm \
+  --checkpoint bekzatajan/ttfm
+# Or use a Hugging Face dataset: add --datasets_hf bekzatajan/fnspid --datasets_hf_subdir data (and omit or override --datasets_dir)
 ```
 
 TTFM evaluation requires a running vLLM (or OpenAI-compatible) server for context summarization. Start it before running the above (see [TTFM and the LLM server](#ttfm-and-the-llm-server)).
@@ -123,7 +128,9 @@ For full inference with summarization, a vLLM server must be running and `VLLM_B
 
 Both are currently private. Set the `HF_TOKEN` environment variable (or pass `token=` where supported) to access them. They will be made public in a future release.
 
-### Creating the sample datasets repo on Hugging Face
+### Using a Hugging Face dataset (optional)
+
+You only need this if you want to use or publish datasets on the Hub. For local evaluation, a directory of CSVs and `--datasets_dir` is enough.
 
 The current example dataset is [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid) (CSVs in the `data/` subfolder). To add or host your own:
 
