@@ -164,7 +164,11 @@ class TTFMLF(nn.Module):
             self.pred_len if self.use_multiple_horizon_embedders else pred_len
         )
 
-        ts = x.unsqueeze(-1).to(self.device).float()
+        # Accept (B, seq_len) or (B, seq_len, 1); pipeline may already unsqueeze
+        if x.dim() == 2:
+            ts = x.unsqueeze(-1).to(self.device).float()
+        else:
+            ts = x.to(self.device).float()
 
         timeseries_forecast = evaluate_univariate(
             x=ts,
@@ -180,7 +184,7 @@ class TTFMLF(nn.Module):
             timeseries_forecast[..., 0]
         )
 
-        values_batch = [x.cpu().numpy()[i].tolist() for i in range(B)]
+        values_batch = [ts.cpu().numpy()[i, :, 0].tolist() for i in range(B)]
 
         if summaries is None:
             trim_context_len = 64

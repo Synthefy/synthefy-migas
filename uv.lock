@@ -4069,6 +4069,49 @@ wheels = [
 ]
 
 [[package]]
+name = "synthefy-ttfm"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "chronos-forecasting" },
+    { name = "huggingface-hub", extra = ["cli"] },
+    { name = "nest-asyncio" },
+    { name = "numpy" },
+    { name = "openai" },
+    { name = "pandas" },
+    { name = "polars" },
+    { name = "prophet" },
+    { name = "requests" },
+    { name = "sentence-transformers" },
+    { name = "tabpfn" },
+    { name = "tabpfn-time-series" },
+    { name = "timesfm", extra = ["torch"] },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "vllm" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "chronos-forecasting" },
+    { name = "huggingface-hub", extras = ["cli"], specifier = ">=0.36.1" },
+    { name = "nest-asyncio", specifier = ">=1.5.0" },
+    { name = "numpy" },
+    { name = "openai", specifier = ">=1.0.0" },
+    { name = "pandas" },
+    { name = "polars", specifier = ">=1.38.1" },
+    { name = "prophet", specifier = ">=1.2.2" },
+    { name = "requests", specifier = ">=2.32.5" },
+    { name = "sentence-transformers", specifier = ">=5.1.1" },
+    { name = "tabpfn", specifier = ">=6.3.1" },
+    { name = "tabpfn-time-series", specifier = ">=1.0.7" },
+    { name = "timesfm", extras = ["torch"], git = "https://github.com/google-research/timesfm.git?rev=bf88c5dc88f6275b7071ebcd9051406c11435c0c" },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "vllm", specifier = ">=0.11.0" },
+]
+
+[[package]]
 name = "tabpfn"
 version = "6.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4409,54 +4452,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/27/46/8c3bbb5b0a19313f50edcaa363b599e5a1a5ac9683ead82b9b80fe497c8d/triton-3.5.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f3f4346b6ebbd4fad18773f5ba839114f4826037c9f2f34e0148894cd5dd3dba", size = 170470410, upload-time = "2025-11-11T17:41:06.319Z" },
     { url = "https://files.pythonhosted.org/packages/37/92/e97fcc6b2c27cdb87ce5ee063d77f8f26f19f06916aa680464c8104ef0f6/triton-3.5.1-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0b4d2c70127fca6a23e247f9348b8adde979d2e7a20391bfbabaac6aebc7e6a8", size = 170579924, upload-time = "2025-11-11T17:41:12.455Z" },
 ]
-
-[[package]]
-name = "ttfm-eval"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "chronos-forecasting" },
-    { name = "huggingface-hub", extra = ["cli"] },
-    { name = "nest-asyncio" },
-    { name = "numpy" },
-    { name = "openai" },
-    { name = "pandas" },
-    { name = "polars" },
-    { name = "prophet" },
-    { name = "requests" },
-    { name = "sentence-transformers" },
-    { name = "tabpfn" },
-    { name = "tabpfn-time-series" },
-    { name = "timesfm", extra = ["torch"] },
-    { name = "torch" },
-    { name = "tqdm" },
-]
-
-[package.optional-dependencies]
-vllm = [
-    { name = "vllm" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "chronos-forecasting" },
-    { name = "huggingface-hub", extras = ["cli"], specifier = ">=0.36.1" },
-    { name = "nest-asyncio", specifier = ">=1.5.0" },
-    { name = "numpy" },
-    { name = "openai", specifier = ">=1.0.0" },
-    { name = "pandas" },
-    { name = "polars", specifier = ">=1.38.1" },
-    { name = "prophet", specifier = ">=1.2.2" },
-    { name = "requests", specifier = ">=2.32.5" },
-    { name = "sentence-transformers", specifier = ">=5.1.1" },
-    { name = "tabpfn", specifier = ">=6.3.1" },
-    { name = "tabpfn-time-series", specifier = ">=1.0.7" },
-    { name = "timesfm", extras = ["torch"], git = "https://github.com/google-research/timesfm.git?rev=bf88c5dc88f6275b7071ebcd9051406c11435c0c" },
-    { name = "torch" },
-    { name = "tqdm" },
-    { name = "vllm", marker = "extra == 'vllm'", specifier = ">=0.11.0" },
-]
-provides-extras = ["vllm"]
 
 [[package]]
 name = "typer"

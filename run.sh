@@ -4,7 +4,7 @@
 export CUDA_VISIBLE_DEVICES=0,1,2
 
 # Optional: set defaults via env (override with CLI)
-# export TTFM_CHECKPOINT=/path/to/ttfm.pt
+# export TTFM_CHECKPOINT=bekzatajan/ttfm
 # export TTFM_EVAL_DATASETS_DIR=./data/test
 # export TTFM_EVAL_OUTPUT_DIR=./results
 
@@ -19,6 +19,6 @@ uv run python -m ttfmeval.evaluation \
   --eval_timesfm \
   "$@"
 
-# To also run TTFM, add and set TTFM_CHECKPOINT:
+# To also run TTFM, add checkpoint (HF repo id, e.g. bekzatajan/ttfm; set HF_TOKEN for private):
 #   --eval_ttfmlf \
-#   --checkpoint "${TTFM_CHECKPOINT}"
+#   --checkpoint "${TTFM_CHECKPOINT:-bekzatajan/ttfm}"

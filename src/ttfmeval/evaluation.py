@@ -18,6 +18,7 @@ from ttfmeval.baselines import BASELINE_REGISTRY, get_baseline_for_prediction_ke
 from ttfmeval.dataset import (
     LateFusionDataset,
     collate_fn as late_fusion_collate,
+    get_datasets_dir_from_hf,
     list_csv_files,
 )
 from ttfmeval.model import build_model
@@ -225,6 +226,18 @@ def parse_args():
         help="Directory containing CSV files (t, y_t, text)",
     )
     p.add_argument(
+        "--datasets_hf",
+        type=str,
+        default="",
+        help="Hugging Face dataset repo id (e.g. bekzatajan/ttfm-sample-datasets). If set, downloads the repo and uses it as datasets_dir. Use HF_TOKEN for private repos.",
+    )
+    p.add_argument(
+        "--datasets_hf_subdir",
+        type=str,
+        default="",
+        help="Subdirectory inside the HF dataset repo to use as datasets_dir. Only used when --datasets_hf is set.",
+    )
+    p.add_argument(
         "--output_dir",
         type=str,
         default=os.environ.get("TTFM_EVAL_OUTPUT_DIR", "./results"),
@@ -251,7 +264,7 @@ def parse_args():
         "--checkpoint",
         type=str,
         default=default_checkpoint,
-        help="Path to TTFM checkpoint (or set TTFM_CHECKPOINT)",
+        help="Hugging Face repo id for TTFM checkpoint (e.g. bekzatajan/ttfm). Set TTFM_CHECKPOINT or use HF_TOKEN for private repos.",
     )
     p.add_argument("--checkpoint_timesfm", type=str, default="")
 
@@ -543,6 +556,8 @@ def evaluate_single_dataset(
 
     for baseline_name in baselines_to_eval:
         config = BASELINE_REGISTRY[baseline_name]
+        if all(k in all_results["predictions"] for k in config.prediction_keys):
+            continue
         kwargs = {"pred_len": args.pred_len}
         for func_arg, args_attr in config.extra_args_map.items():
             kwargs[func_arg] = getattr(args, args_attr)
@@ -590,8 +605,9 @@ def evaluate_single_dataset(
                 if os.path.exists(gpt_path):
                     gpt_forecasts = np.load(gpt_path)
             if gpt_forecasts is None:
+                dataset_name = extract_dataset_name(csv_path)
                 print(
-                    "  Warning: gpt_forecast not available for chronos2_gpt, skipping"
+                    f"  Warning: gpt_forecast not available for chronos2_gpt on dataset '{dataset_name}', skipping"
                 )
                 continue
             # pred_len already passed positionally; omit from kwargs to avoid duplicate
@@ -882,13 +898,23 @@ def load_models(args) -> dict:
     enabled = get_enabled_baselines(args)
 
     if "ttfmlf" in enabled:
-        if not args.checkpoint or not os.path.isfile(args.checkpoint):
+        checkpoint_path = args.checkpoint
+        if checkpoint_path and not os.path.isfile(checkpoint_path):
+            from ttfmeval.pipeline import _resolve_checkpoint_path
+
+            checkpoint_path = _resolve_checkpoint_path(
+                checkpoint_path,
+                filename="model.pt",
+                token=os.environ.get("HF_TOKEN"),
+            )
+        if not checkpoint_path or not os.path.isfile(checkpoint_path):
             raise FileNotFoundError(
                 "TTFM checkpoint required for --eval_ttfmlf. "
-                "Set --checkpoint /path/to/model.pt or TTFM_CHECKPOINT env var."
+                "Set --checkpoint to a Hugging Face repo id (e.g. bekzatajan/ttfm). "
+                "Use TTFM_CHECKPOINT or HF_TOKEN for private repos."
             )
         print("\nLoading TTFM model...")
-        checkpoint = torch.load(args.checkpoint, map_location=args.device)
+        checkpoint = torch.load(checkpoint_path, map_location=args.device)
         state_dict = checkpoint.get("state_dict", checkpoint)
         model = build_model(
             pred_len=16,
@@ -999,6 +1025,13 @@ def main() -> None:
     """Entry point: parse args, run enabled baselines on datasets, save results and summary CSVs."""
     args = parse_args()
 
+    if getattr(args, "datasets_hf", "") and args.datasets_hf.strip():
+        args.datasets_dir = get_datasets_dir_from_hf(
+            args.datasets_hf.strip(),
+            subdir=getattr(args, "datasets_hf_subdir", "") or None,
+            token=os.environ.get("HF_TOKEN"),
+        )
+
     datasets_dir_name = os.path.basename(os.path.normpath(args.datasets_dir))
     output_dir = os.path.join(
         args.output_dir, datasets_dir_name, f"context_{args.seq_len}"
@@ -1061,18 +1094,18 @@ def main() -> None:
                 }
             )
         elif missing_keys:
-            baselines_to_run = set()
+            baselines_to_run = []
             for key in missing_keys:
                 baseline = get_baseline_for_prediction_key(key)
                 if baseline and baseline in enabled_baselines:
-                    baselines_to_run.add(baseline)
+                    baselines_to_run.append(baseline)
             evaluation_plan.append(
                 {
                     "csv_path": csv_path,
                     "dataset": dataset_name,
                     "samples": expected_n_samples,
                     "status": "partial",
-                    "to_eval": list(baselines_to_run),
+                    "to_eval": list(dict.fromkeys(baselines_to_run)),
                 }
             )
         else:
