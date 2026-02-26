@@ -33,7 +33,7 @@ def get_chronos_pipeline(device: str = "cuda:0"):
         _chronos_pipeline = BaseChronosPipeline.from_pretrained(
             "amazon/chronos-2",
             device_map=device,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
         )
         _chronos_device = device
     return _chronos_pipeline

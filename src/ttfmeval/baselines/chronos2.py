@@ -27,7 +27,7 @@ def load_chronos2_pipeline(device):
         CHRONOS2_PIPELINE = BaseChronosPipeline.from_pretrained(
             "amazon/chronos-2",
             device_map=device,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         )
         print("Chronos-2 pipeline loaded successfully")
     return CHRONOS2_PIPELINE

@@ -131,7 +131,7 @@ def evaluate_chronos2_with_gpt_forecast(
     pipeline = BaseChronosPipeline.from_pretrained(
         "amazon/chronos-2",
         device_map=device,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         local_files_only=True,
     )
 

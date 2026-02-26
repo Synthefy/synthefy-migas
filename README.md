@@ -13,7 +13,7 @@ TTFM fuses historical time series with per-step text context: an LLM summarizes 
 - **Evaluation** — Run TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV or Hugging Face datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy. Evaluating TTFM requires loading the pre-trained TTFM weights from the Hugging Face Hub.
 - **Inference** — Load the pre-trained weights from the Hugging Face Hub and run forecasts in Python or notebooks.
 
-Pre-trained weights and sample datasets are hosted on Hugging Face. They are currently private; use `HF_TOKEN` for access. They will be made public in a future release.
+Pre-trained weights and sample datasets are hosted on Hugging Face. !!!! Probably Sai is going to upload the model and datasets on HF, they are currently private; use `HF_TOKEN` for access. They will be made public in a future release !!!!
 
 ---
 
@@ -82,7 +82,6 @@ uv run python -m ttfmeval.evaluation \
   --eval_chronos2 \
   --eval_timesfm \
   --checkpoint bekzatajan/ttfm \
-  --max_workers 4
 ```
 
 TTFM evaluation requires a running vLLM (or OpenAI-compatible) server for context summarization. Start it before running the above (see [TTFM and the LLM server](#ttfm-and-the-llm-server)).
