@@ -827,7 +827,7 @@ def main():
     results_dir = Path(args.results_dir)
     per_dataset_csv = results_dir / "per_dataset_metrics.csv"
     if not per_dataset_csv.exists():
-        # ttfm-eval writes stats_Context_<seq_len>_allsamples.csv
+        # synthefy-ttfm evaluation writes stats_Context_<seq_len>_allsamples.csv
         candidates = list(results_dir.glob("stats_Context_*_allsamples.csv"))
         if candidates:
             per_dataset_csv = candidates[0]

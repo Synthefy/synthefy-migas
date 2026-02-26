@@ -72,6 +72,12 @@ MODEL_COLUMNS = {
         "line1": "Chronos2",
         "line2": "GPT MD",
     },
+    "chronos_naive_cov": {
+        "median": "chronos_naive_cov_mean_mse",
+        "mean": "chronos_naive_cov_mean_mae",
+        "line1": "Chronos2",
+        "line2": "Naive",
+    },
     "tabpfn_ts": {
         "median": "tabpfn_ts_mean_mse",
         "mean": "tabpfn_ts_mean_mae",

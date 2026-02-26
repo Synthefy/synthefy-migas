@@ -1,0 +1,57 @@
+# Example config for compare_results.py
+# Compare evaluation results from one or more stats CSVs into a single PDF.
+#
+# Usage:
+#   uv run python scripts/latex/compare_results.py --config scripts/latex/config_compare_example.yaml
+#
+# Adjust paths below to your results dir. Paths are relative to this config file.
+
+output: comparison.pdf
+
+metrics:
+  - mean_mae
+  # - mean_mape
+
+precision: 3
+
+caption: "Comparison of Mean MAE across baselines."
+label: "tab:comparison"
+
+# Single setting: one group of sources
+sources:
+  - label: "Baselines"
+    csv: "../../results/suite/context_64/stats_Context_64_allsamples.csv"
+    models:
+      - chronos_univar
+      - chronos_naive_cov
+      - chronos_gpt_cov
+      - gpt_forecast
+      - naive
+      - ttfm
+      - timeseries
+
+# Optional: restrict to specific datasets (comment out to use all in CSV)
+# datasets:
+#   - OIL_fred_with_text
+#   - SP500_fred_with_text
+
+# Optional: override model display names
+# model_display_names:
+#   ttfm: "TTFM (Ours)"
+
+# Optional: override dataset display names
+# dataset_display_names:
+#   my_dataset: "My Dataset"
+
+# --- Alternative: multiple settings (e.g. different horizons) ---
+# settings:
+#   - label: "Horizon 4"
+#     sources:
+#       - label: "Ctx 64"
+#         csv: "../../results/suite/context_64/stats_Context_64_allsamples.csv"
+#         models: [chronos_univar, gpt_forecast, ttfm]
+#   - label: "Horizon 16"
+#     sources:
+#       - label: "Ctx 64"
+#         csv: "../../results/suite_h16/context_64/stats_Context_64_allsamples.csv"
+#         models: [chronos_univar, gpt_forecast, ttfm]

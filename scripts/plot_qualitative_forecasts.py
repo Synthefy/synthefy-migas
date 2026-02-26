@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
-# Add repo root and src so ttfmeval is importable (standalone ttfm-eval repo)
+# Add repo root and src so ttfmeval is importable (synthefy-ttfm repo)
 _repo_root = Path(__file__).resolve().parent.parent
 _src = _repo_root / "src"
 if _src.exists():
@@ -221,7 +221,7 @@ def generate_context_summaries(
             from src.context_summary import ContextSummarizer
         except ImportError:
             print(
-                "  Skipping context summaries (ttfmeval.model.util.ContextSummarizer not available; install ttfm-eval or add ContextSummarizer for LLM summaries)."
+                "  Skipping context summaries (ttfmeval.model.util.ContextSummarizer not available; install synthefy-ttfm or add ContextSummarizer for LLM summaries)."
             )
             return samples
 
@@ -1542,7 +1542,7 @@ Examples:
     print(f"Use dates on x-axis: {args.use_dates}")
     print(f"Generate summaries: {args.generate_summaries}")
 
-    # Load per-dataset metrics (needed for both formats); ttfm-eval writes stats_Context_*_allsamples.csv
+    # Load per-dataset metrics (needed for both formats); evaluation writes stats_Context_*_allsamples.csv
     per_dataset_csv = results_dir / "per_dataset_metrics.csv"
     if not per_dataset_csv.exists():
         candidates = list(Path(results_dir).glob("stats_Context_*_allsamples.csv"))
