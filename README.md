@@ -1,6 +1,6 @@
 # TTFM: Text-and-Time-Series Fusion Model
 
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Dataset-FFD21E)](https://huggingface.co/datasets/bekzatajan/fnspid/tree/main)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Dataset-FFD21E)](https://huggingface.co/datasets/bekzatajan/fnspid/tree/main) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
 
 
 This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference and evaluation. TTFM combines a univariate time-series backbone (Chronos-2, TimesFM, or Prophet) with LLM-generated context summaries to produce text-conditioned forecasts. You can run benchmarks across TTFM and baselines on CSV datasets, or run inference in Python or notebooks.
@@ -9,19 +9,10 @@ This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference 
 
 ## Introduction
 
-TTFM fuses historical time series with per-step text context: an LLM summarizes the context into factual and predictive signals, and a small fusion head combines these with the univariate forecast to output the final prediction. This package supports:
+TTFM fuses historical time series with per-step text context: an LLM summarizes the context into factual and predictive signals, and a small fusion head combines these with the univariate forecast to output the final prediction. You can use this repo in two ways:
 
-- **Evaluation** — Run TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV or Hugging Face datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy. Evaluating TTFM requires loading the pre-trained TTFM weights from the Hugging Face Hub.
-- **Inference** — Load the pre-trained weights from the Hugging Face Hub and run forecasts in Python or notebooks.
-
-Pre-trained weights and sample datasets are hosted on Hugging Face. !!!! Probably Sai is going to upload the model and datasets on HF, they are currently private; use `HF_TOKEN` for access. They will be made public in a future release !!!!
-
----
-
-## Two ways to use this repo
-
-1. **Run evaluations** — Evaluate TTFM and baselines on CSV (or Hugging Face) datasets using the CLI.
-2. **Inference with TTFM** — Load the pipeline from the Hugging Face Hub and call `predict()` on your context and text.
+1. **Run evaluations** — Evaluate TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV or Hugging Face datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy. TTFM evaluation requires the pre-trained checkpoint from the Hugging Face Hub.
+2. **Inference with TTFM** — Load the pipeline from the Hugging Face Hub and run `predict()` on your context and text in Python or notebooks.
 
 ---
 
@@ -72,7 +63,7 @@ uv run python -m ttfmeval.evaluation \
 
 **Example: with TTFM (local data or Hugging Face)**
 
-Evaluating TTFM requires the TTFM checkpoint from the Hub: pass `--checkpoint bekzatajan/ttfm` (for private repos, set `HF_TOKEN`). You can use the same local `--datasets_dir` as above, or switch to a Hugging Face dataset with `--datasets_hf`.
+Evaluating TTFM requires the TTFM checkpoint from the Hub: pass `--checkpoint bekzatajan/ttfm`. You can use the same local `--datasets_dir` as above, or switch to a Hugging Face dataset with `--datasets_hf`.
 
 ```bash
 export HF_TOKEN=your_token   # only for private model/dataset repos
