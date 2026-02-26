@@ -27,7 +27,7 @@ def load_chronos2_pipeline(device):
         CHRONOS2_PIPELINE = BaseChronosPipeline.from_pretrained(
             "amazon/chronos-2",
             device_map=device,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         )
         print("Chronos-2 pipeline loaded successfully")
     return CHRONOS2_PIPELINE
@@ -267,6 +267,76 @@ def evaluate_chronos2_with_covariates(
                 f"{torch.mean(torch.abs(emb_so_far - gt_so_far).mean(dim=1)).item():.4f}"
             )
         pbar.set_postfix(postfix)
+
+    return {
+        "input": torch.cat(all_inputs, dim=0),
+        "gt": torch.cat(all_gts, dim=0),
+        "predictions": {
+            name: torch.cat(preds, dim=0) for name, preds in all_preds.items()
+        },
+    }
+
+
+@torch.no_grad()
+def evaluate_chronos2_with_naive_forecast(
+    loader,
+    device,
+    pred_len: int = 4,
+    noise_std: float = 0.0,
+) -> dict:
+    """Evaluate Chronos-2 with naive forecast as future covariates.
+
+    Naive forecast = value at t (last observed) repeated for all forecast steps,
+    used as covariates in the same way LLM forecasts are used in chronos2_gpt.
+
+    Returns:
+        Dict with input, gt, predictions: {"chronos_naive_cov": (N, pred_len) tensor}.
+    """
+    from .chronos2_gpt import _chronos2_predict_with_forecast_covariate
+
+    pipeline = load_chronos2_pipeline(device)
+
+    all_inputs = []
+    all_gts = []
+    all_preds = {"chronos_naive_cov": []}
+
+    pbar = tqdm(loader, desc="Evaluating Chronos-2 + Naive")
+    for batch_dict in pbar:
+        xb = batch_dict["ts"].to(device)[..., :-pred_len]
+        yb = batch_dict["ts"][..., -pred_len:].to(device)
+        batch_size = xb.shape[0]
+        seq_len = xb.shape[1]
+
+        context_end = pd.Timestamp.today().normalize()
+        context_range = pd.date_range(end=context_end, periods=seq_len, freq="D")
+        future_start = context_range[-1] + pd.Timedelta(days=1)
+        future_range = pd.date_range(start=future_start, periods=pred_len, freq="D")
+
+        xb_np = xb.cpu().numpy().astype(np.float64)
+
+        naive_forecasts = np.broadcast_to(
+            xb_np[:, -1:], (batch_size, pred_len)
+        ).copy()
+
+        predictions = _chronos2_predict_with_forecast_covariate(
+            pipeline,
+            xb_np,
+            context_range,
+            future_range,
+            naive_forecasts,
+            "naive_cov",
+            batch_size,
+            seq_len,
+            pred_len,
+            noise_std,
+            device,
+        )
+
+        all_preds["chronos_naive_cov"].append(predictions[:, :, 0].cpu())
+        all_gts.append(yb.cpu())
+        all_inputs.append(xb.cpu())
+        mae = torch.mean(torch.abs(predictions[:, :, 0] - yb).mean(dim=1)).item()
+        pbar.set_postfix({"Chronos+Naive_MAE": f"{mae:.4f}"})
 
     return {
         "input": torch.cat(all_inputs, dim=0),

@@ -6,7 +6,10 @@ from .registry import (
     get_baseline_for_prediction_key,
     register_baseline,
 )
-from .chronos2 import evaluate_chronos2_with_covariates
+from .chronos2 import (
+    evaluate_chronos2_with_covariates,
+    evaluate_chronos2_with_naive_forecast,
+)
 from .chronos2_gpt import evaluate_chronos2_with_gpt_forecast
 from .gpt_forecast import evaluate_gpt_forecast
 from .naive import evaluate_naive
@@ -63,6 +66,13 @@ register_baseline(
     help_text="Chronos-2 with LLM-generated forecast covariates",
     extra_args_map={"noise_std": "gpt_cov_noise_std"},
     depends_on="gpt_forecast",
+)
+
+register_baseline(
+    name="chronos2_naive",
+    eval_func=evaluate_chronos2_with_naive_forecast,
+    prediction_keys=["chronos_naive_cov"],
+    help_text="Chronos-2 with naive forecast (last value repeated) as future covariates",
 )
 
 register_baseline(

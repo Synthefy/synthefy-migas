@@ -54,6 +54,7 @@ MODEL_DISPLAY_NAMES = {
     "chronos_emb": "Chronos2-MV",
     "chronos_gpt_cov": "Chronos2-GPT",
     "chronos_gpt_dir_cov": "Chronos2-GPT-MD",
+    "chronos_naive_cov": "Chronos2-Naive",
     "timesfm_univar": "TimesFM2.5",
     "gpt_forecast": "GPT-OSS",
     "tabpfn_ts": "TabPFN2.5",

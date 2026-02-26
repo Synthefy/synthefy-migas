@@ -2,12 +2,48 @@
 
 import os
 import random
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+
+
+def get_datasets_dir_from_hf(
+    repo_id: str,
+    subdir: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+    token: Optional[str] = None,
+) -> str:
+    """Download a Hugging Face dataset repo and return the path to its contents.
+
+    Use this path as datasets_dir for evaluation (it will contain CSV files with
+    columns t, y_t, text). For private repos, set the HF_TOKEN environment variable
+    or pass token=.
+
+    Args:
+        repo_id: Hugging Face repo id (e.g. bekzatajan/ttfm-sample-datasets).
+        subdir: Subdirectory inside the repo to use as the root for CSVs. Defaults to None (repo root).
+        cache_dir: Directory to cache the download. Defaults to HF hub cache.
+        token: Hugging Face token for private repos. Defaults to HF_TOKEN env.
+
+    Returns:
+        Path to the directory containing the dataset files (or the specified subdir).
+    """
+    from huggingface_hub import snapshot_download
+
+    if token is None:
+        token = os.environ.get("HF_TOKEN")
+    path = snapshot_download(
+        repo_id=repo_id,
+        repo_type="dataset",
+        cache_dir=cache_dir,
+        token=token,
+    )
+    if subdir:
+        path = os.path.join(path, subdir)
+    return path
 
 
 def list_csv_files(data_dir: str) -> List[str]:

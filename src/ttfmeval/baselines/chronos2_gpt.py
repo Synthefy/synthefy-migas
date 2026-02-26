@@ -8,6 +8,86 @@ import torch
 from tqdm import tqdm
 
 
+def _chronos2_predict_with_forecast_covariate(
+    pipeline,
+    xb_np: np.ndarray,
+    context_range: pd.DatetimeIndex,
+    future_range: pd.DatetimeIndex,
+    forecast_covariates: np.ndarray,
+    cov_col_name: str,
+    batch_size: int,
+    seq_len: int,
+    pred_len: int,
+    noise_std: float,
+    device,
+) -> torch.Tensor:
+    """Chronos-2 predict with forecast as future covariate (direct cov variant only).
+
+    Chronos validate_df_inputs requires matching dtypes in df vs future_df; uses float64.
+    """
+    context_parts = []
+    future_parts = []
+    for i in range(batch_size):
+        series_id = f"series_{i}"
+        history_values_with_noise = (
+            xb_np[i, 1:]
+            + np.random.randn(seq_len - 1).astype(np.float64) * noise_std
+        )
+        history_cov = np.concatenate(
+            [history_values_with_noise, [forecast_covariates[i, 0]]]
+        )
+        if pred_len > 1:
+            last_cov_with_noise = (
+                forecast_covariates[i, -1] + np.random.randn() * noise_std
+            )
+            future_cov = np.concatenate(
+                [forecast_covariates[i, 1:], [last_cov_with_noise]]
+            )
+        else:
+            future_cov = np.array(
+                [forecast_covariates[i, -1] + np.random.randn() * noise_std],
+                dtype=np.float64,
+            )
+        ctx = pd.DataFrame(
+            {
+                "id": series_id,
+                "timestamp": context_range,
+                "target": xb_np[i, :].astype(np.float64),
+                cov_col_name: np.asarray(history_cov, dtype=np.float64),
+            }
+        )
+        fut = pd.DataFrame(
+            {
+                "id": series_id,
+                "timestamp": future_range,
+                cov_col_name: np.asarray(future_cov, dtype=np.float64),
+            }
+        )
+        context_parts.append(ctx)
+        future_parts.append(fut)
+
+    pred_df = pipeline.predict_df(
+        pd.concat(context_parts, ignore_index=True),
+        future_df=pd.concat(future_parts, ignore_index=True),
+        prediction_length=pred_len,
+        quantile_levels=[0.5],
+        id_column="id",
+        timestamp_column="timestamp",
+        target="target",
+    )
+
+    grouped = pred_df.groupby("id")
+    preds_list = []
+    for i in range(batch_size):
+        series_preds = (
+            grouped.get_group(f"series_{i}")
+            .sort_values("timestamp")["predictions"]
+            .to_numpy()
+        )
+        preds_list.append(torch.from_numpy(series_preds).float().unsqueeze(1))
+    return torch.stack(preds_list, dim=0).to(device)
+
+
 @torch.no_grad()
 def evaluate_chronos2_with_gpt_forecast(
     loader,
@@ -51,7 +131,8 @@ def evaluate_chronos2_with_gpt_forecast(
     pipeline = BaseChronosPipeline.from_pretrained(
         "amazon/chronos-2",
         device_map=device,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
+        local_files_only=True,
     )
 
     all_inputs = []
@@ -71,81 +152,41 @@ def evaluate_chronos2_with_gpt_forecast(
         future_start = context_range[-1] + pd.Timedelta(days=1)
         future_range = pd.date_range(start=future_start, periods=pred_len, freq="D")
 
-        xb_np = xb.cpu().numpy()
+        xb_np = xb.cpu().numpy().astype(np.float64)
         llm_forecasts_scaled = precomputed_gpt_forecasts[
             sample_idx : sample_idx + batch_size
-        ]
+        ].astype(np.float64)
         sample_idx += batch_size
 
-        context_parts = []
-        future_parts = []
-        for i in range(batch_size):
-            series_id = f"series_{i}"
-            history_values_with_noise = (
-                xb_np[i, 1:] + np.random.randn(seq_len - 1) * noise_std
-            )
-            history_cov = np.concatenate(
-                [history_values_with_noise, [llm_forecasts_scaled[i, 0]]]
-            )
-            if pred_len > 1:
-                last_cov_with_noise = (
-                    llm_forecasts_scaled[i, -1] + np.random.randn() * noise_std
-                )
-                future_cov = np.concatenate(
-                    [llm_forecasts_scaled[i, 1:], [last_cov_with_noise]]
-                )
-            else:
-                future_cov = np.array(
-                    [llm_forecasts_scaled[i, -1] + np.random.randn() * noise_std]
-                )
-            ctx = pd.DataFrame(
-                {
-                    "id": series_id,
-                    "timestamp": context_range,
-                    "target": xb_np[i, :],
-                    "llm_cov": history_cov,
-                }
-            )
-            fut = pd.DataFrame(
-                {"id": series_id, "timestamp": future_range, "llm_cov": future_cov}
-            )
-            context_parts.append(ctx)
-            future_parts.append(fut)
-
-        pred_df = pipeline.predict_df(
-            pd.concat(context_parts, ignore_index=True),
-            future_df=pd.concat(future_parts, ignore_index=True),
-            prediction_length=pred_len,
-            quantile_levels=[0.5],
-            id_column="id",
-            timestamp_column="timestamp",
-            target="target",
+        predictions = _chronos2_predict_with_forecast_covariate(
+            pipeline,
+            xb_np,
+            context_range,
+            future_range,
+            llm_forecasts_scaled,
+            "llm_cov",
+            batch_size,
+            seq_len,
+            pred_len,
+            noise_std,
+            device,
         )
-
-        grouped = pred_df.groupby("id")
-        preds_list = []
-        for i in range(batch_size):
-            series_preds = (
-                grouped.get_group(f"series_{i}")
-                .sort_values("timestamp")["predictions"]
-                .to_numpy()
-            )
-            preds_list.append(torch.from_numpy(series_preds).float().unsqueeze(1))
-        predictions = torch.stack(preds_list, dim=0).to(device)
 
         context_parts_dir = []
         future_parts_dir = []
         for i in range(batch_size):
             series_id = f"series_{i}"
-            history_with_noise = xb_np[i, :] + np.random.randn(seq_len) * noise_std
+            history_with_noise = (
+                xb_np[i, :] + np.random.randn(seq_len).astype(np.float64) * noise_std
+            )
             combined_series = np.concatenate(
                 [history_with_noise, llm_forecasts_scaled[i, :]]
             )
             all_changes = np.diff(combined_series, prepend=combined_series[:1])
-            history_magnitude = np.abs(all_changes[:seq_len])
-            history_direction = np.sign(all_changes[:seq_len])
-            future_magnitude = np.abs(all_changes[seq_len:])
-            future_direction = np.sign(all_changes[seq_len:])
+            history_magnitude = np.abs(all_changes[:seq_len]).astype(np.float64)
+            history_direction = np.sign(all_changes[:seq_len]).astype(np.float64)
+            future_magnitude = np.abs(all_changes[seq_len:]).astype(np.float64)
+            future_direction = np.sign(all_changes[seq_len:]).astype(np.float64)
             ctx = pd.DataFrame(
                 {
                     "id": series_id,
