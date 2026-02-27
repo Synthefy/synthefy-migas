@@ -119,7 +119,7 @@ def load_config(config_path: str) -> dict:
 
 
 def latex_escape(s: str) -> str:
-    """Escape underscore for LaTeX (raw dataset names like aal_with_text break otherwise)."""
+    """Escape underscore for LaTeX (raw dataset names like air_with_text break otherwise)."""
     return str(s).replace("_", "\\_")
 
 

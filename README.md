@@ -133,7 +133,7 @@ The current example dataset is [bekzatajan/fnspid](https://huggingface.co/datase
 
 ## Example notebooks
 
-- [TTFM Inference Quick Start](notebooks/ttfm-inference-quickstart.ipynb) — Load the pipeline, fetch `data/aal_with_text.csv` from [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid), run `predict()`, and plot the forecast.
+- [TTFM Inference Quick Start](notebooks/ttfm-inference-quickstart.ipynb) — Load the pipeline, fetch `data/air_with_text.csv` from [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid), run `predict()`, and plot the forecast.
 
 ---
 
