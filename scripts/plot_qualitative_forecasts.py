@@ -47,7 +47,7 @@ def setup_icml_style():
             # Figure settings
             "figure.dpi": 150,
             "savefig.dpi": 300,
-            "savefig.format": "pdf",
+            "savefig.format": "png",
             "savefig.bbox": "tight",
             "savefig.pad_inches": 0.05,
             # Line settings
@@ -81,15 +81,17 @@ COLORS = {
 }
 
 
-def _find_dataset_csv(datasets_dir, dataset_name: str) -> Path:
-    """Resolve dataset CSV: direct path or recursive search by basename."""
+def _find_dataset_file(datasets_dir, dataset_name: str) -> Path:
+    """Resolve dataset file (CSV or Parquet): direct path or recursive search by basename."""
     dd = Path(datasets_dir)
-    direct = dd / f"{dataset_name}.csv"
-    if direct.exists():
-        return direct
-    for p in dd.rglob("*.csv"):
-        if p.stem == dataset_name:
-            return p
+    for ext in (".csv", ".parquet"):
+        direct = dd / f"{dataset_name}{ext}"
+        if direct.exists():
+            return direct
+    for ext in (".csv", ".parquet"):
+        for p in dd.rglob(f"*{ext}"):
+            if p.stem == dataset_name:
+                return p
     return dd / f"{dataset_name}.csv"
 
 
@@ -133,17 +135,17 @@ def compute_mae(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
 
 
 def load_sample_dates_and_text(
-    csv_path: Path,
+    data_path: Path,
     local_idx: int,
     context_len: int,
     pred_len: int,
     val_length: int = 1000,
 ) -> Tuple[List[pd.Timestamp], List[str]]:
     """
-    Load dates and text annotations for a specific sample from the CSV.
+    Load dates and text annotations for a specific sample from the data file.
 
     Args:
-        csv_path: Path to the dataset CSV file
+        data_path: Path to the dataset file (CSV or Parquet)
         local_idx: Local sample index within this dataset (0-based)
         context_len: Context length
         pred_len: Prediction length
@@ -152,7 +154,8 @@ def load_sample_dates_and_text(
     Returns:
         Tuple of (dates, text_annotations) for the full window (context + pred)
     """
-    df = pd.read_csv(csv_path)
+    ext = data_path.suffix.lower() if hasattr(data_path, "suffix") else os.path.splitext(str(data_path))[1].lower()
+    df = pd.read_parquet(data_path) if ext == ".parquet" else pd.read_csv(data_path)
     df["t"] = pd.to_datetime(df["t"])
 
     total_len = len(df)
@@ -237,11 +240,11 @@ def generate_context_summaries(
     # Load dates and text for each sample
     loaded_count = 0
     for i, sample in enumerate(samples):
-        csv_path = _find_dataset_csv(datasets_dir, sample.dataset_name)
-        if csv_path.exists():
+        data_path = _find_dataset_file(datasets_dir, sample.dataset_name)
+        if data_path.exists():
             try:
                 dates, text_annotations = load_sample_dates_and_text(
-                    csv_path, sample.local_idx, context_len, pred_len
+                    data_path, sample.local_idx, context_len, pred_len
                 )
                 sample.dates = dates
                 sample.text_annotations = text_annotations
@@ -253,7 +256,7 @@ def generate_context_summaries(
                 sample.dates = None
                 sample.text_annotations = None
         else:
-            print(f"  Warning: CSV not found: {csv_path}")
+            print(f"  Warning: Data file not found: {data_path}")
             sample.dates = None
             sample.text_annotations = None
 
@@ -462,10 +465,10 @@ def compute_raw_mean_std(
     for idx, row in df.iterrows():
         dataset_name = row["dataset_name"]
         n_samples_expected = int(row[sample_count_col])
-        csv_path = _find_dataset_csv(datasets_dir, dataset_name)
+        data_path = _find_dataset_file(datasets_dir, dataset_name)
 
-        if not csv_path.exists():
-            print(f"  Warning: {csv_path} not found, using default normalization")
+        if not data_path.exists():
+            print(f"  Warning: {data_path} not found, using default normalization")
             history_means.extend([0.0] * n_samples_expected)
             history_stds.extend([1.0] * n_samples_expected)
             dataset_names_per_sample.extend([dataset_name] * n_samples_expected)
@@ -476,7 +479,7 @@ def compute_raw_mean_std(
             dataset = LateFusionDataset(
                 context_len + pred_len,
                 pred_len,
-                [str(csv_path)],
+                [str(data_path)],
                 split="test",
                 val_length=1000,
                 stride=1,
@@ -1115,8 +1118,8 @@ def plot_single_forecast(
     Create a professional ICML-style plot for a single forecast.
 
     When show_summary is True and sample has context_summary:
-    - Saves plain version (no legend, no title, horizontal x-ticks) as sample{idx}.pdf/.png
-    - Saves version with text summary as sample{idx}_txt.pdf/.png
+    - Saves plain version (no legend, no title, horizontal x-ticks) as sample{idx}.png
+    - Saves version with text summary as sample{idx}_txt.png
 
     Args:
         sample: SampleData object containing all sample information
@@ -1145,14 +1148,11 @@ def plot_single_forecast(
             rotate_xticks=False,
             show_mae=False,
         )
-        fig_plain.savefig(output_path, dpi=300, bbox_inches="tight")
         fig_plain.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
         plt.close(fig_plain)
 
         # Save version with text summary
-        output_path_txt = (
-            output_path.parent / f"{output_path.stem}_txt{output_path.suffix}"
-        )
+        output_path_txt = output_path.parent / f"{output_path.stem}_txt.png"
         fig_txt = _create_forecast_plot(
             sample=sample,
             models_to_plot=models_to_plot,
@@ -1164,9 +1164,6 @@ def plot_single_forecast(
             rotate_xticks=True,
         )
         fig_txt.savefig(output_path_txt, dpi=300, bbox_inches="tight")
-        fig_txt.savefig(
-            output_path_txt.with_suffix(".png"), dpi=300, bbox_inches="tight"
-        )
         plt.close(fig_txt)
     else:
         # Save single version with legend and title
@@ -1180,7 +1177,6 @@ def plot_single_forecast(
             show_summary=False,
             rotate_xticks=True,
         )
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
         fig.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
         plt.close(fig)
 
@@ -1333,7 +1329,6 @@ def plot_multi_sample_comparison(
     # Adjust spacing: more space between subplots and room for legend at bottom
     plt.subplots_adjust(bottom=0.08, hspace=0.35, wspace=0.25)
 
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
 
@@ -1652,13 +1647,13 @@ Examples:
 
     # Load dates and text if requested
     if args.use_dates or args.generate_summaries:
-        print("\nLoading dates and text annotations from CSVs...")
+        print("\nLoading dates and text annotations from data files...")
         for sample in best_samples:
-            csv_path = _find_dataset_csv(datasets_dir, sample.dataset_name)
-            if csv_path.exists():
+            data_path = _find_dataset_file(datasets_dir, sample.dataset_name)
+            if data_path.exists():
                 try:
                     dates, text_annotations = load_sample_dates_and_text(
-                        csv_path, sample.local_idx, args.context_len, args.pred_len
+                        data_path, sample.local_idx, args.context_len, args.pred_len
                     )
                     sample.dates = dates
                     sample.text_annotations = text_annotations
@@ -1692,7 +1687,7 @@ Examples:
                 dataset_subdir.mkdir(parents=True, exist_ok=True)
                 dataset_dirs_created.add(sample.dataset_name)
 
-            plot_filename = f"sample{sample.sample_idx:04d}.pdf"
+            plot_filename = f"sample{sample.sample_idx:04d}.png"
             plot_path = dataset_subdir / plot_filename
 
             plot_single_forecast(
@@ -1728,7 +1723,7 @@ Examples:
                 # Save grid plot in dataset-specific directory
                 dataset_subdir = output_dir / dataset_name
                 dataset_subdir.mkdir(parents=True, exist_ok=True)
-                grid_path = dataset_subdir / "grid.pdf"
+                grid_path = dataset_subdir / "grid.png"
                 n_samples_grid = min(args.grid_samples, len(samples))
 
                 plot_multi_sample_comparison(

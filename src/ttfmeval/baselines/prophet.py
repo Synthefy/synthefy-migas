@@ -45,6 +45,7 @@ def evaluate_prophet(
 
     warnings.filterwarnings("ignore", module="prophet")
     warnings.filterwarnings("ignore", module="cmdstanpy")
+    logging.getLogger("prophet").setLevel(logging.WARNING)
 
     print("Evaluating Prophet baseline...")
 

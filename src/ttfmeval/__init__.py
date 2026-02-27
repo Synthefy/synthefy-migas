@@ -7,6 +7,8 @@ from ttfmeval.dataset import (
     collate_fn,
     get_datasets_dir_from_hf,
     list_csv_files,
+    list_data_files,
+    read_datafile,
 )
 from ttfmeval.model import build_model
 from ttfmeval.pipeline import TTFMPipeline
@@ -16,6 +18,8 @@ __all__ = [
     "collate_fn",
     "get_datasets_dir_from_hf",
     "list_csv_files",
+    "list_data_files",
+    "read_datafile",
     "build_model",
     "TTFMPipeline",
 ]

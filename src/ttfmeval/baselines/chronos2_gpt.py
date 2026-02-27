@@ -30,8 +30,7 @@ def _chronos2_predict_with_forecast_covariate(
     for i in range(batch_size):
         series_id = f"series_{i}"
         history_values_with_noise = (
-            xb_np[i, 1:]
-            + np.random.randn(seq_len - 1).astype(np.float64) * noise_std
+            xb_np[i, 1:] + np.random.randn(seq_len - 1).astype(np.float64) * noise_std
         )
         history_cov = np.concatenate(
             [history_values_with_noise, [forecast_covariates[i, 0]]]

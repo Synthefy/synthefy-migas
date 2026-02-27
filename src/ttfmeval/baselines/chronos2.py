@@ -314,9 +314,7 @@ def evaluate_chronos2_with_naive_forecast(
 
         xb_np = xb.cpu().numpy().astype(np.float64)
 
-        naive_forecasts = np.broadcast_to(
-            xb_np[:, -1:], (batch_size, pred_len)
-        ).copy()
+        naive_forecasts = np.broadcast_to(xb_np[:, -1:], (batch_size, pred_len)).copy()
 
         predictions = _chronos2_predict_with_forecast_covariate(
             pipeline,
