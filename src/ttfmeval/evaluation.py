@@ -6,6 +6,7 @@ Fully standalone: no dependency on the training repo.
 """
 
 import argparse
+import json
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
@@ -1039,6 +1040,19 @@ def main() -> None:
     )
     os.makedirs(output_dir, exist_ok=True)
     args.output_dir = output_dir
+
+    # Save metadata for post-eval (e.g. datasets_dir for qualitative plots)
+    meta_path = os.path.join(output_dir, "eval_meta.json")
+    with open(meta_path, "w") as f:
+        json.dump(
+            {
+                "datasets_dir": os.path.abspath(args.datasets_dir),
+                "seq_len": args.seq_len,
+                "pred_len": args.pred_len,
+            },
+            f,
+            indent=2,
+        )
 
     dataset_files = list_data_files(args.datasets_dir)
     enabled_baselines = get_enabled_baselines(args)

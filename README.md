@@ -191,6 +191,7 @@ Under `--output_dir`:
 <output_dir>/
   <datasets_dir_name>/
     context_<seq_len>/
+      eval_meta.json          # datasets_dir, seq_len, pred_len (for post_eval)
       stats_Context_<seq_len>_allsamples.csv
       stats_Context_<seq_len>_june2024plus.csv  (if applicable)
       outputs/
@@ -216,11 +217,12 @@ This generates bar plots and writes `report/report.md` in the results directory.
 # Bar plots + scatter plots
 uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --scatter
 
-# Bar plots + qualitative forecast plots (needs path to dataset CSVs)
+# Bar plots + qualitative forecast plots (datasets_dir from eval metadata, or pass --datasets_dir)
+uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --qualitative
 uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --qualitative --datasets_dir ./data/test
 
 # All of the above
-uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --all --datasets_dir ./data/test
+uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --all
 ```
 
 You can also run individual scripts (e.g. `scripts/plot_bars.py --results_dir ...`) for more control; see [Post-evaluation pipeline](#post-evaluation-pipeline).
@@ -263,7 +265,7 @@ The CLI gets a `--eval_<name>` flag automatically. Baselines that depend on anot
 
 Scripts under `scripts/` expect the same output layout as the main eval (e.g. `results/<suite>/context_64/` with `outputs/<dataset>/` and `stats_Context_64_allsamples.csv`).
 
-- **Single entry point:** `uv run python scripts/post_eval.py --results_dir <path>` — bar plots and `report/report.md`. Add `--scatter` for scatter plots, `--qualitative --datasets_dir <path>` for qualitative forecast plots, or `--all --datasets_dir <path>` for everything.
+- **Single entry point:** `uv run python scripts/post_eval.py --results_dir <path>` — bar plots and `report/report.md`. Add `--scatter` for scatter plots; add `--qualitative` or `--all` for qualitative forecast plots (datasets path is read from evaluation metadata when available, or pass `--datasets_dir`).
 - **Bar plots only:** `scripts/plot_bars.py` — aggregate MAE, grouped bars, TTFM win rate, improvement %, ELO (if multielo installed). Usable standalone or via `post_eval.py`.
 - **Scatter plots:** `scripts/plot_scatter.py` — TTFM vs baseline MAE per sample. Run standalone or with `post_eval.py --scatter`.
 - **Qualitative forecast plots:** `scripts/plot_qualitative_forecasts.py` — context + ground truth + forecasts for selected samples. Run standalone or with `post_eval.py --qualitative`.

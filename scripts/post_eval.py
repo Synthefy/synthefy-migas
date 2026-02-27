@@ -3,16 +3,21 @@
 Single entry point for post-evaluation: bar plots, optional scatter and qualitative
 plots, and a Markdown report.
 
+When using --qualitative or --all, datasets_dir is read from eval_meta.json (written
+by the evaluation) if not passed via --datasets_dir.
+
 Usage:
   uv run python scripts/post_eval.py --results_dir ./results/suite/context_64
   uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --scatter
+  uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --qualitative
+  uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --all
   uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --qualitative --datasets_dir ./data/test
-  uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --all --datasets_dir ./data/test
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +35,19 @@ def discover_stats_csv(results_dir: Path) -> Path | None:
         return None
     candidates = list(results_dir.glob("stats_Context_*_allsamples.csv"))
     return sorted(candidates)[0] if candidates else None
+
+
+def get_datasets_dir_from_meta(results_dir: Path) -> str | None:
+    """Read datasets_dir from eval_meta.json written by the evaluation run."""
+    meta_path = results_dir / "eval_meta.json"
+    if not meta_path.is_file():
+        return None
+    try:
+        with open(meta_path) as f:
+            meta = json.load(f)
+        return meta.get("datasets_dir")
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def main() -> int:
@@ -68,7 +86,7 @@ def main() -> int:
         "--datasets_dir",
         type=str,
         default=None,
-        help="Directory containing dataset CSVs (required for --qualitative or --all)",
+        help="Directory containing dataset CSVs for qualitative plots (optional if eval wrote eval_meta.json)",
     )
     args = parser.parse_args()
 
@@ -87,9 +105,16 @@ def main() -> int:
 
     do_scatter = args.scatter or args.all
     do_qualitative = args.qualitative or args.all
-    if do_qualitative and not args.datasets_dir:
-        print("Error: --datasets_dir is required for --qualitative or --all")
-        return 1
+    datasets_dir = args.datasets_dir
+    if do_qualitative:
+        if not datasets_dir:
+            datasets_dir = get_datasets_dir_from_meta(results_dir)
+        if not datasets_dir:
+            print(
+                "Error: datasets_dir needed for qualitative plots. Either run post_eval on results from a recent "
+                "evaluation (which writes eval_meta.json), or pass --datasets_dir /path/to/csvs"
+            )
+            return 1
 
     # Count datasets and models for report
     import pandas as pd
@@ -178,7 +203,7 @@ def main() -> int:
             "--results_dir",
             str(results_dir),
             "--datasets_dir",
-            str(args.datasets_dir),
+            str(datasets_dir),
             "--output_dir",
             str(qual_out),
         ]

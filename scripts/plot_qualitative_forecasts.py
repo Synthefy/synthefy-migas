@@ -47,7 +47,7 @@ def setup_icml_style():
             # Figure settings
             "figure.dpi": 150,
             "savefig.dpi": 300,
-            "savefig.format": "pdf",
+            "savefig.format": "png",
             "savefig.bbox": "tight",
             "savefig.pad_inches": 0.05,
             # Line settings
@@ -1118,8 +1118,8 @@ def plot_single_forecast(
     Create a professional ICML-style plot for a single forecast.
 
     When show_summary is True and sample has context_summary:
-    - Saves plain version (no legend, no title, horizontal x-ticks) as sample{idx}.pdf/.png
-    - Saves version with text summary as sample{idx}_txt.pdf/.png
+    - Saves plain version (no legend, no title, horizontal x-ticks) as sample{idx}.png
+    - Saves version with text summary as sample{idx}_txt.png
 
     Args:
         sample: SampleData object containing all sample information
@@ -1148,14 +1148,11 @@ def plot_single_forecast(
             rotate_xticks=False,
             show_mae=False,
         )
-        fig_plain.savefig(output_path, dpi=300, bbox_inches="tight")
         fig_plain.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
         plt.close(fig_plain)
 
         # Save version with text summary
-        output_path_txt = (
-            output_path.parent / f"{output_path.stem}_txt{output_path.suffix}"
-        )
+        output_path_txt = output_path.parent / f"{output_path.stem}_txt.png"
         fig_txt = _create_forecast_plot(
             sample=sample,
             models_to_plot=models_to_plot,
@@ -1167,9 +1164,6 @@ def plot_single_forecast(
             rotate_xticks=True,
         )
         fig_txt.savefig(output_path_txt, dpi=300, bbox_inches="tight")
-        fig_txt.savefig(
-            output_path_txt.with_suffix(".png"), dpi=300, bbox_inches="tight"
-        )
         plt.close(fig_txt)
     else:
         # Save single version with legend and title
@@ -1183,7 +1177,6 @@ def plot_single_forecast(
             show_summary=False,
             rotate_xticks=True,
         )
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
         fig.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
         plt.close(fig)
 
@@ -1336,7 +1329,6 @@ def plot_multi_sample_comparison(
     # Adjust spacing: more space between subplots and room for legend at bottom
     plt.subplots_adjust(bottom=0.08, hspace=0.35, wspace=0.25)
 
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
 
@@ -1695,7 +1687,7 @@ Examples:
                 dataset_subdir.mkdir(parents=True, exist_ok=True)
                 dataset_dirs_created.add(sample.dataset_name)
 
-            plot_filename = f"sample{sample.sample_idx:04d}.pdf"
+            plot_filename = f"sample{sample.sample_idx:04d}.png"
             plot_path = dataset_subdir / plot_filename
 
             plot_single_forecast(
@@ -1731,7 +1723,7 @@ Examples:
                 # Save grid plot in dataset-specific directory
                 dataset_subdir = output_dir / dataset_name
                 dataset_subdir.mkdir(parents=True, exist_ok=True)
-                grid_path = dataset_subdir / "grid.pdf"
+                grid_path = dataset_subdir / "grid.png"
                 n_samples_grid = min(args.grid_samples, len(samples))
 
                 plot_multi_sample_comparison(
