@@ -3,7 +3,7 @@
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Dataset-FFD21E)](https://huggingface.co/datasets/bekzatajan/fnspid/tree/main) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
 
 
-This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference and evaluation. TTFM combines a univariate time-series backbone (Chronos-2, TimesFM, or Prophet) with LLM-generated context summaries to produce text-conditioned forecasts. You can run benchmarks across TTFM and baselines on CSV datasets, or run inference in Python or notebooks.
+This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference and evaluation. TTFM combines a univariate time-series backbone (Chronos-2, TimesFM, or Prophet) with LLM-generated context summaries to produce text-conditioned forecasts. You can run benchmarks across TTFM and baselines on CSV or Parquet datasets, or run inference in Python or notebooks.
 
 ---
 
@@ -11,7 +11,7 @@ This repository provides **TTFM** (Text-and-Time-Series Fusion Model) inference 
 
 TTFM fuses historical time series with per-step text context: an LLM summarizes the context into factual and predictive signals, and a small fusion head combines these with the univariate forecast to output the final prediction. You can use this repo in two ways:
 
-1. **Run evaluations** — Evaluate TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV or Hugging Face datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy. TTFM evaluation requires the pre-trained checkpoint from the Hugging Face Hub.
+1. **Run evaluations** — Evaluate TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV/Parquet or Hugging Face datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy. TTFM evaluation requires the pre-trained checkpoint from the Hugging Face Hub.
 2. **Inference with TTFM** — Load the pipeline from the Hugging Face Hub and run `predict()` on your context and text in Python or notebooks.
 
 ---
@@ -33,11 +33,11 @@ For TTFM evaluation or inference with context summarization, vLLM is included by
 
 ### 1. Running evaluations
 
-Run the evaluation CLI on your time-series data. Each CSV must have columns `t`, `y_t`, and `text` (see [Data format](#data-format)).
+Run the evaluation CLI on your time-series data. Each data file (CSV or Parquet) must have columns `t`, `y_t`, and `text` (see [Data format](#data-format)).
 
 **Data sources:** You can pass data in either way (no need to use Hugging Face):
 
-- **Local directory (default)** — Put CSV files in a folder and pass `--datasets_dir /path/to/folder`. The default is `./data/test` (or set `TTFM_EVAL_DATASETS_DIR`).
+- **Local directory (default)** — Put CSV or Parquet files in a folder and pass `--datasets_dir /path/to/folder`. The default is `./data/test` (or set `TTFM_EVAL_DATASETS_DIR`).
 - **Hugging Face dataset (optional)** — Use `--datasets_hf REPO_ID` (and optionally `--datasets_hf_subdir data`) to download a dataset repo from the Hub and use it as the data source. Useful for shared or published datasets.
 
 **Example: baselines only (no TTFM, no LLM)**
@@ -108,7 +108,7 @@ For full inference with summarization, a vLLM server must be running and `VLLM_B
 
 ### Using a Hugging Face dataset (optional)
 
-You only need this if you want to use or publish datasets on the Hub. For local evaluation, a directory of CSVs and `--datasets_dir` is enough.
+You only need this if you want to use or publish datasets on the Hub. For local evaluation, a directory of CSVs or Parquet files and `--datasets_dir` is enough.
 
 The current example dataset is [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid) (CSVs in the `data/` subfolder). To add or host your own:
 
@@ -116,8 +116,8 @@ The current example dataset is [bekzatajan/fnspid](https://huggingface.co/datase
    - Go to [huggingface.co/datasets](https://huggingface.co/datasets) and click **Create new dataset** (or [huggingface.co/new-dataset](https://huggingface.co/new-dataset)).
    - Choose a name, select your namespace, set visibility, then create.
 
-2. **Add CSV files**
-   - Evaluation expects CSV files with columns `t`, `y_t`, and `text` (see [Data format](#data-format)). Upload into the repo:
+2. **Add data files**
+   - Evaluation expects CSV or Parquet files with columns `t`, `y_t`, and `text` (see [Data format](#data-format)). Upload into the repo:
      - **Option A:** In the repo → **Files and versions** → **Add file** → **Upload files** (root or a subfolder like `data/`; then use `--datasets_hf_subdir data`).
      - **Option B:** CLI:
        ```bash
@@ -157,12 +157,13 @@ If you use TTFM in your research, please cite:
 
 ### Data format
 
-- **Input:** A directory of CSV files (or a Hugging Face dataset repo via `--datasets_hf`). Each CSV must have:
+- **Input:** A directory of CSV or Parquet files (or a Hugging Face dataset repo via `--datasets_hf`). Each file must have:
   - `t` — timestamp (e.g. `1980-01-31`)
   - `y_t` — target value (numeric)
   - `text` — per-step text context (can be empty string)
 
-- **Discovery:** All `.csv` files under the given directory are used, except those whose basename ends with `_embeddings`, `_original`, `_temp`, `_results`, or `_temp_results`.
+- **Supported formats:** `.csv` and `.parquet`.
+- **Discovery:** All `.csv` and `.parquet` files under the given directory are used, except those whose basename ends with `_embeddings`, `_original`, `_temp`, `_results`, or `_temp_results`.
 
 ### Baselines
 

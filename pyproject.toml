@@ -9,6 +9,7 @@ dependencies = [
     "numpy",
     "openai>=1.0.0",
     "pandas",
+    "pyarrow",
     "torch",
     "tqdm",
     "sentence-transformers>=5.1.1",

@@ -19,7 +19,8 @@ from ttfmeval.dataset import (
     LateFusionDataset,
     collate_fn as late_fusion_collate,
     get_datasets_dir_from_hf,
-    list_csv_files,
+    list_data_files,
+    read_datafile,
 )
 from ttfmeval.model import build_model
 
@@ -212,7 +213,7 @@ def parse_args():
         device, checkpoint, baseline flags (--eval_<name>), and extra baseline options.
     """
     p = argparse.ArgumentParser(
-        description="Evaluate TTFM and baselines on CSV datasets (standalone)",
+        description="Evaluate TTFM and baselines on CSV/Parquet datasets (standalone)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--seq_len", type=int, default=64, help="Context length")
@@ -223,7 +224,7 @@ def parse_args():
         "--datasets_dir",
         type=str,
         default=os.environ.get("TTFM_EVAL_DATASETS_DIR", "./data/test"),
-        help="Directory containing CSV files (t, y_t, text)",
+        help="Directory containing CSV or Parquet files (t, y_t, text)",
     )
     p.add_argument(
         "--datasets_hf",
@@ -290,16 +291,16 @@ def parse_args():
 # =============================================================================
 
 
-def extract_dataset_name(csv_path: str) -> str:
-    """Get dataset name from CSV path (basename without .csv).
+def extract_dataset_name(data_path: str) -> str:
+    """Get dataset name from a data file path (basename without extension).
 
     Args:
-        csv_path: Full path to a CSV file.
+        data_path: Full path to a CSV or Parquet file.
 
     Returns:
         Basename of the file without extension.
     """
-    return os.path.splitext(os.path.basename(csv_path))[0]
+    return os.path.splitext(os.path.basename(data_path))[0]
 
 
 def get_dataset_output_dir(output_dir: str, dataset_name: str) -> str:
@@ -426,21 +427,21 @@ def check_cache_status(
     return len(missing_keys) == 0, missing_keys
 
 
-def get_expected_sample_count(csv_path: str, args, LateFusionDataset) -> int:
-    """Return the number of test windows for a dataset CSV with current args.
+def get_expected_sample_count(data_path: str, args, LateFusionDataset) -> int:
+    """Return the number of test windows for a dataset file with current args.
 
     Args:
-        csv_path: Path to the dataset CSV.
+        data_path: Path to the dataset file (CSV or Parquet).
         args: Parsed namespace (seq_len, pred_len, etc.).
         LateFusionDataset: The dataset class (to avoid circular import).
 
     Returns:
-        len(dataset) for split="test" with that single CSV.
+        len(dataset) for split="test" with that single file.
     """
     dataset = LateFusionDataset(
         args.seq_len + args.pred_len,
         args.pred_len,
-        [csv_path],
+        [data_path],
         split="test",
         val_length=1000,
         stride=1,
@@ -449,23 +450,23 @@ def get_expected_sample_count(csv_path: str, args, LateFusionDataset) -> int:
 
 
 def compute_raw_mean_std_for_dataset(
-    csv_path: str, args, LateFusionDataset, late_fusion_collate
+    data_path: str, args, LateFusionDataset, late_fusion_collate
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute per-sample history mean and std for all test windows of a dataset.
 
     Args:
-        csv_path: Path to the dataset CSV.
+        data_path: Path to the dataset file (CSV or Parquet).
         args: Parsed namespace (seq_len, pred_len).
         LateFusionDataset: Dataset class.
         late_fusion_collate: Collate function for the dataloader.
 
     Returns:
-        (history_means, history_stds): Each shape (n_test_windows,) for that CSV.
+        (history_means, history_stds): Each shape (n_test_windows,) for that file.
     """
     dataset = LateFusionDataset(
         args.seq_len + args.pred_len,
         args.pred_len,
-        [csv_path],
+        [data_path],
         split="test",
         val_length=1000,
         stride=1,
@@ -487,7 +488,7 @@ def compute_raw_mean_std_for_dataset(
 
 
 def evaluate_single_dataset(
-    csv_path: str,
+    data_path: str,
     args,
     LateFusionDataset,
     late_fusion_collate,
@@ -495,15 +496,15 @@ def evaluate_single_dataset(
     baselines_to_eval: list,
     precomputed_results: dict | None = None,
 ) -> dict | None:
-    """Run enabled baselines on a single dataset CSV and merge results.
+    """Run enabled baselines on a single dataset file and merge results.
 
-    Builds a test DataLoader for the CSV, runs each baseline in baselines_to_eval
+    Builds a test DataLoader for the file, runs each baseline in baselines_to_eval
     (respecting depends_on order), and merges predictions into one result dict.
     If precomputed_results is provided, existing predictions are kept and only
     missing baselines are run.
 
     Args:
-        csv_path: Path to the dataset CSV.
+        data_path: Path to the dataset file (CSV or Parquet).
         args: Parsed namespace (batch_size, pred_len, device, etc.).
         LateFusionDataset: Dataset class.
         late_fusion_collate: Collate function.
@@ -517,7 +518,7 @@ def evaluate_single_dataset(
     dataset = LateFusionDataset(
         args.seq_len + args.pred_len,
         args.pred_len,
-        [csv_path],
+        [data_path],
         split="test",
         val_length=1000,
         stride=1,
@@ -599,13 +600,13 @@ def evaluate_single_dataset(
             if "gpt_forecast" in all_results["predictions"]:
                 gpt_forecasts = all_results["predictions"]["gpt_forecast"].numpy()
             else:
-                dataset_name = extract_dataset_name(csv_path)
+                dataset_name = extract_dataset_name(data_path)
                 dataset_dir = get_dataset_output_dir(args.output_dir, dataset_name)
                 gpt_path = os.path.join(dataset_dir, "gpt_forecast_pred.npy")
                 if os.path.exists(gpt_path):
                     gpt_forecasts = np.load(gpt_path)
             if gpt_forecasts is None:
-                dataset_name = extract_dataset_name(csv_path)
+                dataset_name = extract_dataset_name(data_path)
                 print(
                     f"  Warning: gpt_forecast not available for chronos2_gpt on dataset '{dataset_name}', skipping"
                 )
@@ -675,19 +676,19 @@ def flatten_metrics_for_csv(dataset_name: str, metrics: dict, pred_len: int) -> 
 
 
 def get_sample_indices_after_date(
-    csv_path: str, window_len: int, cutoff_date: str = "2024-06-01"
+    data_path: str, window_len: int, cutoff_date: str = "2024-06-01"
 ) -> np.ndarray:
     """Return indices of windows whose first date is on or after cutoff_date.
 
     Args:
-        csv_path: Path to CSV with column "t" (parseable dates).
+        data_path: Path to a data file (CSV or Parquet) with column "t" (parseable dates).
         window_len: Length of each window (seq_len + pred_len).
         cutoff_date: Only windows starting at or after this date. Defaults to "2024-06-01".
 
     Returns:
         1D array of start indices (0 <= i <= len(df) - window_len).
     """
-    df = pd.read_csv(csv_path)
+    df = read_datafile(data_path)
     df["t_date"] = pd.to_datetime(df["t"], errors="coerce")
     df = df[df["t_date"].notna()]
     cutoff = pd.to_datetime(cutoff_date)
@@ -713,21 +714,21 @@ def generate_overall_stats_csv(
         LateFusionDataset: Dataset class.
         late_fusion_collate: Collate function (for raw mean/std for MAPE).
     """
-    dataset_csvs = list_csv_files(args.datasets_dir)
+    dataset_files = list_data_files(args.datasets_dir)
     model_order = []
     for config in BASELINE_REGISTRY.values():
         model_order.extend(config.prediction_keys)
     model_order = list(dict.fromkeys(model_order))
 
     overall_stats = []
-    for csv_path in dataset_csvs:
-        dataset_name = extract_dataset_name(csv_path)
+    for data_path in dataset_files:
+        dataset_name = extract_dataset_name(data_path)
         dataset_results = load_per_dataset_results(output_dir, dataset_name)
         if dataset_results is None:
             continue
         n_samples = dataset_results["gt"].shape[0]
         history_means, history_stds = compute_raw_mean_std_for_dataset(
-            csv_path, args, LateFusionDataset, late_fusion_collate
+            data_path, args, LateFusionDataset, late_fusion_collate
         )
 
         row_data = {
@@ -808,13 +809,13 @@ def generate_overall_stats_csv(
 
     # June 2024+ filtered stats
     overall_stats_f = []
-    for csv_path in dataset_csvs:
-        dataset_name = extract_dataset_name(csv_path)
+    for data_path in dataset_files:
+        dataset_name = extract_dataset_name(data_path)
         dataset_results = load_per_dataset_results(output_dir, dataset_name)
         if dataset_results is None:
             continue
         filtered_indices = get_sample_indices_after_date(
-            csv_path, args.seq_len + args.pred_len, "2024-06-01"
+            data_path, args.seq_len + args.pred_len, "2024-06-01"
         )
         if len(filtered_indices) == 0:
             continue
@@ -825,7 +826,7 @@ def generate_overall_stats_csv(
         gt_np_f = gt_np[filtered_indices]
         n_f = len(filtered_indices)
         history_means, history_stds = compute_raw_mean_std_for_dataset(
-            csv_path, args, LateFusionDataset, late_fusion_collate
+            data_path, args, LateFusionDataset, late_fusion_collate
         )
         history_means = history_means[filtered_indices]
         history_stds = history_stds[filtered_indices]
@@ -989,7 +990,7 @@ def _run_chunk(args_tuple) -> list:
         _worker_models = load_models(args)
     results = []
     for item in chunk:
-        csv_path = item["csv_path"]
+        data_path = item["data_path"]
         dataset_name = item["dataset_name"]
         baselines_to_eval = item["baselines_to_eval"]
         is_partial = item["is_partial"]
@@ -998,7 +999,7 @@ def _run_chunk(args_tuple) -> list:
         )
         try:
             res = evaluate_single_dataset(
-                csv_path,
+                data_path,
                 _worker_args,
                 LateFusionDataset,
                 late_fusion_collate,
@@ -1039,7 +1040,7 @@ def main() -> None:
     os.makedirs(output_dir, exist_ok=True)
     args.output_dir = output_dir
 
-    dataset_csvs = list_csv_files(args.datasets_dir)
+    dataset_files = list_data_files(args.datasets_dir)
     enabled_baselines = get_enabled_baselines(args)
 
     if not enabled_baselines:
@@ -1070,14 +1071,14 @@ def main() -> None:
     print("=" * 80)
     n_skipped = sum(
         1
-        for csv_path in dataset_csvs
-        if get_expected_sample_count(csv_path, args, LateFusionDataset) <= 0
+        for data_path in dataset_files
+        if get_expected_sample_count(data_path, args, LateFusionDataset) <= 0
     )
     evaluation_plan = []
-    for csv_path in dataset_csvs:
-        dataset_name = extract_dataset_name(csv_path)
+    for data_path in dataset_files:
+        dataset_name = extract_dataset_name(data_path)
         expected_n_samples = get_expected_sample_count(
-            csv_path, args, LateFusionDataset
+            data_path, args, LateFusionDataset
         )
         if expected_n_samples <= 0:
             continue
@@ -1087,7 +1088,7 @@ def main() -> None:
         if use_cache:
             evaluation_plan.append(
                 {
-                    "csv_path": csv_path,
+                    "data_path": data_path,
                     "dataset": dataset_name,
                     "samples": expected_n_samples,
                     "status": "cached",
@@ -1101,7 +1102,7 @@ def main() -> None:
                     baselines_to_run.append(baseline)
             evaluation_plan.append(
                 {
-                    "csv_path": csv_path,
+                    "data_path": data_path,
                     "dataset": dataset_name,
                     "samples": expected_n_samples,
                     "status": "partial",
@@ -1111,7 +1112,7 @@ def main() -> None:
         else:
             evaluation_plan.append(
                 {
-                    "csv_path": csv_path,
+                    "data_path": data_path,
                     "dataset": dataset_name,
                     "samples": expected_n_samples,
                     "status": "full",
@@ -1160,7 +1161,7 @@ def main() -> None:
                 baselines_to_eval.insert(0, dep)
         to_run.append(
             {
-                "csv_path": plan["csv_path"],
+                "data_path": plan["data_path"],
                 "dataset_name": plan["dataset"],
                 "expected_n_samples": plan["samples"],
                 "baselines_to_eval": baselines_to_eval,
@@ -1171,7 +1172,7 @@ def main() -> None:
     if args.max_workers == 1:
         # Sequential: run in main process with already-loaded models
         for item in tqdm(to_run, desc="Datasets"):
-            csv_path = item["csv_path"]
+            data_path = item["data_path"]
             dataset_name = item["dataset_name"]
             baselines_to_eval = item["baselines_to_eval"]
             is_partial = item["is_partial"]
@@ -1182,7 +1183,7 @@ def main() -> None:
             )
             try:
                 results = evaluate_single_dataset(
-                    csv_path,
+                    data_path,
                     args,
                     LateFusionDataset,
                     late_fusion_collate,

@@ -37,13 +37,19 @@ DEFAULT_LLM_MODEL = "openai/gpt-oss-120b"
 # ============================================================================
 
 
-def load_csv(csv_path: str) -> pd.DataFrame:
-    """Load and validate a CSV file with t, y_t, text columns."""
-    df = pd.read_csv(csv_path)
+def load_datafile(path: str) -> pd.DataFrame:
+    """Load and validate a CSV or Parquet file with t, y_t, text columns."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".csv":
+        df = pd.read_csv(path)
+    elif ext == ".parquet":
+        df = pd.read_parquet(path)
+    else:
+        raise ValueError(f"Unsupported file format '{ext}' for {path}")
     required = {"t", "y_t", "text"}
     if not required.issubset(df.columns):
         raise ValueError(
-            f"CSV {csv_path} must have columns {required}, found {list(df.columns)}"
+            f"{path} must have columns {required}, found {list(df.columns)}"
         )
     return df
 
@@ -95,32 +101,34 @@ def generate_windows(
 
 
 def collect_windows_from_directory(
-    csv_dir: str,
+    data_dir: str,
     context_length: int,
     horizon: int,
     max_samples_per_file: Optional[int] = None,
     seed: int = 42,
 ) -> List[Tuple[pd.DataFrame, np.ndarray, str]]:
     """
-    Collect windows from all CSV files in a directory.
+    Collect windows from all data files in a directory.
 
     Returns list of (context_df, future_values, source_file) tuples.
     """
-    csv_files = glob.glob(os.path.join(csv_dir, "*.csv"))
-    if not csv_files:
-        raise ValueError(f"No CSV files found in {csv_dir}")
+    data_files = glob.glob(os.path.join(data_dir, "*.csv")) + glob.glob(
+        os.path.join(data_dir, "*.parquet")
+    )
+    if not data_files:
+        raise ValueError(f"No CSV or Parquet files found in {data_dir}")
 
     all_windows = []
-    for csv_path in csv_files:
+    for data_path in data_files:
         try:
-            df = load_csv(csv_path)
+            df = load_datafile(data_path)
             windows = generate_windows(
                 df, context_length, horizon, max_samples_per_file, seed
             )
             for ctx, fut in windows:
-                all_windows.append((ctx, fut, os.path.basename(csv_path)))
+                all_windows.append((ctx, fut, os.path.basename(data_path)))
         except Exception as e:
-            print(f"Warning: Skipping {csv_path}: {e}")
+            print(f"Warning: Skipping {data_path}: {e}")
 
     return all_windows
 
@@ -581,7 +589,7 @@ async def run_evaluation(args):
     print("=" * 80)
     print("UNIFIED TREND EVALUATION")
     print("=" * 80)
-    print(f"CSV directory: {args.csv_dir}")
+    print(f"Data directory: {args.data_dir}")
     print(f"Context length: {args.context_length}")
     print(f"Horizon: {args.horizon}")
     print(f"Max samples per file: {args.max_samples_per_file}")
@@ -591,9 +599,9 @@ async def run_evaluation(args):
     print()
 
     # Collect windows
-    print("Collecting windows from CSV files...")
+    print("Collecting windows from data files...")
     windows = collect_windows_from_directory(
-        args.csv_dir,
+        args.data_dir,
         args.context_length,
         args.horizon,
         args.max_samples_per_file,
@@ -684,10 +692,10 @@ def main():
 
     # Data arguments
     parser.add_argument(
-        "--csv_dir",
+        "--data_dir",
         type=str,
         required=True,
-        help="Directory containing CSV files with (t, y_t, text) columns",
+        help="Directory containing CSV or Parquet files with (t, y_t, text) columns",
     )
     parser.add_argument(
         "--context_length",

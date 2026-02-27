@@ -9,6 +9,31 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
+SUPPORTED_EXTENSIONS = (".csv", ".parquet")
+
+
+def read_datafile(path: str) -> pd.DataFrame:
+    """Read a CSV or Parquet file into a DataFrame based on file extension.
+
+    Args:
+        path: Path to a .csv or .parquet file.
+
+    Returns:
+        DataFrame with the file contents.
+
+    Raises:
+        ValueError: If the file extension is not supported.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".csv":
+        return pd.read_csv(path)
+    if ext == ".parquet":
+        return pd.read_parquet(path)
+    raise ValueError(
+        f"Unsupported file format '{ext}' for {path}. "
+        f"Supported formats: {SUPPORTED_EXTENSIONS}"
+    )
+
 
 def get_datasets_dir_from_hf(
     repo_id: str,
@@ -46,22 +71,22 @@ def get_datasets_dir_from_hf(
     return path
 
 
-def list_csv_files(data_dir: str) -> List[str]:
-    """Find all CSV files in a directory (recursively), skipping derived files.
+def list_data_files(data_dir: str) -> List[str]:
+    """Find all CSV and Parquet files in a directory (recursively), skipping derived files.
 
-    Skips files whose basename (without .csv) ends with _embeddings, _original,
+    Skips files whose basename (without extension) ends with _embeddings, _original,
     _temp, _results, or _temp_results.
 
     Args:
-        data_dir: Root directory to walk for CSV files.
+        data_dir: Root directory to walk for data files.
 
     Returns:
-        Sorted list of full paths to CSV files that pass the filter.
+        Sorted list of full paths to CSV/Parquet files that pass the filter.
     """
     all_files = []
     for root, _dirs, files in os.walk(data_dir):
         for file in files:
-            if file.endswith(".csv"):
+            if file.endswith(SUPPORTED_EXTENSIONS):
                 all_files.append(os.path.join(root, file))
 
     def is_base(p: str) -> bool:
@@ -79,12 +104,17 @@ def list_csv_files(data_dir: str) -> List[str]:
     return sorted([p for p in all_files if is_base(p)])
 
 
+# Backward-compatible alias
+list_csv_files = list_data_files
+
+
 class LateFusionDataset(Dataset):
     """Dataset for late fusion evaluation with time series and text context.
 
-    Each item is a window of length seq_len + pred_len from a CSV (t, y_t, text).
-    History is normalized per-window (mean/std). For test split, windows are
-    enumerated with stride; for train/val, random windows are sampled each __getitem__.
+    Each item is a window of length seq_len + pred_len from a data file (t, y_t, text).
+    Supports CSV and Parquet formats. History is normalized per-window (mean/std).
+    For test split, windows are enumerated with stride; for train/val, random windows
+    are sampled each __getitem__.
     """
 
     def __init__(
@@ -102,7 +132,7 @@ class LateFusionDataset(Dataset):
         Args:
             seq_len: Length of context (history) in each window.
             pred_len: Length of prediction horizon (last pred_len steps are targets).
-            datasets: List of paths to CSV files (columns: t, y_t, text).
+            datasets: List of paths to data files (CSV or Parquet; columns: t, y_t, text).
             split: "train", "val", or "test". Defaults to "train".
             val_length: Effective length per epoch for train/val (number of __getitem__ calls). Defaults to 1000.
             stride: Step between consecutive test windows. Defaults to 1.
@@ -110,7 +140,7 @@ class LateFusionDataset(Dataset):
         """
         self.seq_len = seq_len
         self.pred_len = pred_len
-        self.csvs = datasets
+        self.data_files = datasets
         self.epoch_length = 10000 if split == "train" else val_length
         self.split = split
         self.stride = stride
@@ -118,13 +148,13 @@ class LateFusionDataset(Dataset):
 
         if split == "test":
             self.windows = []
-            for csv in self.csvs:
-                df = pd.read_csv(csv)
+            for data_file in self.data_files:
+                df = read_datafile(data_file)
                 df["t_date"] = pd.to_datetime(df["t"], errors="coerce")
                 df = df[df["t_date"].notna()]
                 df = df.drop(columns=["t_date"])
                 for i in range(0, len(df) - self.seq_len + 1, self.stride):
-                    self.windows.append((csv, df.iloc[i : i + self.seq_len]))
+                    self.windows.append((data_file, df.iloc[i : i + self.seq_len]))
 
     def __len__(self) -> int:
         if self.split == "test":
@@ -133,11 +163,11 @@ class LateFusionDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict:
         if self.split == "test":
-            csv, df = self.windows[index]
+            data_file, df = self.windows[index]
         else:
             try:
-                csv = random.choice(self.csvs)
-                df = pd.read_csv(csv)
+                data_file = random.choice(self.data_files)
+                df = read_datafile(data_file)
             except Exception:
                 return self.__getitem__(index + 1)
 
@@ -173,7 +203,7 @@ class LateFusionDataset(Dataset):
             "ts": ts,
             "text": text,
             "index": index,
-            "dataset_name": csv,
+            "dataset_name": data_file,
             "history_mean": history_mean,
             "history_std": history_std,
             "timestamps": timestamps,
