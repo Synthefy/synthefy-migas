@@ -229,7 +229,7 @@ def parse_args():
         "--datasets_hf",
         type=str,
         default="",
-        help="Hugging Face dataset repo id (e.g. bekzatajan/ttfm-sample-datasets). If set, downloads the repo and uses it as datasets_dir. Use HF_TOKEN for private repos.",
+        help="Hugging Face dataset repo id (e.g. bekzatajan/ttfm-sample-datasets). If set, downloads the repo and uses it as datasets_dir.",
     )
     p.add_argument(
         "--datasets_hf_subdir",
@@ -264,7 +264,7 @@ def parse_args():
         "--checkpoint",
         type=str,
         default=default_checkpoint,
-        help="Hugging Face repo id for TTFM checkpoint (e.g. bekzatajan/ttfm). Set TTFM_CHECKPOINT or use HF_TOKEN for private repos.",
+        help="Hugging Face repo id for TTFM checkpoint (e.g. bekzatajan/ttfm). Or set TTFM_CHECKPOINT env var.",
     )
     p.add_argument("--checkpoint_timesfm", type=str, default="")
 
@@ -910,8 +910,8 @@ def load_models(args) -> dict:
         if not checkpoint_path or not os.path.isfile(checkpoint_path):
             raise FileNotFoundError(
                 "TTFM checkpoint required for --eval_ttfmlf. "
-                "Set --checkpoint to a Hugging Face repo id (e.g. bekzatajan/ttfm). "
-                "Use TTFM_CHECKPOINT or HF_TOKEN for private repos."
+                "Set --checkpoint to a Hugging Face repo id (e.g. bekzatajan/ttfm) "
+                "or set TTFM_CHECKPOINT env var."
             )
         print("\nLoading TTFM model...")
         checkpoint = torch.load(checkpoint_path, map_location=args.device)

@@ -25,12 +25,6 @@ uv sync
 # or: pip install -e .
 ```
 
-To install from PyPI:
-
-```bash
-pip install synthefy-ttfm
-```
-
 For TTFM evaluation or inference with context summarization, vLLM is included by default; you also need a running LLM server (see [TTFM and the LLM server](#ttfm-and-the-llm-server)).
 
 ---
@@ -66,8 +60,6 @@ uv run python -m ttfmeval.evaluation \
 Evaluating TTFM requires the TTFM checkpoint from the Hub: pass `--checkpoint bekzatajan/ttfm`. You can use the same local `--datasets_dir` as above, or switch to a Hugging Face dataset with `--datasets_hf`.
 
 ```bash
-export HF_TOKEN=your_token   # only for private model/dataset repos
-
 uv run python -m ttfmeval.evaluation \
   --datasets_dir ./data/test \
   --output_dir ./results \
@@ -88,13 +80,10 @@ TTFM evaluation requires a running vLLM (or OpenAI-compatible) server for contex
 Load the pipeline from the Hugging Face Hub and run predictions.
 
 ```python
-import os
 from ttfmeval import TTFMPipeline
 
-# Load from Hugging Face (set HF_TOKEN for private repos)
 pipeline = TTFMPipeline.from_pretrained(
     "bekzatajan/ttfm",
-    token=os.environ.get("HF_TOKEN"),
     device="cuda",
 )
 
@@ -117,8 +106,6 @@ For full inference with summarization, a vLLM server must be running and `VLLM_B
 | **Model** | [bekzatajan/ttfm](https://huggingface.co/bekzatajan/ttfm/tree/main) |
 | **Sample datasets** | [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid/tree/main) — CSVs in `data/`; use `--datasets_hf bekzatajan/fnspid --datasets_hf_subdir data` in the CLI. |
 
-Both are currently private. Set the `HF_TOKEN` environment variable (or pass `token=` where supported) to access them. They will be made public in a future release.
-
 ### Using a Hugging Face dataset (optional)
 
 You only need this if you want to use or publish datasets on the Hub. For local evaluation, a directory of CSVs and `--datasets_dir` is enough.
@@ -140,7 +127,7 @@ The current example dataset is [bekzatajan/fnspid](https://huggingface.co/datase
 
 3. **Optional:** Add a `README.md` in the dataset repo describing the CSVs.
 
-4. **Use in this repo:** e.g. `--datasets_hf bekzatajan/fnspid --datasets_hf_subdir data` (for private repos, set `HF_TOKEN` or `huggingface-cli login`).
+4. **Use in this repo:** e.g. `--datasets_hf bekzatajan/fnspid --datasets_hf_subdir data`.
 
 ---
 
@@ -193,7 +180,7 @@ Enable with `--eval_<name>`:
 | `--eval_naive` | Naive (last value) |
 | `--eval_prophet` | Prophet |
 | `--eval_tabpfn` | TabPFN 2.5 time-series (requires `HF_TOKEN`) |
-| `--eval_toto` | Toto (optional: `pip install synthefy-ttfm[toto]`) |
+| `--eval_toto` | Toto (optional: `pip install -e ".[toto]"`) |
 
 ### Output layout
 
@@ -244,7 +231,7 @@ TTFM and `--eval_gpt_forecast` require an LLM server for context summarization o
 | `TTFM_CHECKPOINT` | Default HF repo id for TTFM checkpoint (used if `--checkpoint` is not set) |
 | `TTFM_EVAL_DATASETS_DIR` | Default `--datasets_dir` |
 | `TTFM_EVAL_OUTPUT_DIR` | Default `--output_dir` |
-| `HF_TOKEN` | Hugging Face token for private model/dataset repos and TabPFN |
+| `HF_TOKEN` | Hugging Face token (only needed for TabPFN) |
 | `VLLM_BASE_URL` | vLLM/LLM server URL for TTFM summarizer (default `http://localhost:8004/v1`) |
 | `VLLM_MODEL` | Model name for TTFM summarizer |
 | `VLLM_TENSOR_PARALLEL_SIZE` | GPUs for tensor parallelism (default: number of GPUs in `CUDA_VISIBLE_DEVICES`) |
