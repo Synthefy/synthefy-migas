@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -145,7 +146,6 @@ def plot_aggregate_metric_by_model(
     )
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
-    fig.savefig(out_dir / f"bar_aggregate_{metric}.pdf", dpi=150, bbox_inches="tight")
     fig.savefig(out_dir / f"bar_aggregate_{metric}.png", dpi=150, bbox_inches="tight")
     plt.close()
 
@@ -191,7 +191,6 @@ def plot_grouped_metric_by_dataset(
     ax.legend(loc="upper right", ncol=2 if n_models > 4 else 1)
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
-    fig.savefig(out_dir / f"bar_grouped_{metric}.pdf", dpi=150, bbox_inches="tight")
     fig.savefig(out_dir / f"bar_grouped_{metric}.png", dpi=150, bbox_inches="tight")
     plt.close()
 
@@ -226,7 +225,6 @@ def plot_ttfm_win_rate_per_dataset(
     ax.set_ylim(0, 105)
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
-    fig.savefig(out_dir / "bar_ttfm_win_pct.pdf", dpi=150, bbox_inches="tight")
     fig.savefig(out_dir / "bar_ttfm_win_pct.png", dpi=150, bbox_inches="tight")
     plt.close()
 
@@ -262,7 +260,6 @@ def plot_improvement_per_dataset(
     ax.set_title("TTFM vs Timeseries-Only: Mean MAE Improvement per Dataset")
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
-    fig.savefig(out_dir / "bar_improvement_pct.pdf", dpi=150, bbox_inches="tight")
     fig.savefig(out_dir / "bar_improvement_pct.png", dpi=150, bbox_inches="tight")
     plt.close()
 
@@ -316,7 +313,6 @@ def plot_elo_bars(
     ax.set_title("Model ELO Ratings (from per-dataset rankings)")
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
-    fig.savefig(out_dir / f"bar_elo_{metric}.pdf", dpi=150, bbox_inches="tight")
     fig.savefig(out_dir / f"bar_elo_{metric}.png", dpi=150, bbox_inches="tight")
     plt.close()
 
@@ -362,12 +358,87 @@ def plot_single_dataset_models(
     suffix = dataset_name or "average"
     safe = re.sub(r"[^\w\-]", "_", suffix)[:40]
     fig.savefig(
-        out_dir / f"bar_single_{safe}_{metric}.pdf", dpi=150, bbox_inches="tight"
-    )
-    fig.savefig(
         out_dir / f"bar_single_{safe}_{metric}.png", dpi=150, bbox_inches="tight"
     )
     plt.close()
+
+
+def run(
+    results_dir: str | Path,
+    out_dir: str | Path | None = None,
+    metric: str = "mean_mae",
+    max_datasets: int = 12,
+    config: str | None = None,
+    single_dataset: str | None = None,
+) -> bool:
+    """
+    Generate bar plots from evaluation stats in results_dir.
+    Call this from post_eval.py or other orchestration code.
+    Returns True on success, False if matplotlib missing, no stats CSV, or no models.
+    """
+    if not HAS_MPL:
+        print("matplotlib is required. Install with: pip install matplotlib")
+        return False
+
+    results_dir = Path(results_dir)
+    csv_path = discover_stats_csv(results_dir)
+    if csv_path is None:
+        print(f"No stats_Context_*_allsamples.csv found in {results_dir}")
+        return False
+
+    df = pd.read_csv(csv_path)
+    if df.empty:
+        print("Stats CSV is empty.")
+        return False
+
+    models = infer_models_from_csv(df, metric)
+    if not models:
+        print(f"No model columns found for metric {metric}")
+        return False
+
+    out_dir = Path(out_dir) if out_dir else results_dir / "report"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    dataset_display = None
+    model_display = None
+    if config and Path(config).exists():
+        import yaml
+
+        with open(config) as f:
+            cfg = yaml.safe_load(f) or {}
+        dataset_display = cfg.get("dataset_display_names")
+        model_display = cfg.get("model_display_names")
+
+    print(f"Using stats: {csv_path}")
+    print(f"Models: {models}")
+    print(f"Output: {out_dir}")
+
+    plot_aggregate_metric_by_model(df, models, metric, out_dir, model_display)
+    plot_grouped_metric_by_dataset(
+        df,
+        models,
+        metric,
+        out_dir,
+        max_datasets=max_datasets,
+        dataset_display=dataset_display,
+        model_display=model_display,
+    )
+    plot_ttfm_win_rate_per_dataset(df, out_dir, dataset_display)
+    plot_improvement_per_dataset(df, out_dir, dataset_display)
+    plot_elo_bars(df, models, metric, out_dir, model_display)
+    # bar_single_average_* would duplicate bar_aggregate_* (same data), so only run for a specific dataset
+    if single_dataset:
+        plot_single_dataset_models(
+            df,
+            models,
+            metric,
+            out_dir,
+            dataset_name=single_dataset,
+            model_display=model_display,
+        )
+
+    print("Bar plots saved to", out_dir)
+    return True
 
 
 def main() -> None:
@@ -421,70 +492,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not HAS_MPL:
-        print("matplotlib is required. Install with: pip install matplotlib")
-        return
-
-    results_dir = Path(args.results_dir)
-    csv_path = discover_stats_csv(results_dir)
-    if csv_path is None:
-        print(f"No stats_Context_*_allsamples.csv found in {results_dir}")
-        return
-
-    df = pd.read_csv(csv_path)
-    if df.empty:
-        print("Stats CSV is empty.")
-        return
-
-    models = infer_models_from_csv(df, args.metric)
-    if not models:
-        print(f"No model columns found for metric {args.metric}")
-        return
-
-    out_dir = Path(args.out_dir) if args.out_dir else results_dir / "report"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    dataset_display = None
-    model_display = None
-    if args.config and Path(args.config).exists():
-        import yaml
-
-        with open(args.config) as f:
-            cfg = yaml.safe_load(f) or {}
-        dataset_display = cfg.get("dataset_display_names")
-        model_display = cfg.get("model_display_names")
-
-    print(f"Using stats: {csv_path}")
-    print(f"Models: {models}")
-    print(f"Output: {out_dir}")
-
-    plot_aggregate_metric_by_model(df, models, args.metric, out_dir, model_display)
-    plot_grouped_metric_by_dataset(
-        df,
-        models,
-        args.metric,
-        out_dir,
+    ok = run(
+        results_dir=args.results_dir,
+        out_dir=args.out_dir,
+        metric=args.metric,
         max_datasets=args.max_datasets,
-        dataset_display=dataset_display,
-        model_display=model_display,
+        config=args.config,
+        single_dataset=args.single_dataset,
     )
-    plot_ttfm_win_rate_per_dataset(df, out_dir, dataset_display)
-    plot_improvement_per_dataset(df, out_dir, dataset_display)
-    plot_elo_bars(df, models, args.metric, out_dir, model_display)
-    plot_single_dataset_models(
-        df, models, args.metric, out_dir, dataset_name=None, model_display=model_display
-    )
-    if args.single_dataset:
-        plot_single_dataset_models(
-            df,
-            models,
-            args.metric,
-            out_dir,
-            dataset_name=args.single_dataset,
-            model_display=model_display,
-        )
-
-    print("Bar plots saved to", out_dir)
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

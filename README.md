@@ -207,17 +207,23 @@ Re-runs skip datasets that already have all requested model outputs. Use a new `
 ### After evaluation: report and plots
 
 ```bash
-bash scripts/post_eval.sh
-# Or: bash scripts/post_eval.sh ./results/suite/context_64 scripts/latex/config_example.yaml
+uv run python scripts/post_eval.py --results_dir ./results/<suite>/context_<seq_len>
 ```
 
-This writes `report/report.md` and bar plots. To only generate bar plots:
+This generates bar plots and writes `report/report.md` in the results directory. To also include scatter plots or qualitative forecast plots:
 
 ```bash
-uv run python scripts/plot_bars.py --results_dir ./results/suite/context_64
+# Bar plots + scatter plots
+uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --scatter
+
+# Bar plots + qualitative forecast plots (needs path to dataset CSVs)
+uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --qualitative --datasets_dir ./data/test
+
+# All of the above
+uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --all --datasets_dir ./data/test
 ```
 
-See [Post-evaluation pipeline](#post-evaluation-pipeline) for scatter plots, qualitative forecasts, and LaTeX tables.
+You can also run individual scripts (e.g. `scripts/plot_bars.py --results_dir ...`) for more control; see [Post-evaluation pipeline](#post-evaluation-pipeline).
 
 ### TTFM and the LLM server
 
@@ -257,11 +263,10 @@ The CLI gets a `--eval_<name>` flag automatically. Baselines that depend on anot
 
 Scripts under `scripts/` expect the same output layout as the main eval (e.g. `results/<suite>/context_64/` with `outputs/<dataset>/` and `stats_Context_64_allsamples.csv`).
 
-- **One-command report:** `bash scripts/post_eval.sh [results_dir] [latex_config]` — bar plots and `report/report.md`; optional LaTeX table.
-- **Bar plots:** `scripts/plot_bars.py` — aggregate MAE, grouped bars, TTFM win rate, improvement %, ELO (if multielo installed).
-- **Scatter plots:** `scripts/plot_scatter.py` — TTFM vs baseline MAE per sample.
-- **Qualitative forecast plots:** `scripts/plot_qualitative_forecasts.py` — context + ground truth + forecasts for selected samples.
-- **LaTeX tables:** `scripts/latex/generate_table.py` — stats to LaTeX.
-- **LLM trend-direction eval:** `scripts/llm_trend_description_eval.py` — LLM-only direction accuracy on your CSVs.
+- **Single entry point:** `uv run python scripts/post_eval.py --results_dir <path>` — bar plots and `report/report.md`. Add `--scatter` for scatter plots, `--qualitative --datasets_dir <path>` for qualitative forecast plots, or `--all --datasets_dir <path>` for everything.
+- **Bar plots only:** `scripts/plot_bars.py` — aggregate MAE, grouped bars, TTFM win rate, improvement %, ELO (if multielo installed). Usable standalone or via `post_eval.py`.
+- **Scatter plots:** `scripts/plot_scatter.py` — TTFM vs baseline MAE per sample. Run standalone or with `post_eval.py --scatter`.
+- **Qualitative forecast plots:** `scripts/plot_qualitative_forecasts.py` — context + ground truth + forecasts for selected samples. Run standalone or with `post_eval.py --qualitative`.
+- **LLM trend-direction eval:** `scripts/llm_trend_description_eval.py` — evaluates LLM-only direction accuracy on your CSVs (separate from post-eval visualization).
 
-See the script `--help` and the existing README sections in version control for full options.
+Use each script’s `--help` for full options.
