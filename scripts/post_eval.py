@@ -124,24 +124,19 @@ def main() -> int:
     model_cols_mae = [c for c in df.columns if c.endswith("_mean_mae")]
     models = [c.replace("_mean_mae", "") for c in model_cols_mae]
 
-    # Write tables: rows = datasets, columns = models, values = mean MAE / mean MSE
-    def write_metric_table(df: pd.DataFrame, metric: str, out_path: Path) -> None:
+    # Write tables as CSV: rows = datasets, columns = models, values = mean MAE / mean MSE
+    def write_metric_table_csv(df: pd.DataFrame, metric: str, out_path: Path) -> None:
         suffix = f"_mean_{metric}"
         cols = [c for c in df.columns if c.endswith(suffix)]
         if not cols:
             return
-        model_names = [c[: -len(suffix)] for c in cols]
-        header = "| Dataset | " + " | ".join(model_names) + " |"
-        sep = "|" + "---|" * (len(model_names) + 1)
-        rows = [header, sep]
-        for _, row in df.iterrows():
-            ds = row.get("dataset_name", "")
-            vals = [str(round(row[c], 4)) if pd.notna(row.get(c)) else "—" for c in cols]
-            rows.append("| " + str(ds) + " | " + " | ".join(vals) + " |")
-        out_path.write_text("\n".join(rows), encoding="utf-8")
+        # Column names for CSV: dataset_name + model names (without suffix)
+        table_df = df[["dataset_name"] + cols].copy()
+        table_df.columns = ["dataset_name"] + [c[: -len(suffix)] for c in cols]
+        table_df.to_csv(out_path, index=False, float_format="%.4f", na_rep="—")
 
-    write_metric_table(df, "mae", out_dir / "table_mean_mae.md")
-    write_metric_table(df, "mse", out_dir / "table_mean_mse.md")
+    write_metric_table_csv(df, "mae", out_dir / "table_mean_mae.csv")
+    write_metric_table_csv(df, "mse", out_dir / "table_mean_mse.csv")
 
     report_lines = [
         "# Evaluation Report",
@@ -158,8 +153,8 @@ def main() -> int:
     # Tables
     report_lines.append("### Tables")
     report_lines.append("")
-    report_lines.append("- [Mean MAE by dataset and model](table_mean_mae.md)")
-    report_lines.append("- [Mean MSE by dataset and model](table_mean_mse.md)")
+    report_lines.append("- [Mean MAE by dataset and model](table_mean_mae.csv)")
+    report_lines.append("- [Mean MSE by dataset and model](table_mean_mse.csv)")
     report_lines.append("")
 
     # Bar plots (always run)
