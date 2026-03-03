@@ -29,6 +29,34 @@ class BaselineConfig:
 
 BASELINE_REGISTRY: Dict[str, BaselineConfig] = {}
 
+MODEL_DISPLAY_NAMES: Dict[str, str] = {
+    "ttfm": "TTFM",
+    "ttfm_timesfm": "TTFM-TimesFM",
+    "timeseries": "TS-Only",
+    "chronos_univar": "Chronos2",
+    "chronos_multivar": "Chronos2-MV",
+    "chronos_emb": "Chronos2-MV",
+    "chronos_gpt_cov": "Chronos2-GPT",
+    "chronos_gpt_dir_cov": "Chronos2-GPT-MD",
+    "chronos_naive_cov": "Chronos2-Naive",
+    "timesfm_univar": "TimesFM2.5",
+    "gpt_forecast": "GPT-OSS",
+    "tabpfn_ts": "TabPFN2.5",
+    "prophet": "Prophet",
+    "naive": "Naive",
+    "toto_univar": "Toto",
+    "toto_emb": "Toto-MV",
+    "migas": "Migas",
+}
+
+
+def get_display_name(key: str) -> str:
+    """Human-readable label for a model prediction key.
+
+    Falls back to replacing underscores with spaces if the key is unknown.
+    """
+    return MODEL_DISPLAY_NAMES.get(key, key.replace("_", " ").strip())
+
 
 def register_baseline(
     name: str,

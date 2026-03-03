@@ -163,11 +163,15 @@ def main() -> int:
     if run_plot_bars(results_dir=results_dir, out_dir=out_dir):
         report_lines.append("### Bar plots")
         report_lines.append("")
-        report_lines.append("- [bar_aggregate_mean_mae.png](bar_aggregate_mean_mae.png)")
+        report_lines.append(
+            "- [bar_aggregate_mean_mae.png](bar_aggregate_mean_mae.png)"
+        )
         report_lines.append("- [bar_grouped_mean_mae.png](bar_grouped_mean_mae.png)")
         report_lines.append("- [bar_ttfm_win_pct.png](bar_ttfm_win_pct.png)")
         report_lines.append("- [bar_improvement_pct.png](bar_improvement_pct.png)")
-        report_lines.append("- [bar_elo_mean_mae.png](bar_elo_mean_mae.png) (if multielo installed)")
+        report_lines.append(
+            "- [bar_elo_mean_mae.png](bar_elo_mean_mae.png) (if multielo installed)"
+        )
         report_lines.append("")
     else:
         report_lines.append("Bar plots failed or skipped.")
@@ -181,7 +185,9 @@ def main() -> int:
         if r.returncode == 0:
             report_lines.append("### Scatter plots")
             report_lines.append("")
-            report_lines.append("Scatter plots were written under the results directory (e.g. `sample_scatter_plots_ttfm_vs_*` and `sample_scatter_summary_*.pdf`).")
+            report_lines.append(
+                "Scatter plots were written under the results directory (e.g. `sample_scatter_plots_ttfm_vs_*` and `sample_scatter_summary_*.pdf`)."
+            )
             report_lines.append("")
         else:
             report_lines.append("Scatter plots failed or skipped.")
@@ -201,6 +207,8 @@ def main() -> int:
             str(datasets_dir),
             "--output_dir",
             str(qual_out),
+            "--models_to_plot",
+            ",".join(models),
         ]
         r = subprocess.run(cmd, cwd=str(_repo_root))
         if r.returncode == 0:

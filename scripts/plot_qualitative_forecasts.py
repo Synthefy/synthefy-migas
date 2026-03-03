@@ -95,14 +95,7 @@ def _find_dataset_file(datasets_dir, dataset_name: str) -> Path:
     return dd / f"{dataset_name}.csv"
 
 
-MODEL_DISPLAY_NAMES = {
-    "ttfm": "TTFM (Ours)",
-    "chronos_univar": "Chronos-2",
-    "chronos_multivar": "Chronos-2 (Multi)",
-    "timeseries": "TS-Only",
-    "timesfm_univar": "TimesFM-2.5",
-    "gpt_forecast": "GPT Forecast",
-}
+from ttfmeval.baselines.registry import MODEL_DISPLAY_NAMES
 
 
 @dataclass
@@ -154,7 +147,11 @@ def load_sample_dates_and_text(
     Returns:
         Tuple of (dates, text_annotations) for the full window (context + pred)
     """
-    ext = data_path.suffix.lower() if hasattr(data_path, "suffix") else os.path.splitext(str(data_path))[1].lower()
+    ext = (
+        data_path.suffix.lower()
+        if hasattr(data_path, "suffix")
+        else os.path.splitext(str(data_path))[1].lower()
+    )
     df = pd.read_parquet(data_path) if ext == ".parquet" else pd.read_csv(data_path)
     df["t"] = pd.to_datetime(df["t"])
 
@@ -358,6 +355,7 @@ def load_predictions_from_outputs(
         "prophet",
         "naive",
         "ttfm_timesfm",
+        "migas",
     ]
 
     predictions = {name: [] for name in model_names}
@@ -910,6 +908,7 @@ def _create_forecast_plot(
         "timeseries": COLORS["timeseries"],
         "timesfm_univar": "#9B59B6",
         "gpt_forecast": "#F39C12",
+        "migas": "#E67E22",
     }
 
     # Check if we have dates
@@ -1213,6 +1212,7 @@ def plot_multi_sample_comparison(
         "timeseries": COLORS["timeseries"],
         "timesfm_univar": "#9B59B6",
         "gpt_forecast": "#F39C12",
+        "migas": "#E67E22",
     }
 
     model_markers = {
@@ -1221,6 +1221,7 @@ def plot_multi_sample_comparison(
         "timeseries": "D",
         "timesfm_univar": "p",
         "gpt_forecast": "*",
+        "migas": "h",
     }
 
     for idx, sample in enumerate(samples):

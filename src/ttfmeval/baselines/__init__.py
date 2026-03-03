@@ -3,7 +3,9 @@
 from .registry import (
     BASELINE_REGISTRY,
     BaselineConfig,
+    MODEL_DISPLAY_NAMES,
     get_baseline_for_prediction_key,
+    get_display_name,
     register_baseline,
 )
 from .chronos2 import (
@@ -12,6 +14,7 @@ from .chronos2 import (
 )
 from .chronos2_gpt import evaluate_chronos2_with_gpt_forecast
 from .gpt_forecast import evaluate_gpt_forecast
+from .migas import evaluate_migas
 from .naive import evaluate_naive
 from .prophet import evaluate_prophet
 from .tabpfn import evaluate_tabpfn
@@ -105,6 +108,13 @@ register_baseline(
 )
 
 register_baseline(
+    name="migas",
+    eval_func=evaluate_migas,
+    prediction_keys=["migas"],
+    help_text="Evaluate Migas forecast API (requires SYNTHEFY_API_KEY)",
+)
+
+register_baseline(
     name="toto",
     eval_func=evaluate_toto,
     prediction_keys=["toto_univar", "toto_emb"],
@@ -114,6 +124,8 @@ register_baseline(
 __all__ = [
     "BASELINE_REGISTRY",
     "BaselineConfig",
+    "MODEL_DISPLAY_NAMES",
+    "get_display_name",
     "register_baseline",
     "get_baseline_for_prediction_key",
 ]

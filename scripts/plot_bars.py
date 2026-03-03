@@ -25,6 +25,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+_src = Path(__file__).resolve().parent.parent / "src"
+if _src.exists() and str(_src) not in sys.path:
+    sys.path.insert(0, str(_src))
+
+from ttfmeval.baselines.registry import MODEL_DISPLAY_NAMES
+
 try:
     import matplotlib
 
@@ -44,26 +50,6 @@ try:
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False
-
-# Default display names for known models (fallback: sanitize key)
-MODEL_DISPLAY_NAMES = {
-    "ttfm": "TTFM",
-    "ttfm_timesfm": "TTFM-TimesFM",
-    "timeseries": "TS-Only",
-    "chronos_univar": "Chronos2",
-    "chronos_multivar": "Chronos2-MV",
-    "chronos_emb": "Chronos2-MV",
-    "chronos_gpt_cov": "Chronos2-GPT",
-    "chronos_gpt_dir_cov": "Chronos2-GPT-MD",
-    "chronos_naive_cov": "Chronos2-Naive",
-    "timesfm_univar": "TimesFM2.5",
-    "gpt_forecast": "GPT-OSS",
-    "tabpfn_ts": "TabPFN2.5",
-    "prophet": "Prophet",
-    "naive": "Naive",
-    "toto_univar": "Toto",
-    "toto_emb": "Toto-MV",
-}
 
 
 def discover_stats_csv(results_dir: Path) -> Path | None:

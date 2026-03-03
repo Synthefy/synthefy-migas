@@ -3,10 +3,18 @@
 Script to create scatter plots comparing TTFM MAE vs other model MAE at sample level.
 """
 
-import numpy as np
-import pandas as pd
+import sys
 from pathlib import Path
 from typing import Tuple
+
+import numpy as np
+import pandas as pd
+
+_src = Path(__file__).resolve().parent.parent / "src"
+if _src.exists() and str(_src) not in sys.path:
+    sys.path.insert(0, str(_src))
+
+from ttfmeval.baselines.registry import MODEL_DISPLAY_NAMES
 
 try:
     import matplotlib.pyplot as plt
@@ -276,17 +284,7 @@ def plot_sample_level_scatter(
     # Store correlation results
     correlation_results = []
 
-    # Format model name for display
-    model_display_names = {
-        "gpt_forecast": "GPT-OSS",
-        "chronos_univar": "Chronos2",
-        "chronos_emb": "Chronos2 (Multivariate)",
-        "timeseries": "TS-Only",
-        "timesfm_univar": "TimesFM2.5",
-        "tabpfn_ts": "TabPFN2.5",
-        "toto_univar": "Toto",
-    }
-    model_display_name = model_display_names.get(
+    model_display_name = MODEL_DISPLAY_NAMES.get(
         compare_model, compare_model.replace("_", " ").title()
     )
 
