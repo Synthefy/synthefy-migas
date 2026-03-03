@@ -924,8 +924,7 @@ def load_models(args) -> dict:
             chronos_device=args.device,
             text_embedder=args.text_embedder,
             text_embedder_device=args.device,
-            use_separate_summary_embedders=True,
-            use_multiple_horizon_embedders=True,
+            use_convex_combination=True,
         )
         model.load_state_dict(state_dict, strict=True)
         model.eval()
@@ -947,8 +946,7 @@ def load_models(args) -> dict:
             chronos_device=args.device,
             text_embedder=args.text_embedder,
             text_embedder_device=args.device,
-            use_separate_summary_embedders=True,
-            use_multiple_horizon_embedders=True,
+            use_convex_combination=True,
         )
         model.load_state_dict(state_dict, strict=False)
         model.eval()

@@ -96,8 +96,7 @@ class TTFMPipeline:
             chronos_device=chronos_device or device,
             text_embedder=text_embedder,
             text_embedder_device=text_embedder_device,
-            use_separate_summary_embedders=True,
-            use_multiple_horizon_embedders=True,
+            use_convex_combination=True,
         )
         model.load_state_dict(state_dict, strict=True)
         return cls(model=model, device=device)
@@ -116,8 +115,7 @@ class TTFMPipeline:
         Args:
             context: Context time series, shape (B, T) or (B, T, 1).
             text: Per-sample list of per-timestep text strings, length B.
-            pred_len: Forecast horizon. For the default model (multi-horizon heads),
-                must be 4, 8, or 16.
+            pred_len: Forecast horizon (up to pred_len used at training, default 16).
             univariate_model: Univariate backbone: "chronos", "timesfm", "prophet", or "ensemble".
             timestamps: Optional per-sample timestamps for summarization.
             summaries: Pre-computed LLM summaries; if set, the pipeline does not call the LLM.
@@ -140,17 +138,5 @@ class TTFMPipeline:
                 training=False,
                 univariate_model=univariate_model,
             )
-        if isinstance(out, tuple):
-            pred_4, pred_8, pred_16, _ = out
-            if pred_len == 4:
-                return pred_4
-            if pred_len == 8:
-                return pred_8
-            if pred_len == 16:
-                return pred_16
-            if pred_len < 8:
-                return pred_4[:, :pred_len]
-            if pred_len < 16:
-                return pred_8[:, :pred_len]
-            return pred_16[:, :pred_len]
-        return out[0]
+        forecast, _timeseries_forecast = out
+        return forecast[:, :pred_len]

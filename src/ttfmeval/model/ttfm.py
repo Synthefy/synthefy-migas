@@ -1,8 +1,10 @@
 """TTFM Late Fusion Model - Combines univariate forecaster with text context."""
 
+import os
+from typing import List, Optional
+
 import torch
 import torch.nn as nn
-from typing import List, Optional
 
 from .util import (
     ContextSummarizer,
@@ -18,9 +20,6 @@ from .inference_utils import (
     init_timesfm,
 )
 
-# Default context summarizer (vLLM); can be overridden via env
-import os
-
 _CONTEXT_SUMMARIZER_BASE_URL = os.environ.get(
     "VLLM_BASE_URL", "http://localhost:8004/v1"
 )
@@ -34,12 +33,38 @@ CONTEXT_SUMMARIZER = ContextSummarizer(
 )
 
 
+class GatedAttentionFusion(nn.Module):
+    """Cross-attention fusion with a learned gate for residual blending."""
+
+    def __init__(self, d_model, n_heads=4):
+        super().__init__()
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=d_model,
+            num_heads=n_heads,
+            batch_first=True,
+        )
+        self.gate_net = nn.Sequential(
+            nn.Linear(2 * d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, d_model),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, h_ts, h_fact, h_pred):
+        text_tokens = torch.stack([h_fact, h_pred], dim=1)
+        q = h_ts.unsqueeze(1)
+        attn_out, _ = self.cross_attn(q, text_tokens, text_tokens)
+        attn_out = attn_out.squeeze(1)
+        gate = self.gate_net(torch.cat([h_ts, attn_out], dim=-1))
+        return h_ts + gate * attn_out
+
+
 class TTFMLF(nn.Module):
-    """TTFM Late Fusion model: univariate forecaster + LLM summaries + learned fusion.
+    """TTFM Late Fusion model: univariate forecaster + LLM summaries + gated attention fusion.
 
     Combines a configurable univariate forecaster (Chronos/TimesFM/Prophet/ensemble)
-    with LLM-generated factual/predictive summaries and residual fusion layers to
-    produce a final forecast.
+    with LLM-generated factual/predictive summaries and gated cross-attention fusion
+    to produce a final forecast.
     """
 
     SUPPORTED_UNIVARIATE_MODELS = ["chronos", "timesfm", "prophet", "ensemble"]
@@ -51,27 +76,25 @@ class TTFMLF(nn.Module):
         chronos_device: str = "cuda:0",
         text_embedder_name: str = "qwen8b",
         text_embedder_device: Optional[str] = None,
-        use_separate_summary_embedders: bool = True,
-        use_multiple_horizon_embedders: bool = True,
+        use_convex_combination: bool = True,
     ):
-        """Initialize TTFMLF and embedders.
+        """Initialize TTFMLF.
 
         Args:
             pred_len: Maximum forecast horizon (e.g. 16).
             device: Torch device for the fusion model. Defaults to "cuda".
             chronos_device: Device for Chronos when used. Defaults to "cuda:0".
-            text_embedder_name: Name of text embedder (qwen8b, qwen, finbert). Defaults to "qwen8b".
+            text_embedder_name: Name of text embedder (qwen8b, qwen, finbert).
             text_embedder_device: Device for text embedder. Defaults to None.
-            use_separate_summary_embedders: Use separate fact vs prediction embedders. Defaults to True.
-            use_multiple_horizon_embedders: Use horizon-specific heads (4/8/16). Defaults to True.
+            use_convex_combination: Blend univariate and fused forecasts via learned
+                per-point weights. Defaults to True.
         """
         super().__init__()
         self.device = device
         self.chronos_device = chronos_device
         self.pred_len = pred_len
         self.dmodel = 512
-        self.use_separate_summary_embedders = use_separate_summary_embedders
-        self.use_multiple_horizon_embedders = use_multiple_horizon_embedders
+        self.use_convex_combination = use_convex_combination
 
         init_chronos(chronos_device)
         init_timesfm()
@@ -86,50 +109,47 @@ class TTFMLF(nn.Module):
             output_dims=self.dmodel,
         )
 
-        if self.use_separate_summary_embedders:
-            self.fact_embedder = ResidualBlock(
-                input_dims=self.text_embedding_size,
-                hidden_dims=self.dmodel,
-                output_dims=self.dmodel,
-            )
-            self.prediction_embedder = ResidualBlock(
-                input_dims=self.text_embedding_size,
-                hidden_dims=self.dmodel,
-                output_dims=self.dmodel,
-            )
+        # Present in checkpoint (trained with reconstruction loss); unused at inference
+        self.timeseries_decoder = ResidualBlock(
+            input_dims=self.dmodel,
+            hidden_dims=self.dmodel,
+            output_dims=self.pred_len,
+        )
 
-            if self.use_multiple_horizon_embedders:
-                self.postprocessor_four = ResidualBlock(
-                    input_dims=self.dmodel * 3,
-                    hidden_dims=self.dmodel,
-                    output_dims=4,
-                )
-                self.postprocessor_eight = ResidualBlock(
-                    input_dims=self.dmodel * 3,
-                    hidden_dims=self.dmodel,
-                    output_dims=8,
-                )
-                self.postprocessor_sixteen = ResidualBlock(
-                    input_dims=self.dmodel * 3,
-                    hidden_dims=self.dmodel,
-                    output_dims=16,
-                )
-            else:
-                self.postprocessor = ResidualBlock(
-                    input_dims=self.dmodel * 3,
-                    hidden_dims=self.dmodel,
-                    output_dims=self.pred_len,
-                )
-        else:
-            self.summary_embedder = ResidualBlock(
-                input_dims=self.text_embedding_size,
-                hidden_dims=self.dmodel,
-                output_dims=self.dmodel,
-            )
-            self.postprocessor = ResidualBlock(
-                input_dims=self.dmodel * 2,
-                hidden_dims=self.dmodel,
-                output_dims=self.pred_len,
+        text_proj_intermediate = max(self.dmodel, self.text_embedding_size // 4)
+        self.fact_embedder = nn.Sequential(
+            nn.Linear(self.text_embedding_size, text_proj_intermediate),
+            nn.GELU(),
+            nn.LayerNorm(text_proj_intermediate),
+            nn.Linear(text_proj_intermediate, self.dmodel),
+            nn.LayerNorm(self.dmodel),
+        )
+        self.prediction_embedder = nn.Sequential(
+            nn.Linear(self.text_embedding_size, text_proj_intermediate),
+            nn.GELU(),
+            nn.LayerNorm(text_proj_intermediate),
+            nn.Linear(text_proj_intermediate, self.dmodel),
+            nn.LayerNorm(self.dmodel),
+        )
+
+        self.ts_norm = nn.LayerNorm(self.dmodel)
+        self.fact_norm = nn.LayerNorm(self.dmodel)
+        self.pred_norm = nn.LayerNorm(self.dmodel)
+
+        self.fusion = GatedAttentionFusion(d_model=self.dmodel, n_heads=4)
+
+        self.forecast_head = nn.Sequential(
+            nn.Linear(self.dmodel, self.dmodel),
+            nn.GELU(),
+            nn.Linear(self.dmodel, self.pred_len),
+        )
+
+        if self.use_convex_combination:
+            self.convex_weight_net = nn.Sequential(
+                nn.Linear(self.dmodel, self.dmodel // 2),
+                nn.GELU(),
+                nn.Linear(self.dmodel // 2, self.pred_len),
+                nn.Sigmoid(),
             )
 
     def forward(
@@ -146,25 +166,21 @@ class TTFMLF(nn.Module):
         """Run one forward pass: univariate forecast + text fusion -> TTFM forecast.
 
         Args:
-            x: (B, seq_len) context time series.
+            x: (B, seq_len) or (B, seq_len, 1) context time series.
             text: Per-sample list of per-timestep text strings, length B.
             pred_len: Requested forecast horizon.
-            timestamps: Optional per-sample timestamps for summarization. Defaults to None.
-            summaries: Pre-computed LLM summaries (skips CONTEXT_SUMMARIZER if set). Defaults to None.
-            training: If True and univariate is ensemble, sample model at random. Defaults to True.
-            univariate_model: "chronos", "timesfm", "prophet", or "ensemble". Defaults to "chronos".
-            trim_text: Whether to trim context to last 64 steps for summarization. Defaults to True.
+            timestamps: Optional per-sample timestamps for summarization.
+            summaries: Pre-computed LLM summaries (skips CONTEXT_SUMMARIZER if set).
+            training: If True and univariate is ensemble, sample model at random.
+            univariate_model: "chronos", "timesfm", "prophet", or "ensemble".
+            trim_text: Whether to trim context to last 64 steps for summarization.
 
         Returns:
-            Either (pred_4, pred_8, pred_16, timeseries_forecast) when use_multiple_horizon_embedders,
-            or (pred_forecast, timeseries_forecast). All prediction tensors (B, horizon, 1).
+            (forecast, timeseries_forecast) where forecast is (B, pred_len, 1)
+            and timeseries_forecast is the raw univariate output.
         """
         B = x.shape[0]
-        univariate_pred_len = (
-            self.pred_len if self.use_multiple_horizon_embedders else pred_len
-        )
 
-        # Accept (B, seq_len) or (B, seq_len, 1); pipeline may already unsqueeze
         if x.dim() == 2:
             ts = x.unsqueeze(-1).to(self.device).float()
         else:
@@ -172,7 +188,7 @@ class TTFMLF(nn.Module):
 
         timeseries_forecast = evaluate_univariate(
             x=ts,
-            pred_len=univariate_pred_len,
+            pred_len=self.pred_len,
             device=self.device,
             model=univariate_model,
             chronos_device=self.chronos_device,
@@ -184,9 +200,8 @@ class TTFMLF(nn.Module):
             timeseries_forecast[..., 0]
         )
 
-        values_batch = [ts.cpu().numpy()[i, :, 0].tolist() for i in range(B)]
-
         if summaries is None:
+            values_batch = [ts.cpu().numpy()[i, :, 0].tolist() for i in range(B)]
             trim_context_len = 64
             trimmed_text = [t[-trim_context_len:] for t in text]
             trimmed_values = [v[-trim_context_len:] for v in values_batch]
@@ -202,56 +217,46 @@ class TTFMLF(nn.Module):
                 trimmed_text, trimmed_values, trimmed_timestamps
             )
 
-        if self.use_separate_summary_embedders:
-            fact_summaries, prediction_summaries = self._split_summaries(summaries)
+        fact_summaries, prediction_summaries = self._split_summaries(summaries)
 
-            with torch.no_grad():
-                try:
-                    embeddings = encode_texts(
-                        fact_summaries + prediction_summaries, batch_size=2 * B
-                    )
-                    fact_embeddings = torch.tensor(
-                        embeddings[:B], dtype=torch.float32
-                    ).to(self.device)
-                    pred_embeddings = torch.tensor(
-                        embeddings[B:], dtype=torch.float32
-                    ).to(self.device)
-                except Exception:
-                    fact_embeddings = torch.zeros(B, self.text_embedding_size).to(
-                        self.device
-                    )
-                    pred_embeddings = torch.zeros(B, self.text_embedding_size).to(
-                        self.device
-                    )
+        with torch.no_grad():
+            try:
+                embeddings = encode_texts(
+                    fact_summaries + prediction_summaries, batch_size=2 * B
+                )
+                fact_embeddings = torch.tensor(embeddings[:B], dtype=torch.float32).to(
+                    self.device
+                )
+                pred_embeddings = torch.tensor(embeddings[B:], dtype=torch.float32).to(
+                    self.device
+                )
+            except Exception:
+                fact_embeddings = torch.zeros(B, self.text_embedding_size).to(
+                    self.device
+                )
+                pred_embeddings = torch.zeros(B, self.text_embedding_size).to(
+                    self.device
+                )
 
-            fact_hidden = self.fact_embedder(fact_embeddings)
-            pred_hidden = self.prediction_embedder(pred_embeddings)
+        fact_hidden = self.fact_embedder(fact_embeddings)
+        pred_hidden = self.prediction_embedder(pred_embeddings)
 
-            combined = torch.cat(
-                [timeseries_forecast_embeddings, fact_hidden, pred_hidden], dim=-1
+        timeseries_forecast_embeddings = self.ts_norm(timeseries_forecast_embeddings)
+        fact_hidden = self.fact_norm(fact_hidden)
+        pred_hidden = self.pred_norm(pred_hidden)
+
+        fused = self.fusion(timeseries_forecast_embeddings, fact_hidden, pred_hidden)
+
+        forecast = self.forecast_head(fused)
+
+        if self.use_convex_combination:
+            w = self.convex_weight_net(fused)
+            forecast = (
+                w * timeseries_forecast[:, : self.pred_len, 0] + (1 - w) * forecast
             )
 
-            if self.use_multiple_horizon_embedders:
-                pred_4 = self.postprocessor_four(combined).view(B, 4, 1)
-                pred_8 = self.postprocessor_eight(combined).view(B, 8, 1)
-                pred_16 = self.postprocessor_sixteen(combined).view(B, 16, 1)
-                return pred_4, pred_8, pred_16, timeseries_forecast
-            else:
-                pred_forecast = self.postprocessor(combined)
-        else:
-            summary_embeddings = encode_texts(summaries, batch_size=B)
-            summary_embeddings = torch.tensor(
-                summary_embeddings, dtype=torch.float32
-            ).to(self.device)
-            summary_hidden = self.summary_embedder(summary_embeddings)
-
-            combined = torch.cat(
-                [timeseries_forecast_embeddings, summary_hidden], dim=-1
-            )
-            pred_forecast = self.postprocessor(combined)
-
-        pred_forecast = pred_forecast.view(B, self.pred_len, 1)
-        return pred_forecast, timeseries_forecast
+        forecast = forecast.view(B, self.pred_len, 1)
+        return forecast, timeseries_forecast
 
     def _split_summaries(self, summaries: List[str]) -> tuple:
         """Split "FACTUAL SUMMARY:" / "PREDICTIVE SIGNALS:" sections from each summary.
@@ -286,7 +291,7 @@ class TTFMLF(nn.Module):
         return fact_summaries, prediction_summaries
 
     def postprocess_predictions(self, preds: torch.Tensor) -> torch.Tensor:
-        """Optional post-processing of predictions (identity by default). Override in subclasses.
+        """Optional post-processing of predictions (identity by default).
 
         Args:
             preds: (B, pred_len, 1) forecast tensor.
@@ -303,8 +308,7 @@ def build_model(
     chronos_device: str = "cuda:0",
     text_embedder: str = "qwen8b",
     text_embedder_device: Optional[str] = None,
-    use_separate_summary_embedders: bool = True,
-    use_multiple_horizon_embedders: bool = True,
+    use_convex_combination: bool = True,
     **kwargs,
 ) -> TTFMLF:
     """Build a TTFMLF model with the given configuration.
@@ -315,8 +319,7 @@ def build_model(
         chronos_device: Device for Chronos. Defaults to "cuda:0".
         text_embedder: Embedder name (qwen8b, qwen, finbert). Defaults to "qwen8b".
         text_embedder_device: Device for embedder. Defaults to None.
-        use_separate_summary_embedders: Use separate fact/prediction embedders. Defaults to True.
-        use_multiple_horizon_embedders: Use 4/8/16 horizon heads. Defaults to True.
+        use_convex_combination: Use convex combination of univariate and fused forecasts.
         **kwargs: Ignored (for API compatibility).
 
     Returns:
@@ -328,6 +331,5 @@ def build_model(
         chronos_device=chronos_device,
         text_embedder_name=text_embedder,
         text_embedder_device=text_embedder_device,
-        use_separate_summary_embedders=use_separate_summary_embedders,
-        use_multiple_horizon_embedders=use_multiple_horizon_embedders,
+        use_convex_combination=use_convex_combination,
     )

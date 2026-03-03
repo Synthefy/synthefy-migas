@@ -93,7 +93,9 @@ def eval_ttfm(
                     timestamps=timestamps,
                 )
 
-        if isinstance(model_output, tuple) and len(model_output) == 4:
+        if isinstance(model_output, tuple) and len(model_output) == 2:
+            ttfm_forecast, timeseries_forecast = model_output
+        elif isinstance(model_output, tuple) and len(model_output) == 4:
             (
                 ttfm_forecast_four,
                 ttfm_forecast_eight,
@@ -108,7 +110,7 @@ def eval_ttfm(
                 else ttfm_forecast_sixteen
             )
         else:
-            ttfm_forecast, timeseries_forecast = model_output
+            ttfm_forecast, timeseries_forecast = model_output[0], model_output[1]
 
         if model_type in ("ttfm", "ttfmlf"):
             ttfm_forecast = model.postprocess_predictions(ttfm_forecast)
