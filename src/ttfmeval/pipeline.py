@@ -117,6 +117,11 @@ class TTFMPipeline:
     ) -> torch.Tensor:
         """Run TTFM forward and return the forecast for the requested horizon.
 
+        The context is automatically normalized (zero-mean, unit-variance) before
+        being passed to the model, matching the training-time convention used by
+        ``LateFusionDataset``.  The output is unscaled back to the original value
+        range so that predictions are directly comparable to raw input values.
+
         Args:
             context: Context time series, shape (B, T) or (B, T, 1).
             text: Per-sample list of per-timestep text strings, length B.
@@ -140,19 +145,43 @@ class TTFMPipeline:
             context = torch.tensor(context, dtype=torch.float32)
         if context.dim() == 2:
             context = context.unsqueeze(-1)
-        context = context.to(self.device)
+
+        # Normalize to match the training-time convention (LateFusionDataset):
+        #   history_mean = history.mean()
+        #   history_std  = history.std()          # numpy ddof=0
+        #   ts = (ts - history_mean) / (history_std + 1e-8)
+        # The raw (no-epsilon) std is passed to the model; the model applies
+        # its own clamping internally for the univariate unscale/rescale.
+        values = context[:, :, 0]  # (B, T)
+        history_mean = values.mean(dim=1)  # (B,)
+        history_std = values.std(dim=1, correction=0)  # (B,), ddof=0
+
+        mu = history_mean.view(-1, 1, 1)
+        sigma = history_std.view(-1, 1, 1)
+        context_normed = (context - mu) / (sigma + 1e-8)
+        context_normed = context_normed.to(self.device)
+
         with torch.no_grad():
             out = self.model(
-                context,
+                context_normed,
                 text,
                 pred_len=pred_len,
+                history_mean=history_mean,
+                history_std=history_std,
                 timestamps=timestamps,
                 summaries=summaries,
                 training=False,
                 univariate_model=univariate_model,
             )
-        forecast = out[0]
-        return forecast[:, :pred_len]
+
+        # Model output is in normalized space; unscale back to original range
+        # using the same divisor used for normalizing.
+        forecast = out[0][:, :pred_len]
+        mu = mu.to(forecast.device)
+        sigma = sigma.to(forecast.device)
+        forecast = forecast * (sigma + 1e-8) + mu
+
+        return forecast
 
     def predict_from_dataframe(
         self,
