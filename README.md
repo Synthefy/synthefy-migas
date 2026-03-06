@@ -1,6 +1,6 @@
 # TTFM: Text-and-Time-Series Fusion Model
 
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-FNSPID%20Dataset-FFD21E)](https://huggingface.co/datasets/Zihan1004/FNSPID) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-FNSPID%20(prepared)-FFD21E)](https://huggingface.co/datasets/bekzatajan/fnspid) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
 
 
 TTFM fuses historical time series with per-step text context: an LLM summarizes the context into factual and predictive signals, and a small fusion head combines these with the univariate forecast to output the final prediction. You can use this repo in two ways:
@@ -32,13 +32,13 @@ uv sync
 
 Run the evaluation CLI on your time-series data. Each data file (CSV or Parquet) must have columns `t`, `y_t`, and `text` (see [Data format](#data-format)).
 
-**Data source:** Put CSV or Parquet files in a folder and pass `--datasets_dir /path/to/folder`. The default is `./data/test` (or set `TTFM_EVAL_DATASETS_DIR`). To prepare FNSPID data, see [Preparing FNSPID evaluation data](#preparing-fnspid-evaluation-data).
+**Data source:** Put CSV or Parquet files in a folder and pass `--datasets_dir /path/to/folder`. The default is `./data/test` (or set `TTFM_EVAL_DATASETS_DIR`). For FNSPID, download ready-to-use assets from Hugging Face — see [FNSPID evaluation data](#fnspid-evaluation-data).
 
 **Example: baselines only (no TTFM, no LLM)**
 
 ```bash
 uv run python -m ttfmeval.evaluation \
-  --datasets_dir ./data/fnspid/output \
+  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
   --output_dir ./results \
   --seq_len 384 \
   --pred_len 16 \
@@ -51,22 +51,57 @@ uv run python -m ttfmeval.evaluation \
 
 **Example: with TTFM**
 
-Evaluating TTFM requires the TTFM checkpoint from the Hub: pass `--checkpoint bekzatajan/ttfm`. 
+By default, `--eval_ttfmlf` loads TTFM from the Hugging Face repo `bekzatajan/ttfm`. You only need `--checkpoint` if you want to override that default with another HF repo id or a local checkpoint path.
 
 ```bash
 uv run python -m ttfmeval.evaluation \
-  --datasets_dir ./data/fnspid/output \
+  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
   --output_dir ./results \
   --seq_len 384 \
   --pred_len 16 \
   --batch_size 64 \
   --eval_ttfmlf \
   --eval_chronos2 \
-  --eval_timesfm \
-  --checkpoint bekzatajan/ttfm
+  --eval_timesfm
 ```
 
 TTFM evaluation requires a running vLLM (or OpenAI-compatible) server for context summarization. Start it before running the above (see [TTFM and the LLM server](#ttfm-and-the-llm-server)).
+
+**Fast path: use pre-computed summaries (no LLM server needed)**
+
+If you downloaded pre-computed summaries from Hugging Face (see [FNSPID evaluation data](#fnspid-evaluation-data)), pass `--summaries_dir` to skip on-the-fly LLM generation entirely:
+
+```bash
+uv run python -m ttfmeval.evaluation \
+  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+  --summaries_dir ./data/fnspid_prepared/fnspid_0.5_complement \
+  --output_dir ./results \
+  --seq_len 384 \
+  --pred_len 16 \
+  --batch_size 64 \
+  --eval_ttfmlf \
+  --checkpoint bekzatajan/ttfm
+```
+
+Alternatively, you can cache your own summaries and then evaluate with the lightweight evaluator:
+
+```bash
+# Step 1) Cache summaries (requires LLM server; writes to results/<suite>/context_<seq_len>/...)
+uv run python -m ttfmeval.evaluation \
+  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+  --output_dir ./results \
+  --seq_len 384 \
+  --pred_len 16 \
+  --batch_size 64 \
+  --cache_summaries
+
+# Step 2) Evaluate from cached summaries (no LLM calls)
+uv run python scripts/eval_simple.py \
+  --summaries_dir ./results/output/context_384 \
+  --checkpoint bekzatajan/ttfm \
+  --context_lengths 32 64 128 256 384 \
+  --eval_timesfm --eval_toto --eval_prophet
+```
 
 ### 2. Inference with TTFM
 
@@ -90,112 +125,66 @@ forecast = pipeline.predict(context, text, pred_len=16)  # (2, 16, 1)
 
 For full inference with summarization, a vLLM server must be running (see [TTFM and the LLM server](#ttfm-and-the-llm-server)). The default URL and model can be overridden with `VLLM_BASE_URL` and `VLLM_MODEL`.
 
+**Using pre-computed summaries (no LLM server needed):**
+
+If you have pre-computed summaries (e.g. from the prepared FNSPID assets), pass them to `predict()` to skip LLM generation entirely:
+
+```python
+summaries = ["Factual summary: ... Prediction summary: ..."]  # one string per sample
+forecast = pipeline.predict(context, text, pred_len=16, summaries=summaries)
+```
+
 ---
 
-## Pre-trained weights
+## Pre-trained weights and data
 
 | Resource   | Hugging Face |
 |-----------|---------------|
 | **Model** | [bekzatajan/ttfm](https://huggingface.co/bekzatajan/ttfm/tree/main) |
+| **FNSPID (prepared)** | [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid) |
 
 ---
 
-## Preparing FNSPID evaluation data
+## FNSPID evaluation data
 
-The [FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) dataset (Dong et al., 2024) contains 10M+ financial news articles linked to stock symbols. To use it for TTFM evaluation, the raw articles must be preprocessed into CSVs with columns `t`, `y_t`, `text`.
+The [FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) dataset (Dong et al., 2024) contains 10M+ financial news articles linked to stock symbols. We provide **ready-to-use** prepared assets on Hugging Face at [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid):
 
-A single shell script handles the full pipeline:
+- **CSVs** (`fnspid_0.5_complement_csvs/`) — files with columns `t`, `y_t`, `text`, ready for evaluation or inference.
+- **Pre-computed summaries** (`fnspid_0.5_complement/`) — per-dataset subdirectories with cached LLM summaries, so you can run TTFM evaluation without a running LLM server.
 
-```bash
-# Default: 4 symbols (ADBE, JPM, NFLX, AMD)
-bash scripts/prepare_fnspid.sh
-
-# All 100 high-annotation symbols
-bash scripts/prepare_fnspid.sh --all
-```
-
-The script supports 100 high-annotation symbols from FNSPID: AAL, ABBV, ABT, ADBE, AIR, ALB, AMAT, AMC, AMD, AMGN, ANTM, BABA, BHP, BIDU, BIIB, BKR, BLK, BNTX, BX, CAT, CMCSA, CMG, COP, COST, CRM, CRWD, CVX, DGAZ, DIS, DKNG, DRR, ENB, ENPH, FCAU, FCX, FDX, GE, GILD, GLD, GME, GOOGL, GOOG, GSK, GS, GWPH, HYG, INTC, JD, JPM, KKR, KO, KR, MDT, MMM, MRK, MSFT, MS, MU, MYL, NEE, NFLX, NIO, NKE, NVAX, ORCL, OXY, PEP, PINS, PLUG, PM, PTON, QCOM, QQQ, SBUX, SIRI, SLB, SO, SPOT, SPY, STZ, TDOC, TMUS, TSCO, TSM, T, TXN, UGAZ, UPS, USO, VRTX, V, WBA, WFC, WMT, XLF, XLK, XLP, XLY, XOM, ZM.
-
-It runs five stages:
-
-1. **Download** the FNSPID dataset from Hugging Face (`Zihan1004/FNSPID`), including bundled price history
-2. **Extract** stock price history from the bundled zip
-3. **Extract** per-symbol article text from the raw CSV
-4. **Analyse** text availability and produce `metadata.csv`
-5. **Summarize** articles into daily summaries using an LLM and merge with price data
-
-Steps 1-4 are fully automatic. Step 5 requires a running LLM server (see [TTFM and the LLM server](#ttfm-and-the-llm-server)).
-
-**Options:**
+### Downloading prepared assets
 
 ```bash
-# Specific symbols
-bash scripts/prepare_fnspid.sh --symbols AAPL,MSFT,BA
+# Download CSVs only
+uv run python scripts/download_fnspid.py --csvs
 
-# All 100 high-annotation symbols
-bash scripts/prepare_fnspid.sh --all
+# Download pre-computed summaries only
+uv run python scripts/download_fnspid.py --summaries
 
-# Top 20 symbols by text availability (from metadata.csv)
-bash scripts/prepare_fnspid.sh --top-k 20
-
-# Stop before the LLM step (steps 1-4 only)
-bash scripts/prepare_fnspid.sh --skip-summaries
-
-# Custom LLM server
-bash scripts/prepare_fnspid.sh --llm-base-url http://localhost:8004/v1 --llm-model openai/gpt-oss-120b
+# Download both
+uv run python scripts/download_fnspid.py --all
 ```
 
-The final CSVs land in `data/fnspid/output/` and can be passed directly to the evaluation CLI:
+By default, assets are saved to `data/fnspid_prepared/`. Change with `--local_dir`:
+
+```bash
+uv run python scripts/download_fnspid.py --all --local_dir ./my_data
+```
+
+After downloading, use the prepared CSVs and summaries with the evaluation CLI:
 
 ```bash
 uv run python -m ttfmeval.evaluation \
-  --datasets_dir data/fnspid/output \
+  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+  --summaries_dir ./data/fnspid_prepared/fnspid_0.5_complement \
   --checkpoint bekzatajan/ttfm \
   --eval_ttfmlf --eval_chronos2 --eval_timesfm
 ```
 
 <details>
-<summary>Running individual preprocessing steps manually</summary>
+<summary>Building FNSPID from raw data (advanced)</summary>
 
-The scripts in `scripts/fnspid/` can also be run individually:
-
-```bash
-# 1. Download FNSPID from Hugging Face
-huggingface-cli download Zihan1004/FNSPID --repo-type dataset --local-dir data/fnspid/raw
-
-# 2. Download price history (requires: pip install yfinance)
-uv run python scripts/fnspid/download_prices.py AAPL MSFT --output-dir data/fnspid/full_history
-
-# 3. Extract text per symbol
-uv run python scripts/fnspid/extract_text.py AAPL MSFT \
-  --input data/fnspid/raw/<fnspid_csv_file>.csv \
-  --output-dir data/fnspid/extracted_text \
-  --history-dir data/fnspid/full_history
-
-# 4. Analyse text availability
-uv run python scripts/fnspid/analyse_text.py \
-  --extracted-dir data/fnspid/extracted_text \
-  --output data/fnspid/metadata.csv
-
-# 5a. Create daily summaries (needs LLM server)
-uv run python scripts/fnspid/create_daily_summaries.py \
-  --input data/fnspid/extracted_text/aapl_text.json \
-  --output data/fnspid/summaries/aapl_text_daily.json \
-  --dates-csv data/fnspid/extracted_text/aapl.csv
-
-# 5b. Merge text + numerical
-uv run python scripts/fnspid/merge_text_numerical.py \
-  --summaries data/fnspid/summaries/aapl_text_daily.json \
-  --numerical data/fnspid/extracted_text/aapl.csv \
-  --output data/fnspid/output/aapl_with_text.csv
-
-# Or batch steps 5a+5b for top K symbols:
-uv run python scripts/fnspid/run_top_k.py \
-  --metadata data/fnspid/metadata.csv --top-k 20 \
-  --extracted-dir data/fnspid/extracted_text \
-  --summaries-dir data/fnspid/summaries \
-  --data-dir data/fnspid/output
-```
+If you want to preprocess the raw FNSPID dataset yourself instead of using the prepared assets above, use `scripts/prepare_fnspid.sh` and the individual scripts under `scripts/fnspid/`. This requires downloading the raw FNSPID dataset from [Zihan1004/FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) and running an LLM server for the summarization step. See the scripts for usage details.
 
 </details>
 
@@ -243,7 +232,7 @@ Enable with `--eval_<name>`:
 
 | Flag | Description |
 |------|-------------|
-| `--eval_ttfmlf` | TTFM model (requires `--checkpoint` or `TTFM_CHECKPOINT`; use HF repo id e.g. bekzatajan/ttfm) |
+| `--eval_ttfmlf` | TTFM model (defaults to HF repo `bekzatajan/ttfm`; override with `--checkpoint` or `TTFM_CHECKPOINT`, including a local path) |
 | `--eval_ttfmlf_timesfm` | TTFM with TimesFM as univariate (requires `--checkpoint_timesfm`) |
 | `--eval_chronos2` | Chronos-2 univariate |
 | `--eval_chronos2_multivar` | Chronos-2 with covariates |
@@ -303,13 +292,13 @@ You can also run individual scripts (e.g. `scripts/plot_bars.py --results_dir ..
 
 TTFM and `--eval_gpt_forecast` require an LLM server for context summarization or GPT forecasts. Start vLLM (or an OpenAI-compatible server) before running. Default URL: `http://localhost:8004/v1`, default model: `openai/gpt-oss-120b`. Override with `--llm_base_url` and `--llm_model`, or `VLLM_BASE_URL` and `VLLM_MODEL`. No API key is required for a local vLLM server.
 
-**Quick start for TTFM eval:** In a separate terminal run `bash start_vllm.sh` (or `uv run vllm serve openai/gpt-oss-120b --port 8004`). Then run the evaluation CLI with `--eval_ttfmlf` and `--checkpoint`.
+**Quick start for TTFM eval:** In a separate terminal run `bash start_vllm.sh` (or `uv run vllm serve openai/gpt-oss-120b --port 8004`). Then run the evaluation CLI with `--eval_ttfmlf`. By default it downloads the checkpoint from `bekzatajan/ttfm`; use `--checkpoint` only to override that source.
 
 ### Environment variables
 
 | Variable | Meaning |
 |----------|---------|
-| `TTFM_CHECKPOINT` | Default HF repo id for TTFM checkpoint (used if `--checkpoint` is not set) |
+| `TTFM_CHECKPOINT` | Override the default TTFM checkpoint source (`bekzatajan/ttfm`) with another HF repo id or a local path |
 | `TTFM_EVAL_DATASETS_DIR` | Default `--datasets_dir` |
 | `TTFM_EVAL_OUTPUT_DIR` | Default `--output_dir` |
 | `HF_TOKEN` | Hugging Face token (only needed for TabPFN) |

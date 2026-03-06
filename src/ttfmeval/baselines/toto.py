@@ -35,7 +35,7 @@ def evaluate_toto(
     loader,
     device,
     pred_len: int = 4,
-    num_samples: int = 64,
+    num_samples: int = 256,
 ) -> dict:
     """Evaluate Toto baseline (univariate and with FinBERT text embeddings).
 
@@ -46,7 +46,7 @@ def evaluate_toto(
         loader: DataLoader with "ts" and "text".
         device: Torch device for the forecaster and tensors.
         pred_len: Forecast horizon. Defaults to 4.
-        num_samples: Number of samples for probabilistic forecast (median used). Defaults to 64.
+        num_samples: Number of samples for probabilistic forecast (median used). Defaults to 256.
 
     Returns:
         Dict with keys:

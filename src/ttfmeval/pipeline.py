@@ -138,5 +138,5 @@ class TTFMPipeline:
                 training=False,
                 univariate_model=univariate_model,
             )
-        forecast, _timeseries_forecast = out
+        forecast = out[0]
         return forecast[:, :pred_len]

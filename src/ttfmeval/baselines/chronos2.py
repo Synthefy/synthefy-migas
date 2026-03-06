@@ -200,9 +200,9 @@ def evaluate_chronos2_with_covariates(
                         history_texts.append(text_list[t_idx])
                     else:
                         history_texts.append("No annotation available")
-                    history_emb = train_util.encode_texts(
-                        history_texts, batch_size=min(32, len(history_texts))
-                    )
+                history_emb = train_util.encode_texts(
+                    history_texts, batch_size=min(32, len(history_texts))
+                )
                 all_history_embeddings.append(history_emb)
 
             history_emb_arr = np.array(all_history_embeddings)

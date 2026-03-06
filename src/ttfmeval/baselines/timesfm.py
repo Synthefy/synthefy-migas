@@ -28,13 +28,13 @@ def load_timesfm_model(device):
         print("TimesFM 2.5 model loaded successfully")
         TIMESFM_MODEL.compile(
             timesfm.ForecastConfig(
-                max_context=128,
-                max_horizon=32,
-                normalize_inputs=False,
-                use_continuous_quantile_head=False,
-                force_flip_invariance=False,
-                infer_is_positive=False,
-                fix_quantile_crossing=False,
+                max_context=1024,
+                max_horizon=256,
+                normalize_inputs=True,
+                use_continuous_quantile_head=True,
+                force_flip_invariance=True,
+                infer_is_positive=True,
+                fix_quantile_crossing=True,
             )
         )
     return TIMESFM_MODEL

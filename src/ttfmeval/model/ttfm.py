@@ -20,17 +20,22 @@ from .inference_utils import (
     init_timesfm,
 )
 
-_CONTEXT_SUMMARIZER_BASE_URL = os.environ.get(
-    "VLLM_BASE_URL", "http://localhost:8004/v1"
-)
-_CONTEXT_SUMMARIZER_MODEL = os.environ.get("VLLM_MODEL", "openai/gpt-oss-120b")
+CONTEXT_SUMMARIZER: Optional[ContextSummarizer] = None
 
-CONTEXT_SUMMARIZER = ContextSummarizer(
-    base_url=_CONTEXT_SUMMARIZER_BASE_URL,
-    model_name=_CONTEXT_SUMMARIZER_MODEL,
-    max_concurrent=128,
-    max_tokens=512,
-)
+
+def _get_context_summarizer() -> ContextSummarizer:
+    """Lazily initialize and return the global context summarizer."""
+    global CONTEXT_SUMMARIZER
+    if CONTEXT_SUMMARIZER is None:
+        base_url = os.environ.get("VLLM_BASE_URL", "http://localhost:8004/v1")
+        model_name = os.environ.get("VLLM_MODEL", "openai/gpt-oss-120b")
+        CONTEXT_SUMMARIZER = ContextSummarizer(
+            base_url=base_url,
+            model_name=model_name,
+            max_concurrent=128,
+            max_tokens=512,
+        )
+    return CONTEXT_SUMMARIZER
 
 
 class GatedAttentionFusion(nn.Module):
@@ -157,6 +162,8 @@ class TTFMLF(nn.Module):
         x: torch.Tensor,
         text: List[List[str]],
         pred_len: int,
+        history_mean: Optional[torch.Tensor] = None,
+        history_std: Optional[torch.Tensor] = None,
         timestamps: Optional[List[List[str]]] = None,
         summaries: Optional[List[str]] = None,
         training: bool = True,
@@ -169,15 +176,20 @@ class TTFMLF(nn.Module):
             x: (B, seq_len) or (B, seq_len, 1) context time series.
             text: Per-sample list of per-timestep text strings, length B.
             pred_len: Requested forecast horizon.
+            history_mean: Optional per-sample history mean (B,) for unscaling before
+                univariate forecast. When provided with history_std, the input is
+                unscaled before the univariate model and rescaled after.
+            history_std: Optional per-sample history std (B,) for unscaling.
             timestamps: Optional per-sample timestamps for summarization.
-            summaries: Pre-computed LLM summaries (skips CONTEXT_SUMMARIZER if set).
+            summaries: Pre-computed LLM summaries (skips context summarizer if set).
             training: If True and univariate is ensemble, sample model at random.
             univariate_model: "chronos", "timesfm", "prophet", or "ensemble".
             trim_text: Whether to trim context to last 64 steps for summarization.
 
         Returns:
-            (forecast, timeseries_forecast) where forecast is (B, pred_len, 1)
-            and timeseries_forecast is the raw univariate output.
+            (forecast, timeseries_forecast, unimodal_forecast) where forecast is
+            (B, pred_len, 1), timeseries_forecast is the raw univariate output,
+            and unimodal_forecast is None (reserved for training reconstruction).
         """
         B = x.shape[0]
 
@@ -186,15 +198,30 @@ class TTFMLF(nn.Module):
         else:
             ts = x.to(self.device).float()
 
-        timeseries_forecast = evaluate_univariate(
-            x=ts,
-            pred_len=self.pred_len,
-            device=self.device,
-            model=univariate_model,
-            chronos_device=self.chronos_device,
-            training=training,
-        )
-        timeseries_forecast = timeseries_forecast.to(self.device)
+        if history_mean is not None and history_std is not None:
+            mu = history_mean.to(self.device).float().view(B, 1, 1)
+            sigma = history_std.to(self.device).float().view(B, 1, 1)
+            sigma = torch.clamp(sigma, min=1e-8)
+            ts_unscaled = ts * sigma + mu
+            timeseries_forecast = evaluate_univariate(
+                x=ts_unscaled,
+                pred_len=self.pred_len,
+                device=self.device,
+                model=univariate_model,
+                chronos_device=self.chronos_device,
+                training=training,
+            ).to(self.device)
+            timeseries_forecast = (timeseries_forecast - mu) / sigma
+        else:
+            timeseries_forecast = evaluate_univariate(
+                x=ts,
+                pred_len=self.pred_len,
+                device=self.device,
+                model=univariate_model,
+                chronos_device=self.chronos_device,
+                training=training,
+            )
+            timeseries_forecast = timeseries_forecast.to(self.device)
 
         timeseries_forecast_embeddings = self.timeseries_embedder(
             timeseries_forecast[..., 0]
@@ -213,7 +240,8 @@ class TTFMLF(nn.Module):
                     context_start = context_len - trim_context_len
                     trimmed_timestamps.append(timestamps[i][context_start:])
 
-            summaries = CONTEXT_SUMMARIZER.summarize_batch(
+            summarizer = _get_context_summarizer()
+            summaries = summarizer.summarize_batch(
                 trimmed_text, trimmed_values, trimmed_timestamps
             )
 
@@ -256,7 +284,7 @@ class TTFMLF(nn.Module):
             )
 
         forecast = forecast.view(B, self.pred_len, 1)
-        return forecast, timeseries_forecast
+        return forecast, timeseries_forecast, None
 
     def _split_summaries(self, summaries: List[str]) -> tuple:
         """Split "FACTUAL SUMMARY:" / "PREDICTIVE SIGNALS:" sections from each summary.

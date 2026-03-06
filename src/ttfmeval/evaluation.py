@@ -8,7 +8,6 @@ Fully standalone: no dependency on the training repo.
 import argparse
 import json
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import torch
@@ -246,33 +245,35 @@ def parse_args():
         help="Output directory for predictions and metrics",
     )
     p.add_argument("--device", type=str, default="cuda")
-    p.add_argument(
-        "--max_workers",
-        type=int,
-        default=1,
-        help="Number of worker processes for dataset-level parallelism (1=sequential). "
-        "With --eval_ttfmlf, all workers share the same vLLM server; start vLLM with "
-        "--max-num-seqs >= max_workers so multiple workers can progress in parallel.",
-    )
-    p.add_argument(
-        "--device_ids",
-        type=str,
-        default="",
-        help="Comma-separated GPU IDs for workers (e.g. '0,1,2,7'). If set, workers use cuda:<id> in round-robin.",
-    )
 
-    default_checkpoint = os.environ.get("TTFM_CHECKPOINT", "")
+    default_checkpoint = os.environ.get("TTFM_CHECKPOINT", "bekzatajan/ttfm")
     p.add_argument(
         "--checkpoint",
         type=str,
         default=default_checkpoint,
-        help="Hugging Face repo id for TTFM checkpoint (e.g. bekzatajan/ttfm). Or set TTFM_CHECKPOINT env var.",
+        help="TTFM checkpoint source: HF repo id or local path. Defaults to bekzatajan/ttfm; override with --checkpoint or TTFM_CHECKPOINT.",
     )
     p.add_argument("--checkpoint_timesfm", type=str, default="")
 
     p.add_argument("--univariate_model", type=str, default="chronos")
     p.add_argument("--text_embedder", type=str, default="finbert")
     p.add_argument("--use_timestamps", action="store_true")
+    p.add_argument(
+        "--cache_summaries",
+        action="store_true",
+        help="Only cache LLM summaries (no evaluation). "
+        "Generates summary JSONs for each dataset in the output directory. "
+        "Subsequent eval runs auto-discover these summaries without extra flags.",
+    )
+    p.add_argument(
+        "--summaries_dir",
+        type=str,
+        default="",
+        help="Directory containing pre-cached LLM summaries. "
+        "When set, summaries are loaded from {summaries_dir}/{dataset_name}/ "
+        "and passed to the model, bypassing on-the-fly LLM generation. "
+        "If not set, the output directory is checked automatically.",
+    )
     p.add_argument("--llm_base_url", type=str, default="http://localhost:8004/v1")
     p.add_argument("--llm_model", type=str, default="openai/gpt-oss-120b")
     p.add_argument("--gpt_cov_noise_std", type=float, default=0.05)
@@ -484,6 +485,226 @@ def compute_raw_mean_std_for_dataset(
 
 
 # =============================================================================
+# SUMMARY CACHING
+# =============================================================================
+
+
+def store_summaries_for_dataset(
+    data_path: str,
+    args,
+    LateFusionDataset,
+    late_fusion_collate,
+    summaries_save_dir: str,
+    context_summarizer,
+    summarizer_context_len: int = 32,
+) -> None:
+    """Incrementally populate summary JSONs for a single evaluation dataset.
+
+    For each test window sample, stores a JSON with:
+        - summary: str (LLM-generated)
+        - historic_values: List[float]
+        - forecast_values: List[float]
+        - history_mean: float
+        - history_std: float
+
+    Existing fields are verified for consistency; only missing fields are added.
+
+    Args:
+        data_path: Path to the dataset file (CSV or Parquet).
+        args: Parsed namespace (seq_len, pred_len, batch_size).
+        LateFusionDataset: Dataset class.
+        late_fusion_collate: Collate function.
+        summaries_save_dir: Root directory for summary storage.
+        context_summarizer: ContextSummarizer instance for LLM calls.
+        summarizer_context_len: Number of trailing timesteps to pass to the
+            summarizer. Defaults to 32.
+    """
+    LLM_BATCH_SIZE = 128
+    dataset_name = extract_dataset_name(data_path)
+    save_dir = os.path.join(summaries_save_dir, dataset_name)
+    os.makedirs(save_dir, exist_ok=True)
+
+    dataset = LateFusionDataset(
+        args.seq_len + args.pred_len,
+        args.pred_len,
+        [data_path],
+        split="test",
+        val_length=1000,
+        stride=1,
+    )
+    if len(dataset) == 0:
+        print(f"  {dataset_name}: empty dataset, skipping.")
+        return
+
+    loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=late_fusion_collate,
+    )
+
+    added_counts = {
+        "historic_values": 0,
+        "forecast_values": 0,
+        "history_mean": 0,
+        "history_std": 0,
+        "summary": 0,
+    }
+
+    pending_summary_indices = []
+    pending_summary_text_inputs = []
+    pending_summary_values_inputs = []
+
+    all_sample_data = []
+    all_sample_paths = []
+
+    sample_idx = 0
+    for batch_dict in tqdm(loader, desc=f"  Updating {dataset_name}"):
+        batch_size_cur = batch_dict["ts"].shape[0]
+        batch_text = batch_dict["text"]
+
+        for idx in range(batch_size_cur):
+            summary_path = os.path.join(save_dir, f"summary_{sample_idx}.json")
+
+            if os.path.exists(summary_path):
+                with open(summary_path, "r") as f:
+                    data = json.load(f)
+            else:
+                data = {}
+
+            values = batch_dict["ts"][idx].cpu().numpy()
+            historic = values[: -args.pred_len]
+            forecast = values[-args.pred_len :]
+
+            if "historic_values" not in data:
+                data["historic_values"] = historic.tolist()
+                added_counts["historic_values"] += 1
+            else:
+                stored = np.array(data["historic_values"], dtype=np.float32)
+                if not np.allclose(stored, historic, atol=1e-5):
+                    print(
+                        f"  Warning: sample {sample_idx} historic_values mismatch "
+                        f"(max diff {np.max(np.abs(stored - historic)):.6f}), overwriting"
+                    )
+                    data["historic_values"] = historic.tolist()
+
+            if "forecast_values" not in data:
+                data["forecast_values"] = forecast.tolist()
+                added_counts["forecast_values"] += 1
+            else:
+                stored = np.array(data["forecast_values"], dtype=np.float32)
+                if not np.allclose(stored, forecast, atol=1e-5):
+                    print(
+                        f"  Warning: sample {sample_idx} forecast_values mismatch "
+                        f"(max diff {np.max(np.abs(stored - forecast)):.6f}), overwriting"
+                    )
+                    data["forecast_values"] = forecast.tolist()
+
+            if "history_mean" not in data:
+                data["history_mean"] = float(batch_dict["history_means"][idx])
+                added_counts["history_mean"] += 1
+            else:
+                cur_mean = float(batch_dict["history_means"][idx])
+                if not np.isclose(data["history_mean"], cur_mean, atol=1e-5):
+                    print(
+                        f"  Warning: sample {sample_idx} history_mean mismatch "
+                        f"(stored={data['history_mean']:.6f}, current={cur_mean:.6f}), overwriting"
+                    )
+                    data["history_mean"] = cur_mean
+
+            if "history_std" not in data:
+                data["history_std"] = float(batch_dict["history_stds"][idx])
+                added_counts["history_std"] += 1
+            else:
+                cur_std = float(batch_dict["history_stds"][idx])
+                if not np.isclose(data["history_std"], cur_std, atol=1e-5):
+                    print(
+                        f"  Warning: sample {sample_idx} history_std mismatch "
+                        f"(stored={data['history_std']:.6f}, current={cur_std:.6f}), overwriting"
+                    )
+                    data["history_std"] = cur_std
+
+            if "summary" not in data:
+                text_per_element = batch_text[idx]
+                historic_text = text_per_element[: len(historic)]
+                trimmed_text = historic_text[-summarizer_context_len:]
+                trimmed_values = historic[-summarizer_context_len:].tolist()
+                pending_summary_indices.append(len(all_sample_data))
+                pending_summary_text_inputs.append(trimmed_text)
+                pending_summary_values_inputs.append(trimmed_values)
+
+            all_sample_data.append(data)
+            all_sample_paths.append(summary_path)
+            sample_idx += 1
+
+    if pending_summary_indices:
+        print(
+            f"  Generating {len(pending_summary_indices)} missing summaries via LLM..."
+        )
+        for chunk_start in range(0, len(pending_summary_indices), LLM_BATCH_SIZE):
+            chunk_end = min(chunk_start + LLM_BATCH_SIZE, len(pending_summary_indices))
+            summaries = context_summarizer.summarize_batch(
+                pending_summary_text_inputs[chunk_start:chunk_end],
+                pending_summary_values_inputs[chunk_start:chunk_end],
+            )
+            for i, summary in enumerate(summaries):
+                pos = pending_summary_indices[chunk_start + i]
+                all_sample_data[pos]["summary"] = summary
+                added_counts["summary"] += 1
+
+    for path, data in zip(all_sample_paths, all_sample_data):
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+    print(f"  {dataset_name}: updated {sample_idx} summaries in {save_dir}")
+    for field, count in added_counts.items():
+        if count > 0:
+            print(f"    added {field}: {count}")
+
+
+def load_summaries_for_dataset(summaries_dir: str, dataset_name: str) -> tuple | None:
+    """Load pre-stored summaries, historic values, and forecast values for a dataset.
+
+    Args:
+        summaries_dir: Root summaries directory containing per-dataset subdirectories.
+        dataset_name: Name of the dataset (sub-directory name).
+
+    Returns:
+        Tuple of (summaries, historic_values, forecast_values) or None if missing.
+        - summaries: List[str]
+        - historic_values: List[List[float]]
+        - forecast_values: List[List[float]]
+    """
+    dataset_dir = os.path.join(summaries_dir, dataset_name)
+    if not os.path.isdir(dataset_dir):
+        return None
+
+    num_files = len(
+        [
+            f
+            for f in os.listdir(dataset_dir)
+            if f.startswith("summary_") and f.endswith(".json")
+        ]
+    )
+    if num_files == 0:
+        return None
+
+    summaries = []
+    historic_values = []
+    forecast_values = []
+    for idx in range(num_files):
+        path = os.path.join(dataset_dir, f"summary_{idx}.json")
+        with open(path, "r") as f:
+            data = json.load(f)
+        summaries.append(data["summary"])
+        historic_values.append(data["historic_values"])
+        forecast_values.append(data["forecast_values"])
+
+    print(f"  Loaded {len(summaries)} cached summaries for {dataset_name}")
+    return summaries, historic_values, forecast_values
+
+
+# =============================================================================
 # SINGLE-DATASET EVALUATION
 # =============================================================================
 
@@ -496,6 +717,7 @@ def evaluate_single_dataset(
     models: dict,
     baselines_to_eval: list,
     precomputed_results: dict | None = None,
+    summaries_dir: str | None = None,
 ) -> dict | None:
     """Run enabled baselines on a single dataset file and merge results.
 
@@ -512,6 +734,9 @@ def evaluate_single_dataset(
         models: Dict of loaded models (e.g. {"model": ttfmlf}).
         baselines_to_eval: List of baseline names to run.
         precomputed_results: Optional cached result dict to update. Defaults to None.
+        summaries_dir: Optional directory with pre-cached LLM summaries.
+            When provided, summaries are loaded from {summaries_dir}/{dataset_name}/
+            and passed to the TTFM model, bypassing on-the-fly LLM generation.
 
     Returns:
         Dict with "input", "gt", "predictions", or None if dataset is empty or evaluation fails.
@@ -556,6 +781,15 @@ def evaluate_single_dataset(
         elif "prophet" in name:
             univariate_model = "prophet"
 
+    dataset_name = extract_dataset_name(data_path)
+    cached_summaries = None
+    cached_historic = None
+    cached_forecast = None
+    if summaries_dir:
+        loaded = load_summaries_for_dataset(summaries_dir, dataset_name)
+        if loaded is not None:
+            cached_summaries, cached_historic, cached_forecast = loaded
+
     for baseline_name in baselines_to_eval:
         config = BASELINE_REGISTRY[baseline_name]
         if all(k in all_results["predictions"] for k in config.prediction_keys):
@@ -575,6 +809,10 @@ def evaluate_single_dataset(
                 prediction_key="ttfm",
                 use_timestamps=args.use_timestamps,
                 univariate_model=univariate_model,
+                precomputed_summaries=cached_summaries,
+                precomputed_historic=cached_historic,
+                precomputed_forecast=cached_forecast,
+                batch_size=args.batch_size,
             )
         elif baseline_name == "ttfmlf_timesfm":
             model = models.get("model_timesfm")
@@ -587,6 +825,26 @@ def evaluate_single_dataset(
                 prediction_key="ttfm_timesfm",
                 use_timestamps=args.use_timestamps,
                 univariate_model="timesfm",
+                precomputed_summaries=cached_summaries,
+                precomputed_historic=cached_historic,
+                precomputed_forecast=cached_forecast,
+                batch_size=args.batch_size,
+            )
+        elif baseline_name == "ttfmlf_prophet":
+            model = models.get("model")
+            result = config.eval_func(
+                model,
+                dataloader,
+                args.device,
+                args.pred_len,
+                model_type="ttfmlf",
+                prediction_key="ttfm_prophet",
+                use_timestamps=args.use_timestamps,
+                univariate_model="prophet",
+                precomputed_summaries=cached_summaries,
+                precomputed_historic=cached_historic,
+                precomputed_forecast=cached_forecast,
+                batch_size=args.batch_size,
             )
         elif baseline_name == "chronos2":
             result = config.eval_func(
@@ -912,8 +1170,8 @@ def load_models(args) -> dict:
         if not checkpoint_path or not os.path.isfile(checkpoint_path):
             raise FileNotFoundError(
                 "TTFM checkpoint required for --eval_ttfmlf. "
-                "Set --checkpoint to a Hugging Face repo id (e.g. bekzatajan/ttfm) "
-                "or set TTFM_CHECKPOINT env var."
+                "By default this uses bekzatajan/ttfm; override with --checkpoint "
+                "or set TTFM_CHECKPOINT to another HF repo id or local path."
             )
         print("\nLoading TTFM model...")
         checkpoint = torch.load(checkpoint_path, map_location=args.device)
@@ -958,65 +1216,6 @@ def load_models(args) -> dict:
 
 
 # =============================================================================
-# PARALLEL WORKER HELPERS
-# =============================================================================
-
-# Module-level state for worker process (one model load per process).
-_worker_models = None
-_worker_args = None
-
-
-def _args_to_dict(args) -> dict:
-    """Serialize args Namespace to a plain dict for process pool (picklable)."""
-    return {k: v for k, v in vars(args).items()}
-
-
-def _dict_to_args(d: dict):
-    """Reconstruct argparse.Namespace from dict (in worker process)."""
-    return argparse.Namespace(**d)
-
-
-def _run_chunk(args_tuple) -> list:
-    """Process a chunk of datasets in a worker process. Returns list of (dataset_name, status, detail)."""
-    global _worker_models, _worker_args
-    chunk, output_dir, args_dict, device_id = args_tuple
-    # Lazy-load models once per process with correct device
-    if _worker_models is None:
-        args = _dict_to_args(args_dict)
-        if device_id is not None:
-            args.device = f"cuda:{device_id}"
-        _worker_args = args
-        _worker_models = load_models(args)
-    results = []
-    for item in chunk:
-        data_path = item["data_path"]
-        dataset_name = item["dataset_name"]
-        baselines_to_eval = item["baselines_to_eval"]
-        is_partial = item["is_partial"]
-        precomputed = (
-            load_per_dataset_results(output_dir, dataset_name) if is_partial else None
-        )
-        try:
-            res = evaluate_single_dataset(
-                data_path,
-                _worker_args,
-                LateFusionDataset,
-                late_fusion_collate,
-                _worker_models,
-                baselines_to_eval,
-                precomputed_results=precomputed,
-            )
-            if res is None:
-                results.append((dataset_name, "failed", "no results"))
-                continue
-            save_per_dataset_results(output_dir, dataset_name, res)
-            results.append((dataset_name, "success", res["gt"].shape[0]))
-        except Exception as e:
-            results.append((dataset_name, "failed", str(e)))
-    return results
-
-
-# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -1039,7 +1238,6 @@ def main() -> None:
     os.makedirs(output_dir, exist_ok=True)
     args.output_dir = output_dir
 
-    # Save metadata for post-eval (e.g. datasets_dir for qualitative plots)
     meta_path = os.path.join(output_dir, "eval_meta.json")
     with open(meta_path, "w") as f:
         json.dump(
@@ -1053,6 +1251,32 @@ def main() -> None:
         )
 
     dataset_files = list_data_files(args.datasets_dir)
+
+    # --cache_summaries: generate LLM summaries for all datasets and exit
+    if args.cache_summaries:
+        from ttfmeval.model.util import ContextSummarizer
+
+        summaries_save_dir = output_dir
+        os.makedirs(summaries_save_dir, exist_ok=True)
+        context_summarizer = ContextSummarizer(
+            base_url=args.llm_base_url,
+            model_name=args.llm_model,
+            max_concurrent=128,
+            max_tokens=512,
+        )
+        print(f"Storing summaries to: {summaries_save_dir}")
+        for data_path in tqdm(dataset_files, desc="Storing summaries"):
+            store_summaries_for_dataset(
+                data_path=data_path,
+                args=args,
+                LateFusionDataset=LateFusionDataset,
+                late_fusion_collate=late_fusion_collate,
+                summaries_save_dir=summaries_save_dir,
+                context_summarizer=context_summarizer,
+            )
+        print("Summary caching complete.")
+        return
+
     enabled_baselines = get_enabled_baselines(args)
 
     if not enabled_baselines:
@@ -1063,20 +1287,29 @@ def main() -> None:
 
     print(f"\nEnabled baselines: {', '.join(enabled_baselines)}")
     print(f"Expected prediction keys: {get_expected_prediction_keys(args)}")
-    if args.max_workers > 1:
-        device_ids = (
-            [int(x.strip()) for x in args.device_ids.split(",") if x.strip()]
-            if args.device_ids
-            else None
-        )
-        print(f"Parallel: max_workers={args.max_workers}, device_ids={device_ids}")
-        if "ttfmlf" in enabled_baselines:
-            print(
-                "  (TTFM uses vLLM for summaries; start vLLM with --max-num-seqs >= "
-                f"{args.max_workers} so all workers can run in parallel.)"
-            )
+
+    models = load_models(args)
+
+    # Resolve summaries directory.
+    # --cache_summaries writes directly into output_dir (per-dataset subdirs),
+    # so auto-discovery checks output_dir first, then output_dir/summaries for
+    # backward compatibility.  --summaries_dir always takes precedence.
+    eval_summaries_dir = None
+    if args.summaries_dir and os.path.isdir(args.summaries_dir):
+        eval_summaries_dir = args.summaries_dir
     else:
-        models = load_models(args)
+        for candidate in [output_dir, os.path.join(output_dir, "summaries")]:
+            if os.path.isdir(candidate) and any(
+                os.path.isdir(os.path.join(candidate, d))
+                and any(
+                    f.startswith("summary_") and f.endswith(".json")
+                    for f in os.listdir(os.path.join(candidate, d))
+                )
+                for d in os.listdir(candidate)
+                if os.path.isdir(os.path.join(candidate, d))
+            ):
+                eval_summaries_dir = candidate
+                break
 
     print("\n" + "=" * 80)
     print("EVALUATION PLAN")
@@ -1139,13 +1372,15 @@ def main() -> None:
         else:
             print(f" -> evaluate: {', '.join(plan.get('to_eval', []))}")
 
+    if eval_summaries_dir:
+        print(f"\nUsing cached summaries from: {eval_summaries_dir}")
+
     print("\n" + "=" * 80)
     print("STARTING EVALUATION")
     print("=" * 80 + "\n")
 
     stats = {"successful": 0, "cached": 0, "failed": 0, "skipped": n_skipped}
 
-    # Handle cached datasets (always in main process)
     for plan in evaluation_plan:
         if plan["status"] != "cached":
             continue
@@ -1161,7 +1396,6 @@ def main() -> None:
                         f"  {model_name}: MAE={metrics[model_name]['scaled']['mean_mae']:.4f}"
                     )
 
-    # Build to_run with dependency-ordered baselines
     to_run = []
     for plan in evaluation_plan:
         if plan["status"] == "cached":
@@ -1181,83 +1415,41 @@ def main() -> None:
             }
         )
 
-    if args.max_workers == 1:
-        # Sequential: run in main process with already-loaded models
-        for item in tqdm(to_run, desc="Datasets"):
-            data_path = item["data_path"]
-            dataset_name = item["dataset_name"]
-            baselines_to_eval = item["baselines_to_eval"]
-            is_partial = item["is_partial"]
-            precomputed = (
-                load_per_dataset_results(output_dir, dataset_name)
-                if is_partial
-                else None
-            )
-            try:
-                results = evaluate_single_dataset(
-                    data_path,
-                    args,
-                    LateFusionDataset,
-                    late_fusion_collate,
-                    models,
-                    baselines_to_eval,
-                    precomputed_results=precomputed,
-                )
-            except Exception as e:
-                print(f"\n{dataset_name} failed: {e}")
-                stats["failed"] += 1
-                continue
-            if results is None:
-                stats["failed"] += 1
-                continue
-            stats["successful"] += 1
-            save_per_dataset_results(output_dir, dataset_name, results)
-            metrics = compute_all_metrics(results, args.pred_len)
-            print(f"\n{dataset_name}: {results['gt'].shape[0]} samples")
-            for model_name in sorted(results["predictions"].keys()):
-                if model_name in metrics:
-                    print(
-                        f"  {model_name}: MAE={metrics[model_name]['scaled']['mean_mae']:.4f}"
-                    )
-    else:
-        # Parallel: distribute chunks to workers
-        device_ids = (
-            [int(x.strip()) for x in args.device_ids.split(",") if x.strip()]
-            if args.device_ids
-            else None
+    for item in tqdm(to_run, desc="Datasets"):
+        data_path = item["data_path"]
+        dataset_name = item["dataset_name"]
+        baselines_to_eval = item["baselines_to_eval"]
+        is_partial = item["is_partial"]
+        precomputed = (
+            load_per_dataset_results(output_dir, dataset_name) if is_partial else None
         )
-        args_dict = _args_to_dict(args)
-        # Split to_run into max_workers chunks (round-robin for balance)
-        n_workers = min(args.max_workers, len(to_run)) if to_run else 0
-        chunks = [[] for _ in range(n_workers)]
-        for i, item in enumerate(to_run):
-            chunks[i % n_workers].append(item)
-        tasks = []
-        for chunk_index, chunk in enumerate(chunks):
-            if not chunk:
-                continue
-            device_id = (
-                device_ids[chunk_index % len(device_ids)] if device_ids else None
+        try:
+            results = evaluate_single_dataset(
+                data_path,
+                args,
+                LateFusionDataset,
+                late_fusion_collate,
+                models,
+                baselines_to_eval,
+                precomputed_results=precomputed,
+                summaries_dir=eval_summaries_dir,
             )
-            tasks.append((chunk, output_dir, args_dict, device_id))
-        if tasks:
-            with ProcessPoolExecutor(max_workers=n_workers) as executor:
-                futures = {executor.submit(_run_chunk, t): t for t in tasks}
-                for future in tqdm(
-                    as_completed(futures), total=len(futures), desc="Workers"
-                ):
-                    try:
-                        chunk_results = future.result()
-                        for dataset_name, status, detail in chunk_results:
-                            if status == "success":
-                                stats["successful"] += 1
-                                print(f"\n{dataset_name}: {detail} samples")
-                            else:
-                                stats["failed"] += 1
-                                print(f"\n{dataset_name} failed: {detail}")
-                    except Exception as e:
-                        stats["failed"] += len(futures[future][0])
-                        print(f"\nWorker error: {e}")
+        except Exception as e:
+            print(f"\n{dataset_name} failed: {e}")
+            stats["failed"] += 1
+            continue
+        if results is None:
+            stats["failed"] += 1
+            continue
+        stats["successful"] += 1
+        save_per_dataset_results(output_dir, dataset_name, results)
+        metrics = compute_all_metrics(results, args.pred_len)
+        print(f"\n{dataset_name}: {results['gt'].shape[0]} samples")
+        for model_name in sorted(results["predictions"].keys()):
+            if model_name in metrics:
+                print(
+                    f"  {model_name}: MAE={metrics[model_name]['scaled']['mean_mae']:.4f}"
+                )
 
     generate_overall_stats_csv(output_dir, args, LateFusionDataset, late_fusion_collate)
 

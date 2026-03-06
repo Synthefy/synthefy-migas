@@ -41,6 +41,15 @@ register_baseline(
 )
 
 register_baseline(
+    name="ttfmlf_prophet",
+    eval_func=eval_ttfm,
+    prediction_keys=["ttfm_prophet", "timeseries"],
+    help_text="Evaluate TTFM model with Prophet as univariate model",
+    requires_model=True,
+    model_attr="model",
+)
+
+register_baseline(
     name="chronos2",
     eval_func=evaluate_chronos2_with_covariates,
     prediction_keys=["chronos_univar"],
