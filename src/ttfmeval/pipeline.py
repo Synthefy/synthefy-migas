@@ -1,12 +1,17 @@
 """TTFM pipeline for loading pre-trained weights and running inference."""
 
+from __future__ import annotations
+
 import os
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import numpy as np
 import torch
 
 from .model import build_model
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def _resolve_checkpoint_path(
@@ -79,7 +84,7 @@ class TTFMPipeline:
             device: Device for the fusion model. Defaults to "cuda".
             pred_len: Maximum forecast horizon (must match the trained model). Defaults to 16.
             chronos_device: Device for Chronos. Defaults to device.
-            text_embedder: Text embedder name (qwen8b, qwen, finbert). Defaults to "qwen8b".
+            text_embedder: Text embedder name (qwen8b, qwen, finbert). Defaults to "finbert".
             text_embedder_device: Device for text embedder. Defaults to None.
 
         Returns:
@@ -104,7 +109,7 @@ class TTFMPipeline:
     def predict(
         self,
         context: Union[np.ndarray, torch.Tensor],
-        text: List[List[str]],
+        text: Optional[List[List[str]]] = None,
         pred_len: int = 16,
         univariate_model: str = "chronos",
         timestamps: Optional[List[List[str]]] = None,
@@ -115,6 +120,8 @@ class TTFMPipeline:
         Args:
             context: Context time series, shape (B, T) or (B, T, 1).
             text: Per-sample list of per-timestep text strings, length B.
+                Required when ``summaries`` is not provided (used for LLM
+                summarization). Can be omitted when ``summaries`` is given.
             pred_len: Forecast horizon (up to pred_len used at training, default 16).
             univariate_model: Univariate backbone: "chronos", "timesfm", "prophet", or "ensemble".
             timestamps: Optional per-sample timestamps for summarization.
@@ -123,6 +130,12 @@ class TTFMPipeline:
         Returns:
             Forecast tensor of shape (B, pred_len, 1) on the pipeline device.
         """
+        if text is None and summaries is None:
+            raise ValueError(
+                "Either 'text' or 'summaries' must be provided. Pass per-timestep "
+                "text for live LLM summarization, or pre-computed summaries to "
+                "skip the LLM server."
+            )
         if isinstance(context, np.ndarray):
             context = torch.tensor(context, dtype=torch.float32)
         if context.dim() == 2:
@@ -140,3 +153,49 @@ class TTFMPipeline:
             )
         forecast = out[0]
         return forecast[:, :pred_len]
+
+    def predict_from_dataframe(
+        self,
+        df: pd.DataFrame,
+        pred_len: int = 16,
+        seq_len: Optional[int] = None,
+        univariate_model: str = "chronos",
+        summaries: Optional[List[str]] = None,
+    ) -> np.ndarray:
+        """Convenience method: forecast from a single DataFrame.
+
+        Accepts a DataFrame with columns ``t``, ``y_t``, and ``text`` (the
+        standard TTFM data format) and returns a 1-D numpy forecast.
+
+        Args:
+            df: DataFrame with columns ``t``, ``y_t``, ``text``.
+            pred_len: Forecast horizon. Defaults to 16.
+            seq_len: Use only the last *seq_len* rows as context. If ``None``,
+                all rows are used.
+            univariate_model: Univariate backbone. Defaults to ``"chronos"``.
+            summaries: Pre-computed summary string(s). When provided the LLM
+                summarizer is skipped and ``text`` is unused.
+
+        Returns:
+            Numpy array of shape ``(pred_len,)`` with the forecast.
+        """
+        if seq_len is not None:
+            df = df.tail(seq_len).reset_index(drop=True)
+
+        context = df["y_t"].values.astype(np.float32).reshape(1, -1)
+        text: Optional[List[List[str]]] = None
+        timestamps: Optional[List[List[str]]] = None
+        if summaries is None:
+            text = [df["text"].fillna("").astype(str).tolist()]
+            if "t" in df.columns:
+                timestamps = [df["t"].astype(str).tolist()]
+
+        forecast = self.predict(
+            context,
+            text,
+            pred_len=pred_len,
+            univariate_model=univariate_model,
+            timestamps=timestamps,
+            summaries=summaries,
+        )
+        return forecast[0, :, 0].detach().cpu().numpy()

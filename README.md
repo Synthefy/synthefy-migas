@@ -6,7 +6,7 @@
 TTFM fuses historical time series with per-step text context: an LLM summarizes the context into factual and predictive signals, and a small fusion head combines these with the univariate forecast to output the final prediction. You can use this repo in two ways:
 
 1. **Run evaluations** — Evaluate TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV/Parquet datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy.
-2. **Inference with TTFM** — Load the pipeline from the Hugging Face Hub and run `predict()` on your context and text in Python or notebooks.
+2. **Inference with TTFM** — Load the pipeline from the Hugging Face Hub and run forecasts from a DataFrame (`predict_from_dataframe()`) or low-level arrays (`predict()`).
 
 ---
 
@@ -109,30 +109,34 @@ Load the pipeline from the Hugging Face Hub and run predictions.
 
 ```python
 from ttfmeval import TTFMPipeline
+import pandas as pd
 
 pipeline = TTFMPipeline.from_pretrained(
     "bekzatajan/ttfm",
     device="cuda",
 )
 
-# context: (batch, time_steps), text: list of list of strings (one per timestep per sample)
-import numpy as np
-context = np.random.randn(2, 64).astype(np.float32)  # 2 samples, 64 steps
-text = [["text at step %d" % i for i in range(64)] for _ in range(2)]  # 2 x 64 strings
+# DataFrame columns: t, y_t, text
+df = pd.read_csv("./data/fnspid_prepared/fnspid_0.5_complement_csvs/adbe_with_text.csv")
 
-forecast = pipeline.predict(context, text, pred_len=16)  # (2, 16, 1)
+# Returns a 1-D numpy array, shape (pred_len,)
+forecast = pipeline.predict_from_dataframe(df, pred_len=16, seq_len=384)
 ```
 
 For full inference with summarization, a vLLM server must be running (see [TTFM and the LLM server](#ttfm-and-the-llm-server)). The default URL and model can be overridden with `VLLM_BASE_URL` and `VLLM_MODEL`.
 
 **Using pre-computed summaries (no LLM server needed):**
 
-If you have pre-computed summaries (e.g. from the prepared FNSPID assets), pass them to `predict()` to skip LLM generation entirely:
+If you have pre-computed summaries (e.g. from the prepared FNSPID assets), pass them to `predict_from_dataframe()` (or `predict()`) to skip LLM generation entirely:
 
 ```python
-summaries = ["Factual summary: ... Prediction summary: ..."]  # one string per sample
-forecast = pipeline.predict(context, text, pred_len=16, summaries=summaries)
+summaries = ["FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ..."]  # one string per sample
+forecast = pipeline.predict_from_dataframe(
+    df, pred_len=16, seq_len=384, summaries=summaries
+)
 ```
+
+**Low-level API (advanced):** If you already have batched arrays, call `predict(context, text, pred_len=...)` directly where `context` has shape `(B, T)` and `text` is a list of `B` lists of strings.
 
 ---
 
