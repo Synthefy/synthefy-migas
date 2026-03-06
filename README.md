@@ -197,6 +197,9 @@ If you want to preprocess the raw FNSPID dataset yourself instead of using the p
 ## Example notebooks
 
 - [TTFM Inference Quick Start](notebooks/ttfm-inference-quickstart.ipynb) — Load the pipeline, run `predict()` on sample data, and plot the forecast.
+- [Bring Your Own Data](notebooks/ttfm-bring-your-own-data.ipynb) — Prepare a DataFrame with `t`, `y_t`, `text` columns and forecast with `predict_from_dataframe()`.
+- [Batch Inference](notebooks/ttfm-batch-inference.ipynb) — Forecast multiple time series in one call and iterate over a directory of CSVs.
+- [Backtest and Metrics](notebooks/ttfm-backtest-and-metrics.ipynb) — Rolling-window backtest with MAE, MSE, MAPE, directional accuracy, and forecast-vs-ground-truth plots.
 
 ---
 
