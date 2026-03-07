@@ -18,14 +18,15 @@ TTFM fuses historical time series with per-step text context: an LLM summarizes 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-If you want to run the notebook and evaluation examples in this README as-is, also download the prepared FNSPID assets (CSVs and optional summaries) from [FNSPID evaluation data](#fnspid-evaluation-data).
-
 Then, from the repo root:
 
 ```bash
 uv sync
 # or: pip install -e .
 ```
+
+If you want to run the notebook and evaluation examples in this README as-is, also download the prepared FNSPID assets (CSVs and optional summaries) from [FNSPID evaluation data](#fnspid-evaluation-data).
+
 ---
 
 ## Usage
