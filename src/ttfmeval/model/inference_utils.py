@@ -26,6 +26,9 @@ def get_chronos_pipeline(device: str = "cuda:0"):
         BaseChronosPipeline: Loaded Chronos-2 pipeline.
     """
     global _chronos_pipeline, _chronos_device
+    d = torch.device(device)
+    if d.type == "cuda" and d.index is None:
+        device = f"cuda:{torch.cuda.current_device()}"
     if _chronos_pipeline is None or _chronos_device != device:
         from chronos import BaseChronosPipeline
 
