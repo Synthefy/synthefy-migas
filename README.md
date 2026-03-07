@@ -5,8 +5,8 @@
 
 TTFM fuses historical time series with per-step text context: an LLM summarizes the context into factual and predictive signals, and a small fusion head combines these with the univariate forecast to output the final prediction. You can use this repo in two ways:
 
-1. **Run evaluations** — Evaluate TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV/Parquet datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy.
-2. **Inference with TTFM** — Load the pipeline from the Hugging Face Hub and run forecasts from a DataFrame (`predict_from_dataframe()`) or low-level arrays (`predict()`).
+1. **Inference with TTFM** — Load the pipeline from the Hugging Face Hub and run forecasts from a DataFrame (`predict_from_dataframe()`) or low-level arrays (`predict()`).
+2. **Run evaluations** — Evaluate TTFM and baselines (Chronos-2, TimesFM, Prophet, naive, etc.) on CSV/Parquet datasets via the CLI; compute MSE, MAE, MAPE, and directional accuracy.
 
 ---
 
@@ -18,6 +18,8 @@ TTFM fuses historical time series with per-step text context: an LLM summarizes 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+If you want to run the notebook and evaluation examples in this README as-is, also download the prepared FNSPID assets (CSVs and optional summaries) from [FNSPID evaluation data](#fnspid-evaluation-data).
+
 Then, from the repo root:
 
 ```bash
@@ -28,7 +30,44 @@ uv sync
 
 ## Usage
 
-### 1. Running evaluations
+### 1. Inference with TTFM
+
+Load the pipeline from the Hugging Face Hub and run predictions.
+
+```python
+from ttfmeval import TTFMPipeline
+import pandas as pd
+
+pipeline = TTFMPipeline.from_pretrained(
+    "Synthefy/ttfm",
+    device="cuda",
+)
+
+# DataFrame columns: t, y_t, text
+df = pd.read_csv("./data/fnspid_prepared/fnspid_0.5_complement_csvs/adbe_with_text.csv")
+
+# Returns a 1-D numpy array, shape (pred_len,)
+forecast = pipeline.predict_from_dataframe(df, pred_len=16, seq_len=384)
+```
+
+For full inference with summarization, a vLLM server must be running (see [TTFM and the LLM server](#ttfm-and-the-llm-server)). The default URL and model can be overridden with `VLLM_BASE_URL` and `VLLM_MODEL`.
+
+**Using pre-computed summaries (no LLM server needed):**
+
+If you have pre-computed summaries (e.g. from the prepared FNSPID assets), pass them to `predict_from_dataframe()` (or `predict()`) to skip LLM generation entirely:
+
+```python
+summaries = ["FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ..."]  # one string per sample
+forecast = pipeline.predict_from_dataframe(
+    df, pred_len=16, seq_len=384, summaries=summaries
+)
+```
+
+**Low-level API (advanced):** If you already have batched arrays, call `predict(context, text, pred_len=...)` directly where `context` has shape `(B, T)` and `text` is a list of `B` lists of strings.
+
+For more inference scenarios (quick start, bring your own data, batch inference, backtesting), see [Example notebooks](#example-notebooks).
+
+### 2. Running evaluations
 
 Run the evaluation CLI on your time-series data. Each data file (CSV or Parquet) must have columns `t`, `y_t`, and `text` (see [Data format](#data-format)).
 
@@ -103,40 +142,13 @@ uv run python scripts/eval_simple.py \
   --eval_timesfm --eval_toto --eval_prophet
 ```
 
-### 2. Inference with TTFM
+After running evals, generate the final post-eval report and plots:
 
-Load the pipeline from the Hugging Face Hub and run predictions.
-
-```python
-from ttfmeval import TTFMPipeline
-import pandas as pd
-
-pipeline = TTFMPipeline.from_pretrained(
-    "Synthefy/ttfm",
-    device="cuda",
-)
-
-# DataFrame columns: t, y_t, text
-df = pd.read_csv("./data/fnspid_prepared/fnspid_0.5_complement_csvs/adbe_with_text.csv")
-
-# Returns a 1-D numpy array, shape (pred_len,)
-forecast = pipeline.predict_from_dataframe(df, pred_len=16, seq_len=384)
+```bash
+uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --all
 ```
 
-For full inference with summarization, a vLLM server must be running (see [TTFM and the LLM server](#ttfm-and-the-llm-server)). The default URL and model can be overridden with `VLLM_BASE_URL` and `VLLM_MODEL`.
-
-**Using pre-computed summaries (no LLM server needed):**
-
-If you have pre-computed summaries (e.g. from the prepared FNSPID assets), pass them to `predict_from_dataframe()` (or `predict()`) to skip LLM generation entirely:
-
-```python
-summaries = ["FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ..."]  # one string per sample
-forecast = pipeline.predict_from_dataframe(
-    df, pred_len=16, seq_len=384, summaries=summaries
-)
-```
-
-**Low-level API (advanced):** If you already have batched arrays, call `predict(context, text, pred_len=...)` directly where `context` has shape `(B, T)` and `text` is a list of `B` lists of strings.
+For other post-eval options (`--scatter`, `--qualitative`, or individual plotting scripts), see [Post-evaluation pipeline](#post-evaluation-pipeline).
 
 ---
 
