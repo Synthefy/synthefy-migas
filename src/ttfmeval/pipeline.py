@@ -22,7 +22,7 @@ def _resolve_checkpoint_path(
     """Return a local path to the checkpoint, downloading from Hugging Face Hub if needed.
 
     If checkpoint is an existing file path, it is returned as-is. Otherwise it is
-    treated as a Hugging Face repo id (e.g. bekzatajan/ttfm) and the file is
+    treated as a Hugging Face repo id (e.g. Synthefy/ttfm) and the file is
     downloaded via huggingface_hub.
 
     Args:
@@ -47,7 +47,7 @@ def _resolve_checkpoint_path(
 class TTFMPipeline:
     """Pipeline for TTFM inference: load pre-trained weights and run forecasts.
 
-    Load weights from the Hugging Face Hub (e.g. bekzatajan/ttfm). For private
+    Load weights from the Hugging Face Hub (e.g. Synthefy/ttfm). For private
     repos, set the HF_TOKEN environment variable or pass token=.
     """
 
@@ -78,7 +78,7 @@ class TTFMPipeline:
         """Load TTFM weights from the Hugging Face Hub and return a pipeline.
 
         Args:
-            repo_id_or_path: Hugging Face repo id (e.g. bekzatajan/ttfm).
+            repo_id_or_path: Hugging Face repo id (e.g. Synthefy/ttfm).
             filename: Name of the weight file in the HF repo.
             token: Hugging Face token for private repos. Defaults to HF_TOKEN env.
             device: Device for the fusion model. Defaults to "cuda".

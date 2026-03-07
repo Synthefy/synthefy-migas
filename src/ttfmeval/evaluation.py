@@ -230,7 +230,7 @@ def parse_args():
         "--datasets_hf",
         type=str,
         default="",
-        help="Hugging Face dataset repo id (e.g. bekzatajan/ttfm-sample-datasets). If set, downloads the repo and uses it as datasets_dir.",
+        help="Hugging Face dataset repo id (e.g. Synthefy/ttfm-sample-datasets). If set, downloads the repo and uses it as datasets_dir.",
     )
     p.add_argument(
         "--datasets_hf_subdir",
@@ -246,12 +246,12 @@ def parse_args():
     )
     p.add_argument("--device", type=str, default="cuda")
 
-    default_checkpoint = os.environ.get("TTFM_CHECKPOINT", "bekzatajan/ttfm")
+    default_checkpoint = os.environ.get("TTFM_CHECKPOINT", "Synthefy/ttfm")
     p.add_argument(
         "--checkpoint",
         type=str,
         default=default_checkpoint,
-        help="TTFM checkpoint source: HF repo id or local path. Defaults to bekzatajan/ttfm; override with --checkpoint or TTFM_CHECKPOINT.",
+        help="TTFM checkpoint source: HF repo id or local path. Defaults to Synthefy/ttfm; override with --checkpoint or TTFM_CHECKPOINT.",
     )
     p.add_argument("--checkpoint_timesfm", type=str, default="")
 
@@ -1170,7 +1170,7 @@ def load_models(args) -> dict:
         if not checkpoint_path or not os.path.isfile(checkpoint_path):
             raise FileNotFoundError(
                 "TTFM checkpoint required for --eval_ttfmlf. "
-                "By default this uses bekzatajan/ttfm; override with --checkpoint "
+                "By default this uses Synthefy/ttfm; override with --checkpoint "
                 "or set TTFM_CHECKPOINT to another HF repo id or local path."
             )
         print("\nLoading TTFM model...")

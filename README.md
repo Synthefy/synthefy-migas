@@ -1,6 +1,6 @@
 # TTFM: Text-and-Time-Series Fusion Model
 
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/bekzatajan/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-FNSPID%20(prepared)-FFD21E)](https://huggingface.co/datasets/bekzatajan/fnspid) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-Model-FFD21E)](https://huggingface.co/Synthefy/ttfm/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20HF-FNSPID%20(prepared)-FFD21E)](https://huggingface.co/datasets/Synthefy/fnspid) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
 
 
 TTFM fuses historical time series with per-step text context: an LLM summarizes the context into factual and predictive signals, and a small fusion head combines these with the univariate forecast to output the final prediction. You can use this repo in two ways:
@@ -51,7 +51,7 @@ uv run python -m ttfmeval.evaluation \
 
 **Example: with TTFM**
 
-By default, `--eval_ttfmlf` loads TTFM from the Hugging Face repo `bekzatajan/ttfm`. You only need `--checkpoint` if you want to override that default with another HF repo id or a local checkpoint path.
+By default, `--eval_ttfmlf` loads TTFM from the Hugging Face repo `Synthefy/ttfm`. You only need `--checkpoint` if you want to override that default with another HF repo id or a local checkpoint path.
 
 ```bash
 uv run python -m ttfmeval.evaluation \
@@ -80,7 +80,7 @@ uv run python -m ttfmeval.evaluation \
   --pred_len 16 \
   --batch_size 64 \
   --eval_ttfmlf \
-  --checkpoint bekzatajan/ttfm
+  --checkpoint Synthefy/ttfm
 ```
 
 Alternatively, you can cache your own summaries and then evaluate with the lightweight evaluator:
@@ -98,7 +98,7 @@ uv run python -m ttfmeval.evaluation \
 # Step 2) Evaluate from cached summaries (no LLM calls)
 uv run python scripts/eval_simple.py \
   --summaries_dir ./results/output/context_384 \
-  --checkpoint bekzatajan/ttfm \
+  --checkpoint Synthefy/ttfm \
   --context_lengths 32 64 128 256 384 \
   --eval_timesfm --eval_toto --eval_prophet
 ```
@@ -112,7 +112,7 @@ from ttfmeval import TTFMPipeline
 import pandas as pd
 
 pipeline = TTFMPipeline.from_pretrained(
-    "bekzatajan/ttfm",
+    "Synthefy/ttfm",
     device="cuda",
 )
 
@@ -144,14 +144,14 @@ forecast = pipeline.predict_from_dataframe(
 
 | Resource   | Hugging Face |
 |-----------|---------------|
-| **Model** | [bekzatajan/ttfm](https://huggingface.co/bekzatajan/ttfm/tree/main) |
-| **FNSPID (prepared)** | [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid) |
+| **Model** | [Synthefy/ttfm](https://huggingface.co/Synthefy/ttfm/tree/main) |
+| **FNSPID (prepared)** | [Synthefy/fnspid](https://huggingface.co/datasets/Synthefy/fnspid) |
 
 ---
 
 ## FNSPID evaluation data
 
-The [FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) dataset (Dong et al., 2024) contains 10M+ financial news articles linked to stock symbols. We provide **ready-to-use** prepared assets on Hugging Face at [bekzatajan/fnspid](https://huggingface.co/datasets/bekzatajan/fnspid):
+The [FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) dataset (Dong et al., 2024) contains 10M+ financial news articles linked to stock symbols. We provide **ready-to-use** prepared assets on Hugging Face at [Synthefy/fnspid](https://huggingface.co/datasets/Synthefy/fnspid):
 
 - **CSVs** (`fnspid_0.5_complement_csvs/`) — files with columns `t`, `y_t`, `text`, ready for evaluation or inference.
 - **Pre-computed summaries** (`fnspid_0.5_complement/`) — per-dataset subdirectories with cached LLM summaries, so you can run TTFM evaluation without a running LLM server.
@@ -181,7 +181,7 @@ After downloading, use the prepared CSVs and summaries with the evaluation CLI:
 uv run python -m ttfmeval.evaluation \
   --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
   --summaries_dir ./data/fnspid_prepared/fnspid_0.5_complement \
-  --checkpoint bekzatajan/ttfm \
+  --checkpoint Synthefy/ttfm \
   --eval_ttfmlf --eval_chronos2 --eval_timesfm
 ```
 
@@ -239,7 +239,7 @@ Enable with `--eval_<name>`:
 
 | Flag | Description |
 |------|-------------|
-| `--eval_ttfmlf` | TTFM model (defaults to HF repo `bekzatajan/ttfm`; override with `--checkpoint` or `TTFM_CHECKPOINT`, including a local path) |
+| `--eval_ttfmlf` | TTFM model (defaults to HF repo `Synthefy/ttfm`; override with `--checkpoint` or `TTFM_CHECKPOINT`, including a local path) |
 | `--eval_ttfmlf_timesfm` | TTFM with TimesFM as univariate (requires `--checkpoint_timesfm`) |
 | `--eval_chronos2` | Chronos-2 univariate |
 | `--eval_chronos2_multivar` | Chronos-2 with covariates |
@@ -299,13 +299,13 @@ You can also run individual scripts (e.g. `scripts/plot_bars.py --results_dir ..
 
 TTFM and `--eval_gpt_forecast` require an LLM server for context summarization or GPT forecasts. Start vLLM (or an OpenAI-compatible server) before running. Default URL: `http://localhost:8004/v1`, default model: `openai/gpt-oss-120b`. Override with `--llm_base_url` and `--llm_model`, or `VLLM_BASE_URL` and `VLLM_MODEL`. No API key is required for a local vLLM server.
 
-**Quick start for TTFM eval:** In a separate terminal run `bash start_vllm.sh` (or `uv run vllm serve openai/gpt-oss-120b --port 8004`). Then run the evaluation CLI with `--eval_ttfmlf`. By default it downloads the checkpoint from `bekzatajan/ttfm`; use `--checkpoint` only to override that source.
+**Quick start for TTFM eval:** In a separate terminal run `bash start_vllm.sh` (or `uv run vllm serve openai/gpt-oss-120b --port 8004`). Then run the evaluation CLI with `--eval_ttfmlf`. By default it downloads the checkpoint from `Synthefy/ttfm`; use `--checkpoint` only to override that source.
 
 ### Environment variables
 
 | Variable | Meaning |
 |----------|---------|
-| `TTFM_CHECKPOINT` | Override the default TTFM checkpoint source (`bekzatajan/ttfm`) with another HF repo id or a local path |
+| `TTFM_CHECKPOINT` | Override the default TTFM checkpoint source (`Synthefy/ttfm`) with another HF repo id or a local path |
 | `TTFM_EVAL_DATASETS_DIR` | Default `--datasets_dir` |
 | `TTFM_EVAL_OUTPUT_DIR` | Default `--output_dir` |
 | `HF_TOKEN` | Hugging Face token (only needed for TabPFN) |
