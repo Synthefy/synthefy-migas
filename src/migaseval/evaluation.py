@@ -1015,7 +1015,9 @@ def generate_overall_stats_csv(
             migas15_wins = np.sum(mae_dict["migas15"] < mae_dict["timeseries"])
             row_data["migas15_win_pct"] = (migas15_wins / n_samples) * 100
             gap_mean = row_data["timeseries_mean_mae"] - row_data["migas15_mean_mae"]
-            gap_median = row_data["timeseries_median_mae"] - row_data["migas15_median_mae"]
+            gap_median = (
+                row_data["timeseries_median_mae"] - row_data["migas15_median_mae"]
+            )
             row_data["gap_mean"] = gap_mean
             row_data["gap_median"] = gap_median
             ts_mean = row_data["timeseries_mean_mae"]
@@ -1108,7 +1110,9 @@ def generate_overall_stats_csv(
             row_data[f"{model_name}_median_mape"] = np.median(mape)
             row_data[f"{model_name}_std_mape"] = np.std(mape)
         if "migas15_mean_mae" in row_data and "timeseries_mean_mae" in row_data:
-            migas15_pred = dataset_results["predictions"]["migas15"].numpy()[filtered_indices]
+            migas15_pred = dataset_results["predictions"]["migas15"].numpy()[
+                filtered_indices
+            ]
             ts_pred = dataset_results["predictions"]["timeseries"].numpy()[
                 filtered_indices
             ]
@@ -1116,7 +1120,9 @@ def generate_overall_stats_csv(
             mae_ts = np.mean(np.abs(ts_pred - gt_np_f), axis=1)
             row_data["migas15_win_pct"] = (np.sum(mae_migas15 < mae_ts) / n_f) * 100
             gap_mean = row_data["timeseries_mean_mae"] - row_data["migas15_mean_mae"]
-            gap_median = row_data["timeseries_median_mae"] - row_data["migas15_median_mae"]
+            gap_median = (
+                row_data["timeseries_median_mae"] - row_data["migas15_median_mae"]
+            )
             row_data["gap_mean"] = gap_mean
             row_data["gap_median"] = gap_median
             ts_mean = row_data["timeseries_mean_mae"]

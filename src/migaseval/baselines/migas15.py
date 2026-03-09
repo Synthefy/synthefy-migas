@@ -129,9 +129,13 @@ def eval_migas15(
             migas15_so_far = torch.cat(all_preds[prediction_key], dim=0)
             ts_so_far = torch.cat(all_preds["timeseries"], dim=0)
             gt_so_far = torch.cat(all_gts, dim=0)
-            migas15_mae = torch.mean(torch.abs(migas15_so_far - gt_so_far).mean(dim=1)).item()
+            migas15_mae = torch.mean(
+                torch.abs(migas15_so_far - gt_so_far).mean(dim=1)
+            ).item()
             ts_mae = torch.mean(torch.abs(ts_so_far - gt_so_far).mean(dim=1)).item()
-            pbar.set_postfix({"MIGAS15_MAE": f"{migas15_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"})
+            pbar.set_postfix(
+                {"MIGAS15_MAE": f"{migas15_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"}
+            )
     else:
         sample_offset = 0
 
@@ -230,9 +234,13 @@ def eval_migas15(
             migas15_so_far = torch.cat(all_preds[prediction_key], dim=0)
             ts_so_far = torch.cat(all_preds["timeseries"], dim=0)
             gt_so_far = torch.cat(all_gts, dim=0)
-            migas15_mae = torch.mean(torch.abs(migas15_so_far - gt_so_far).mean(dim=1)).item()
+            migas15_mae = torch.mean(
+                torch.abs(migas15_so_far - gt_so_far).mean(dim=1)
+            ).item()
             ts_mae = torch.mean(torch.abs(ts_so_far - gt_so_far).mean(dim=1)).item()
-            pbar.set_postfix({"MIGAS15_MAE": f"{migas15_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"})
+            pbar.set_postfix(
+                {"MIGAS15_MAE": f"{migas15_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"}
+            )
 
     return {
         "input": torch.cat(all_inputs, dim=0),
