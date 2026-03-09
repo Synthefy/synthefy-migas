@@ -1,6 +1,6 @@
-"""TTFM model and inference utilities (vendored for standalone eval)."""
+"""Migas-1.5 model and inference utilities (vendored for standalone eval)."""
 
-from .ttfm import TTFMLF, build_model
+from .migas15 import Migas15, build_model
 from .util import (
     encode_texts,
     get_text_embedding_size,
@@ -8,7 +8,7 @@ from .util import (
 )
 
 __all__ = [
-    "TTFMLF",
+    "Migas15",
     "build_model",
     "encode_texts",
     "get_text_embedding_size",

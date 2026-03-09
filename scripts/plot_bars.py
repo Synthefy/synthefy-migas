@@ -5,7 +5,7 @@ Generate bar plots from evaluation stats CSV (stats_Context_*_allsamples.csv).
 Produces:
   - Aggregate mean/median MAE (or MSE/MAPE) by model across datasets
   - Grouped bars: per-dataset, one bar per model (optional max_datasets)
-  - TTFM win rate per dataset (ttfm_win_pct)
+  - Migas-1.5 win rate per dataset (migas15_win_pct)
   - Improvement over timeseries baseline per dataset
   - ELO ratings bar chart (if multielo available)
   - Single-dataset model comparison (all models for one chosen dataset or average)
@@ -29,7 +29,7 @@ _src = Path(__file__).resolve().parent.parent / "src"
 if _src.exists() and str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from ttfmeval.baselines.registry import MODEL_DISPLAY_NAMES
+from migaseval.baselines.registry import MODEL_DISPLAY_NAMES
 
 try:
     import matplotlib
@@ -64,7 +64,7 @@ def discover_stats_csv(results_dir: Path) -> Path | None:
 
 
 def infer_models_from_csv(df: pd.DataFrame, metric: str = "mean_mae") -> list[str]:
-    """Infer model names from columns like ttfm_mean_mae, chronos_univar_mean_mae."""
+    """Infer model names from columns like migas15_mean_mae, chronos_univar_mean_mae."""
     suffix = f"_{metric}"
     models = []
     for c in df.columns:
@@ -96,7 +96,7 @@ def plot_aggregate_metric_by_model(
     if col not in df.columns:
         # try per-model column
         pass
-    # Per-model columns like ttfm_mean_mae
+    # Per-model columns like migas15_mean_mae
     values = []
     labels = []
     for m in models:
@@ -181,19 +181,19 @@ def plot_grouped_metric_by_dataset(
     plt.close()
 
 
-def plot_ttfm_win_rate_per_dataset(
+def plot_migas15_win_rate_per_dataset(
     df: pd.DataFrame,
     out_dir: Path,
     dataset_display: dict[str, str] | None = None,
 ) -> None:
-    """Bar chart of ttfm_win_pct per dataset."""
-    if "ttfm_win_pct" not in df.columns:
+    """Bar chart of migas15_win_pct per dataset."""
+    if "migas15_win_pct" not in df.columns:
         return
-    df = df.dropna(subset=["ttfm_win_pct"])
+    df = df.dropna(subset=["migas15_win_pct"])
     if len(df) == 0:
         return
     datasets = df["dataset_name"].tolist()
-    values = df["ttfm_win_pct"].values
+    values = df["migas15_win_pct"].values
 
     fig, ax = plt.subplots(figsize=(max(8, len(datasets) * 0.35), 5))
     x = np.arange(len(datasets))
@@ -206,12 +206,12 @@ def plot_ttfm_win_rate_per_dataset(
         rotation=45,
         ha="right",
     )
-    ax.set_ylabel("TTFM Win Rate (%)")
-    ax.set_title("TTFM vs Timeseries-Only Win Rate per Dataset")
+    ax.set_ylabel("Migas-1.5 Win Rate (%)")
+    ax.set_title("Migas-1.5 vs Timeseries-Only Win Rate per Dataset")
     ax.set_ylim(0, 105)
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
-    fig.savefig(out_dir / "bar_ttfm_win_pct.png", dpi=150, bbox_inches="tight")
+    fig.savefig(out_dir / "bar_migas15_win_pct.png", dpi=150, bbox_inches="tight")
     plt.close()
 
 
@@ -220,7 +220,7 @@ def plot_improvement_per_dataset(
     out_dir: Path,
     dataset_display: dict[str, str] | None = None,
 ) -> None:
-    """Bar chart of improvement_pct_mean per dataset (TTFM vs timeseries)."""
+    """Bar chart of improvement_pct_mean per dataset (Migas-1.5 vs timeseries)."""
     if "improvement_pct_mean" not in df.columns:
         return
     df = df.dropna(subset=["improvement_pct_mean"])
@@ -243,7 +243,7 @@ def plot_improvement_per_dataset(
         ha="right",
     )
     ax.set_ylabel("Improvement (%)")
-    ax.set_title("TTFM vs Timeseries-Only: Mean MAE Improvement per Dataset")
+    ax.set_title("Migas-1.5 vs Timeseries-Only: Mean MAE Improvement per Dataset")
     ax.grid(True, alpha=0.25, axis="y")
     plt.tight_layout()
     fig.savefig(out_dir / "bar_improvement_pct.png", dpi=150, bbox_inches="tight")
@@ -290,7 +290,7 @@ def plot_elo_bars(
     values = [ratings[m] for m in models]
     fig, ax = plt.subplots(figsize=(max(6, len(labels) * 0.6), 4))
     x = np.arange(len(labels))
-    colors = ["#2ca02c" if m == "ttfm" else "#1f77b4" for m in models]
+    colors = ["#2ca02c" if m == "migas15" else "#1f77b4" for m in models]
     ax.bar(x, values, color=colors, edgecolor="black", linewidth=0.8, width=0.7)
     ax.axhline(y=base_rating, color="red", linestyle="--", linewidth=1, alpha=0.7)
     ax.set_xticks(x)
@@ -409,7 +409,7 @@ def run(
         dataset_display=dataset_display,
         model_display=model_display,
     )
-    plot_ttfm_win_rate_per_dataset(df, out_dir, dataset_display)
+    plot_migas15_win_rate_per_dataset(df, out_dir, dataset_display)
     plot_improvement_per_dataset(df, out_dir, dataset_display)
     plot_elo_bars(df, models, metric, out_dir, model_display)
     # bar_single_average_* would duplicate bar_aggregate_* (same data), so only run for a specific dataset

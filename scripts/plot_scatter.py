@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to create scatter plots comparing TTFM MAE vs other model MAE at sample level.
+Script to create scatter plots comparing Migas-1.5 MAE vs other model MAE at sample level.
 """
 
 import sys
@@ -14,7 +14,7 @@ _src = Path(__file__).resolve().parent.parent / "src"
 if _src.exists() and str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from ttfmeval.baselines.registry import MODEL_DISPLAY_NAMES
+from migaseval.baselines.registry import MODEL_DISPLAY_NAMES
 
 try:
     import matplotlib.pyplot as plt
@@ -47,34 +47,34 @@ def compute_mae(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
 
 
 def find_best_window_for_dataset(
-    ttfm_mae: np.ndarray, ts_mae: np.ndarray, window_length: int
+    migas15_mae: np.ndarray, ts_mae: np.ndarray, window_length: int
 ) -> Tuple[int, int]:
     """
-    Find the window where TTFM has the largest advantage over Timeseries.
+    Find the window where Migas-1.5 has the largest advantage over Timeseries.
 
     Args:
-        ttfm_mae: TTFM MAE array for the dataset
+        migas15_mae: Migas-1.5 MAE array for the dataset
         ts_mae: Timeseries MAE array for the dataset
         window_length: Length of the sliding window
 
     Returns:
         Tuple of (start_idx, end_idx) for the best window
     """
-    actual_window = min(window_length, len(ttfm_mae))
+    actual_window = min(window_length, len(migas15_mae))
 
     best_gap = float("-inf")
     best_window_start = 0
 
     # Slide window through the dataset
-    for i in range(len(ttfm_mae) - actual_window + 1):
-        window_ttfm = ttfm_mae[i : i + actual_window]
+    for i in range(len(migas15_mae) - actual_window + 1):
+        window_migas15 = migas15_mae[i : i + actual_window]
         window_ts = ts_mae[i : i + actual_window]
 
-        ttfm_median = np.median(window_ttfm)
+        migas15_median = np.median(window_migas15)
         ts_median = np.median(window_ts)
 
-        # Gap: positive means TTFM is better
-        gap = ts_median - ttfm_median
+        # Gap: positive means Migas-1.5 is better
+        gap = ts_median - migas15_median
 
         if gap > best_gap:
             best_gap = gap
@@ -146,12 +146,12 @@ def plot_sample_level_scatter(
     compare_model: str = "gpt_forecast",
     window_length: int = None,
 ):
-    """Create publication-quality scatter plots of TTFM MAE vs comparison model MAE at sample level.
+    """Create publication-quality scatter plots of Migas-1.5 MAE vs comparison model MAE at sample level.
 
     Args:
         results_dir: Directory containing results
         per_dataset_csv: Path to per-dataset metrics CSV
-        compare_model: Name of model to compare with TTFM (e.g., 'gpt_forecast', 'chronos_gpt_cov', 'timeseries')
+        compare_model: Name of model to compare with Migas-1.5 (e.g., 'gpt_forecast', 'chronos_gpt_cov', 'timeseries')
         window_length: If specified, only analyze samples within the best performance window (default: None = all samples)
     """
 
@@ -166,7 +166,7 @@ def plot_sample_level_scatter(
     use_new_format = outputs_dir.exists() and outputs_dir.is_dir()
 
     # Models we need to load
-    models_to_load = ["ttfm", compare_model]
+    models_to_load = ["migas15", compare_model]
     if window_length is not None:
         models_to_load.append("timeseries")
 
@@ -177,15 +177,15 @@ def plot_sample_level_scatter(
         )
         n_samples_expected = len(gt)
 
-        if "ttfm" not in predictions:
-            print("Error: ttfm predictions not found!")
+        if "migas15" not in predictions:
+            print("Error: migas15 predictions not found!")
             return
         if compare_model not in predictions:
             print(f"Error: {compare_model} predictions not found!")
             print(f"Available models: {list(predictions.keys())}")
             return
 
-        ttfm_pred = predictions["ttfm"]
+        migas15_pred = predictions["migas15"]
         compare_pred = predictions[compare_model]
         ts_pred = predictions.get("timeseries", None)
 
@@ -202,7 +202,7 @@ def plot_sample_level_scatter(
 
         # Load predictions
         compare_pred_path = results_dir / f"{compare_model}_pred.npy"
-        ttfm_pred_path = results_dir / "ttfm_pred.npy"
+        migas15_pred_path = results_dir / "migas15_pred.npy"
 
         if not compare_pred_path.exists():
             print(f"Error: {compare_model}_pred.npy not found!")
@@ -210,12 +210,12 @@ def plot_sample_level_scatter(
             for f in sorted(results_dir.glob("*_pred.npy")):
                 print(f"  - {f.name}")
             return
-        if not ttfm_pred_path.exists():
-            print("Error: ttfm_pred.npy not found!")
+        if not migas15_pred_path.exists():
+            print("Error: migas15_pred.npy not found!")
             return
 
         compare_pred = np.load(compare_pred_path)
-        ttfm_pred = np.load(ttfm_pred_path)
+        migas15_pred = np.load(migas15_pred_path)
 
         # Load timeseries predictions (needed for window filtering if requested)
         ts_pred = None
@@ -247,15 +247,15 @@ def plot_sample_level_scatter(
 
     # Compute MAE for all samples
     compare_mae = compute_mae(compare_pred, gt)
-    ttfm_mae = compute_mae(ttfm_pred, gt)
+    migas15_mae = compute_mae(migas15_pred, gt)
 
     # Filter out samples where either MAE > 10
-    valid_mask = (compare_mae <= 6) & (ttfm_mae <= 6)
+    valid_mask = (compare_mae <= 6) & (migas15_mae <= 6)
     n_filtered = np.sum(~valid_mask)
     if n_filtered > 0:
         print(f"Filtering out {n_filtered} samples with MAE > 10")
         compare_mae = compare_mae[valid_mask]
-        ttfm_mae = ttfm_mae[valid_mask]
+        migas15_mae = migas15_mae[valid_mask]
         gt = gt[valid_mask]
         if ts_pred is not None:
             ts_pred = ts_pred[valid_mask]
@@ -264,14 +264,14 @@ def plot_sample_level_scatter(
     if window_length is not None:
         plots_dir = (
             results_dir
-            / f"sample_scatter_plots_ttfm_vs_{compare_model}_window{window_length}"
+            / f"sample_scatter_plots_migas15_vs_{compare_model}_window{window_length}"
         )
     else:
-        plots_dir = results_dir / f"sample_scatter_plots_ttfm_vs_{compare_model}"
+        plots_dir = results_dir / f"sample_scatter_plots_migas15_vs_{compare_model}"
     plots_dir.mkdir(exist_ok=True)
 
     print(f"\nCreating publication-quality scatter plots for {len(df)} datasets...")
-    print(f"Comparing TTFM vs {compare_model}")
+    print(f"Comparing Migas-1.5 vs {compare_model}")
     if window_length is not None:
         print(f"Filtering to best performance windows (length={window_length})")
     print()
@@ -352,7 +352,7 @@ def plot_sample_level_scatter(
 
         # Get MAE for this dataset (only valid samples)
         compare_mae_dataset = compare_mae[dataset_filtered_indices]
-        ttfm_mae_dataset = ttfm_mae[dataset_filtered_indices]
+        migas15_mae_dataset = migas15_mae[dataset_filtered_indices]
 
         # Apply window filtering if requested
         if window_length is not None and ts_pred is not None:
@@ -361,16 +361,16 @@ def plot_sample_level_scatter(
             ts_pred_dataset = ts_pred[dataset_filtered_indices]
             ts_mae_dataset = compute_mae(ts_pred_dataset, gt_dataset)
             window_start, window_end = find_best_window_for_dataset(
-                ttfm_mae_dataset, ts_mae_dataset, window_length
+                migas15_mae_dataset, ts_mae_dataset, window_length
             )
 
             # Filter to the best window
             compare_mae_dataset = compare_mae_dataset[window_start:window_end]
-            ttfm_mae_dataset = ttfm_mae_dataset[window_start:window_end]
-            n_samples_in_window = len(ttfm_mae_dataset)
+            migas15_mae_dataset = migas15_mae_dataset[window_start:window_end]
+            n_samples_in_window = len(migas15_mae_dataset)
             window_info = f" [window: {window_start}-{window_end - 1}]"
         else:
-            n_samples_in_window = len(ttfm_mae_dataset)
+            n_samples_in_window = len(migas15_mae_dataset)
             window_info = ""
 
         # Create publication-quality scatter plot for this dataset
@@ -380,11 +380,11 @@ def plot_sample_level_scatter(
 
         # Compute correlation and fit
         if n_samples_in_window > 1:
-            correlation = np.corrcoef(compare_mae_dataset, ttfm_mae_dataset)[0, 1]
+            correlation = np.corrcoef(compare_mae_dataset, migas15_mae_dataset)[0, 1]
             r_squared = correlation**2
 
             # Fit linear regression (polyfit degree 1)
-            coeffs = np.polyfit(compare_mae_dataset, ttfm_mae_dataset, deg=1)
+            coeffs = np.polyfit(compare_mae_dataset, migas15_mae_dataset, deg=1)
             poly_fn = np.poly1d(coeffs)
         else:
             correlation = np.nan
@@ -395,7 +395,7 @@ def plot_sample_level_scatter(
         # Scatter plot
         ax.scatter(
             compare_mae_dataset,
-            ttfm_mae_dataset,
+            migas15_mae_dataset,
             s=25,
             alpha=0.6,
             c=color_points,
@@ -405,8 +405,8 @@ def plot_sample_level_scatter(
         )
 
         # Add diagonal line (y=x) for reference
-        min_val = min(np.min(compare_mae_dataset), np.min(ttfm_mae_dataset))
-        max_val = max(np.max(compare_mae_dataset), np.max(ttfm_mae_dataset))
+        min_val = min(np.min(compare_mae_dataset), np.min(migas15_mae_dataset))
+        max_val = max(np.max(compare_mae_dataset), np.max(migas15_mae_dataset))
         ax.plot(
             [min_val, max_val],
             [min_val, max_val],
@@ -434,7 +434,7 @@ def plot_sample_level_scatter(
 
         # Set labels
         ax.set_xlabel(f"{model_display_name} MAE")
-        ax.set_ylabel("TTFM MAE")
+        ax.set_ylabel("Migas-1.5 MAE")
 
         # Title with statistics
         if not np.isnan(correlation):
@@ -483,9 +483,9 @@ def plot_sample_level_scatter(
                 "slope": coeffs[0],
                 "intercept": coeffs[1],
                 "compare_mae_mean": np.mean(compare_mae_dataset),
-                "ttfm_mae_mean": np.mean(ttfm_mae_dataset),
+                "migas15_mae_mean": np.mean(migas15_mae_dataset),
                 "compare_mae_median": np.median(compare_mae_dataset),
-                "ttfm_mae_median": np.median(ttfm_mae_dataset),
+                "migas15_mae_median": np.median(migas15_mae_dataset),
             }
         )
 
@@ -495,11 +495,11 @@ def plot_sample_level_scatter(
     if window_length is not None:
         csv_path = (
             results_dir
-            / f"sample_scatter_correlations_ttfm_vs_{compare_model}_window{window_length}.csv"
+            / f"sample_scatter_correlations_migas15_vs_{compare_model}_window{window_length}.csv"
         )
     else:
         csv_path = (
-            results_dir / f"sample_scatter_correlations_ttfm_vs_{compare_model}.csv"
+            results_dir / f"sample_scatter_correlations_migas15_vs_{compare_model}.csv"
         )
     corr_df = pd.DataFrame(correlation_results)
     corr_df.to_csv(csv_path, index=False)
@@ -509,7 +509,7 @@ def plot_sample_level_scatter(
     if window_length is not None and ts_pred is not None:
         # Collect all filtered samples for overall statistics
         all_compare_mae_filtered = []
-        all_ttfm_mae_filtered = []
+        all_migas15_mae_filtered = []
         cumulative_samples = 0
 
         for idx, row in df.iterrows():
@@ -533,30 +533,30 @@ def plot_sample_level_scatter(
                 continue
 
             compare_mae_dataset = compare_mae[dataset_filtered_indices]
-            ttfm_mae_dataset = ttfm_mae[dataset_filtered_indices]
+            migas15_mae_dataset = migas15_mae[dataset_filtered_indices]
             gt_dataset = gt[dataset_filtered_indices]
             ts_pred_dataset = ts_pred[dataset_filtered_indices]
             ts_mae_dataset = compute_mae(ts_pred_dataset, gt_dataset)
 
             window_start, window_end = find_best_window_for_dataset(
-                ttfm_mae_dataset, ts_mae_dataset, window_length
+                migas15_mae_dataset, ts_mae_dataset, window_length
             )
 
             all_compare_mae_filtered.extend(
                 compare_mae_dataset[window_start:window_end]
             )
-            all_ttfm_mae_filtered.extend(ttfm_mae_dataset[window_start:window_end])
+            all_migas15_mae_filtered.extend(migas15_mae_dataset[window_start:window_end])
 
         compare_mae_for_stats = np.array(all_compare_mae_filtered)
-        ttfm_mae_for_stats = np.array(all_ttfm_mae_filtered)
+        migas15_mae_for_stats = np.array(all_migas15_mae_filtered)
     else:
         # Use all filtered samples (MAE <= 10 filter already applied)
         compare_mae_for_stats = compare_mae
-        ttfm_mae_for_stats = ttfm_mae
+        migas15_mae_for_stats = migas15_mae
 
-    overall_corr = np.corrcoef(compare_mae_for_stats, ttfm_mae_for_stats)[0, 1]
+    overall_corr = np.corrcoef(compare_mae_for_stats, migas15_mae_for_stats)[0, 1]
     overall_r_squared = overall_corr**2
-    overall_coeffs = np.polyfit(compare_mae_for_stats, ttfm_mae_for_stats, deg=1)
+    overall_coeffs = np.polyfit(compare_mae_for_stats, migas15_mae_for_stats, deg=1)
 
     print("\nOverall statistics (all samples, MAE <= 10):")
     print(f"  Correlation (r): {overall_corr:.4f}")
@@ -621,7 +621,7 @@ def plot_sample_level_scatter(
         end_idx = start_idx + n_samples
 
         compare_mae_dataset = compare_mae[start_idx:end_idx]
-        ttfm_mae_dataset = ttfm_mae[start_idx:end_idx]
+        migas15_mae_dataset = migas15_mae[start_idx:end_idx]
 
         # Apply window filtering if requested
         if window_length is not None and ts_pred is not None:
@@ -629,17 +629,17 @@ def plot_sample_level_scatter(
                 ts_pred[start_idx:end_idx], gt[start_idx:end_idx]
             )
             window_start, window_end = find_best_window_for_dataset(
-                ttfm_mae_dataset, ts_mae_dataset, window_length
+                migas15_mae_dataset, ts_mae_dataset, window_length
             )
             compare_mae_dataset = compare_mae_dataset[window_start:window_end]
-            ttfm_mae_dataset = ttfm_mae_dataset[window_start:window_end]
+            migas15_mae_dataset = migas15_mae_dataset[window_start:window_end]
 
         ax = axes[idx]
 
         # Scatter plot
         ax.scatter(
             compare_mae_dataset,
-            ttfm_mae_dataset,
+            migas15_mae_dataset,
             s=15,
             alpha=0.6,
             c=color_points,
@@ -648,8 +648,8 @@ def plot_sample_level_scatter(
             rasterized=True,
         )
 
-        min_val = min(np.min(compare_mae_dataset), np.min(ttfm_mae_dataset))
-        max_val = max(np.max(compare_mae_dataset), np.max(ttfm_mae_dataset))
+        min_val = min(np.min(compare_mae_dataset), np.min(migas15_mae_dataset))
+        max_val = max(np.max(compare_mae_dataset), np.max(migas15_mae_dataset))
         ax.plot(
             [min_val, max_val],
             [min_val, max_val],
@@ -678,7 +678,7 @@ def plot_sample_level_scatter(
             ax.plot(x_fit, y_fit, "-", color=color_fit, linewidth=1.5, alpha=0.8)
 
         ax.set_xlabel(f"{model_display_name} MAE", fontsize=9)
-        ax.set_ylabel("TTFM MAE", fontsize=9)
+        ax.set_ylabel("Migas-1.5 MAE", fontsize=9)
         if not np.isnan(correlation):
             ax.set_title(
                 f"{dataset_display}\n$r={correlation:.2f}$, $y={slope:.2f}x{intercept:+.2f}$",
@@ -701,7 +701,7 @@ def plot_sample_level_scatter(
 
     # Add title
     plt.suptitle(
-        "Sample-Level MAEs Comparison",  # f'TTFM vs {model_display_name}: Sample-Level MAE{title_suffix}',
+        "Sample-Level MAEs Comparison",  # f'Migas-1.5 vs {model_display_name}: Sample-Level MAE{title_suffix}',
         fontsize=12,
         fontweight="normal",
     )
@@ -709,18 +709,18 @@ def plot_sample_level_scatter(
     if window_length is not None:
         summary_path_pdf = (
             results_dir
-            / f"sample_scatter_summary_ttfm_vs_{compare_model}_window{window_length}.pdf"
+            / f"sample_scatter_summary_migas15_vs_{compare_model}_window{window_length}.pdf"
         )
         summary_path_png = (
             results_dir
-            / f"sample_scatter_summary_ttfm_vs_{compare_model}_window{window_length}.png"
+            / f"sample_scatter_summary_migas15_vs_{compare_model}_window{window_length}.png"
         )
     else:
         summary_path_pdf = (
-            results_dir / f"sample_scatter_summary_ttfm_vs_{compare_model}.pdf"
+            results_dir / f"sample_scatter_summary_migas15_vs_{compare_model}.pdf"
         )
         summary_path_png = (
-            results_dir / f"sample_scatter_summary_ttfm_vs_{compare_model}.png"
+            results_dir / f"sample_scatter_summary_migas15_vs_{compare_model}.png"
         )
 
     plt.savefig(summary_path_pdf, dpi=300, bbox_inches="tight", format="pdf")
@@ -735,7 +735,7 @@ def plot_sample_level_scatter(
     # Scatter plot
     ax.scatter(
         compare_mae_for_stats,
-        ttfm_mae_for_stats,
+        migas15_mae_for_stats,
         s=15,
         alpha=0.4,
         c=color_points,
@@ -745,8 +745,8 @@ def plot_sample_level_scatter(
     )
 
     # Add diagonal line (y=x)
-    min_val = min(np.min(compare_mae_for_stats), np.min(ttfm_mae_for_stats))
-    max_val = max(np.max(compare_mae_for_stats), np.max(ttfm_mae_for_stats))
+    min_val = min(np.min(compare_mae_for_stats), np.min(migas15_mae_for_stats))
+    max_val = max(np.max(compare_mae_for_stats), np.max(migas15_mae_for_stats))
     ax.plot(
         [min_val, max_val],
         [min_val, max_val],
@@ -764,9 +764,9 @@ def plot_sample_level_scatter(
     ax.plot(x_fit, y_fit, "-", color=color_fit, linewidth=2, alpha=0.8)
 
     ax.set_xlabel(f"{model_display_name} MAE")
-    ax.set_ylabel("TTFM MAE")
+    ax.set_ylabel("Migas-1.5 MAE")
 
-    title_text = f"TTFM vs {model_display_name}\n$r={overall_corr:.3f}$, $y={overall_coeffs[0]:.2f}x{overall_coeffs[1]:+.2f}$"
+    title_text = f"Migas-1.5 vs {model_display_name}\n$r={overall_corr:.3f}$, $y={overall_coeffs[0]:.2f}x{overall_coeffs[1]:+.2f}$"
     ax.set_title(title_text, fontweight="normal")
     ax.grid(True, alpha=0.25, linestyle="-", linewidth=0.5)
     ax.set_axisbelow(True)
@@ -775,18 +775,18 @@ def plot_sample_level_scatter(
     if window_length is not None:
         overall_path_pdf = (
             results_dir
-            / f"sample_scatter_overall_ttfm_vs_{compare_model}_window{window_length}.pdf"
+            / f"sample_scatter_overall_migas15_vs_{compare_model}_window{window_length}.pdf"
         )
         overall_path_png = (
             results_dir
-            / f"sample_scatter_overall_ttfm_vs_{compare_model}_window{window_length}.png"
+            / f"sample_scatter_overall_migas15_vs_{compare_model}_window{window_length}.png"
         )
     else:
         overall_path_pdf = (
-            results_dir / f"sample_scatter_overall_ttfm_vs_{compare_model}.pdf"
+            results_dir / f"sample_scatter_overall_migas15_vs_{compare_model}.pdf"
         )
         overall_path_png = (
-            results_dir / f"sample_scatter_overall_ttfm_vs_{compare_model}.png"
+            results_dir / f"sample_scatter_overall_migas15_vs_{compare_model}.png"
         )
 
     plt.savefig(overall_path_pdf, dpi=300, bbox_inches="tight", format="pdf")
@@ -800,7 +800,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Create scatter plots comparing TTFM vs other models"
+        description="Create scatter plots comparing Migas-1.5 vs other models"
     )
     parser.add_argument(
         "--results_dir",
@@ -812,20 +812,20 @@ def main():
         "--compare_model",
         type=str,
         default="gpt_forecast",
-        help="Model to compare with TTFM (e.g., 'gpt_forecast', 'chronos_gpt_cov', 'timeseries', 'chronos_univar')",
+        help="Model to compare with Migas-1.5 (e.g., 'gpt_forecast', 'chronos_gpt_cov', 'timeseries', 'chronos_univar')",
     )
     parser.add_argument(
         "--window_length",
         type=int,
         default=None,
-        help="If specified, only analyze samples within the best performance window (where TTFM has largest advantage over Timeseries)",
+        help="If specified, only analyze samples within the best performance window (where Migas-1.5 has largest advantage over Timeseries)",
     )
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
     per_dataset_csv = results_dir / "per_dataset_metrics.csv"
     if not per_dataset_csv.exists():
-        # synthefy-ttfm evaluation writes stats_Context_<seq_len>_allsamples.csv
+        # synthefy-migas15 evaluation writes stats_Context_<seq_len>_allsamples.csv
         candidates = list(results_dir.glob("stats_Context_*_allsamples.csv"))
         if candidates:
             per_dataset_csv = candidates[0]

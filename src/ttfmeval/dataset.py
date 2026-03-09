@@ -1,4 +1,4 @@
-"""Dataset and data loading for TTFM evaluation."""
+"""Dataset and data loading for Migas-1.5 evaluation."""
 
 import os
 import random
@@ -48,7 +48,7 @@ def get_datasets_dir_from_hf(
     or pass token=.
 
     Args:
-        repo_id: Hugging Face repo id (e.g. Synthefy/ttfm-sample-datasets).
+        repo_id: Hugging Face repo id (e.g. Synthefy/migas-1.5-sample-datasets).
         subdir: Subdirectory inside the repo to use as the root for CSVs. Defaults to None (repo root).
         cache_dir: Directory to cache the download. Defaults to HF hub cache.
         token: Hugging Face token for private repos. Defaults to HF_TOKEN env.

@@ -1,4 +1,4 @@
-"""TTFM pipeline for loading pre-trained weights and running inference."""
+"""Migas-1.5 pipeline for loading pre-trained weights and running inference."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def _resolve_checkpoint_path(
     """Return a local path to the checkpoint, downloading from Hugging Face Hub if needed.
 
     If checkpoint is an existing file path, it is returned as-is. Otherwise it is
-    treated as a Hugging Face repo id (e.g. Synthefy/ttfm) and the file is
+    treated as a Hugging Face repo id (e.g. Synthefy/migas-1.5) and the file is
     downloaded via huggingface_hub.
 
     Args:
@@ -44,18 +44,18 @@ def _resolve_checkpoint_path(
     )
 
 
-class TTFMPipeline:
-    """Pipeline for TTFM inference: load pre-trained weights and run forecasts.
+class MigasPipeline:
+    """Pipeline for Migas-1.5 inference: load pre-trained weights and run forecasts.
 
-    Load weights from the Hugging Face Hub (e.g. Synthefy/ttfm). For private
+    Load weights from the Hugging Face Hub (e.g. Synthefy/migas-1.5). For private
     repos, set the HF_TOKEN environment variable or pass token=.
     """
 
     def __init__(self, model: torch.nn.Module, device: str = "cuda"):
-        """Wrap a loaded TTFMLF model for inference.
+        """Wrap a loaded Migas-1.5 model for inference.
 
         Args:
-            model: A TTFMLF model with weights loaded (e.g. via from_pretrained).
+            model: A Migas-1.5 model with weights loaded (e.g. via from_pretrained).
             device: Device to run inference on. Defaults to "cuda".
         """
         self.model = model
@@ -74,11 +74,11 @@ class TTFMPipeline:
         chronos_device: Optional[str] = None,
         text_embedder: str = "finbert",
         text_embedder_device: Optional[str] = None,
-    ) -> "TTFMPipeline":
-        """Load TTFM weights from the Hugging Face Hub and return a pipeline.
+    ) -> "MigasPipeline":
+        """Load Migas-1.5 weights from the Hugging Face Hub and return a pipeline.
 
         Args:
-            repo_id_or_path: Hugging Face repo id (e.g. Synthefy/ttfm).
+            repo_id_or_path: Hugging Face repo id (e.g. Synthefy/migas-1.5).
             filename: Name of the weight file in the HF repo.
             token: Hugging Face token for private repos. Defaults to HF_TOKEN env.
             device: Device for the fusion model. Defaults to "cuda".
@@ -88,7 +88,7 @@ class TTFMPipeline:
             text_embedder_device: Device for text embedder. Defaults to None.
 
         Returns:
-            TTFMPipeline ready for predict().
+            MigasPipeline ready for predict().
         """
         if token is None:
             token = os.environ.get("HF_TOKEN")
@@ -115,7 +115,7 @@ class TTFMPipeline:
         timestamps: Optional[List[List[str]]] = None,
         summaries: Optional[List[str]] = None,
     ) -> torch.Tensor:
-        """Run TTFM forward and return the forecast for the requested horizon.
+        """Run Migas-1.5 forward and return the forecast for the requested horizon.
 
         The context is automatically normalized (zero-mean, unit-variance) before
         being passed to the model, matching the training-time convention used by
@@ -194,7 +194,7 @@ class TTFMPipeline:
         """Convenience method: forecast from a single DataFrame.
 
         Accepts a DataFrame with columns ``t``, ``y_t``, and ``text`` (the
-        standard TTFM data format) and returns a 1-D numpy forecast.
+        standard Migas-1.5 data format) and returns a 1-D numpy forecast.
 
         Args:
             df: DataFrame with columns ``t``, ``y_t``, ``text``.

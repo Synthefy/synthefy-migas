@@ -70,7 +70,7 @@ def main() -> int:
     parser.add_argument(
         "--scatter",
         action="store_true",
-        help="Also generate scatter plots (TTFM vs baseline per sample)",
+        help="Also generate scatter plots (Migas-1.5 vs baseline per sample)",
     )
     parser.add_argument(
         "--qualitative",
@@ -167,7 +167,7 @@ def main() -> int:
             "- [bar_aggregate_mean_mae.png](bar_aggregate_mean_mae.png)"
         )
         report_lines.append("- [bar_grouped_mean_mae.png](bar_grouped_mean_mae.png)")
-        report_lines.append("- [bar_ttfm_win_pct.png](bar_ttfm_win_pct.png)")
+        report_lines.append("- [bar_migas15_win_pct.png](bar_migas15_win_pct.png)")
         report_lines.append("- [bar_improvement_pct.png](bar_improvement_pct.png)")
         report_lines.append(
             "- [bar_elo_mean_mae.png](bar_elo_mean_mae.png) (if multielo installed)"
@@ -186,7 +186,7 @@ def main() -> int:
             report_lines.append("### Scatter plots")
             report_lines.append("")
             report_lines.append(
-                "Scatter plots were written under the results directory (e.g. `sample_scatter_plots_ttfm_vs_*` and `sample_scatter_summary_*.pdf`)."
+                "Scatter plots were written under the results directory (e.g. `sample_scatter_plots_migas15_vs_*` and `sample_scatter_summary_*.pdf`)."
             )
             report_lines.append("")
         else:

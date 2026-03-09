@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Evaluate forecasting models on CSV datasets.
-Runs TTFM and baselines, computes MSE/MAE/MAPE and directional accuracy.
+Runs Migas-1.5 and baselines, computes MSE/MAE/MAPE and directional accuracy.
 Fully standalone: no dependency on the training repo.
 """
 
@@ -14,15 +14,15 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from ttfmeval.baselines import BASELINE_REGISTRY, get_baseline_for_prediction_key
-from ttfmeval.dataset import (
+from migaseval.baselines import BASELINE_REGISTRY, get_baseline_for_prediction_key
+from migaseval.dataset import (
     LateFusionDataset,
     collate_fn as late_fusion_collate,
     get_datasets_dir_from_hf,
     list_data_files,
     read_datafile,
 )
-from ttfmeval.model import build_model
+from migaseval.model import build_model
 
 
 # =============================================================================
@@ -213,7 +213,7 @@ def parse_args():
         device, checkpoint, baseline flags (--eval_<name>), and extra baseline options.
     """
     p = argparse.ArgumentParser(
-        description="Evaluate TTFM and baselines on CSV/Parquet datasets (standalone)",
+        description="Evaluate Migas-1.5 and baselines on CSV/Parquet datasets (standalone)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--seq_len", type=int, default=64, help="Context length")
@@ -223,14 +223,14 @@ def parse_args():
     p.add_argument(
         "--datasets_dir",
         type=str,
-        default=os.environ.get("TTFM_EVAL_DATASETS_DIR", "./data/test"),
+        default=os.environ.get("MIGAS_EVAL_DATASETS_DIR", "./data/test"),
         help="Directory containing CSV or Parquet files (t, y_t, text)",
     )
     p.add_argument(
         "--datasets_hf",
         type=str,
         default="",
-        help="Hugging Face dataset repo id (e.g. Synthefy/ttfm-sample-datasets). If set, downloads the repo and uses it as datasets_dir.",
+        help="Hugging Face dataset repo id (e.g. Synthefy/migas-1.5-sample-datasets). If set, downloads the repo and uses it as datasets_dir.",
     )
     p.add_argument(
         "--datasets_hf_subdir",
@@ -241,17 +241,17 @@ def parse_args():
     p.add_argument(
         "--output_dir",
         type=str,
-        default=os.environ.get("TTFM_EVAL_OUTPUT_DIR", "./results"),
+        default=os.environ.get("MIGAS_EVAL_OUTPUT_DIR", "./results"),
         help="Output directory for predictions and metrics",
     )
     p.add_argument("--device", type=str, default="cuda")
 
-    default_checkpoint = os.environ.get("TTFM_CHECKPOINT", "Synthefy/ttfm")
+    default_checkpoint = os.environ.get("MIGAS_CHECKPOINT", "Synthefy/migas-1.5")
     p.add_argument(
         "--checkpoint",
         type=str,
         default=default_checkpoint,
-        help="TTFM checkpoint source: HF repo id or local path. Defaults to Synthefy/ttfm; override with --checkpoint or TTFM_CHECKPOINT.",
+        help="Migas-1.5 checkpoint source: HF repo id or local path. Defaults to Synthefy/migas-1.5; override with --checkpoint or MIGAS_CHECKPOINT.",
     )
     p.add_argument("--checkpoint_timesfm", type=str, default="")
 
@@ -374,7 +374,7 @@ def get_enabled_baselines(args) -> list:
         args: Parsed namespace from parse_args().
 
     Returns:
-        List of baseline names (e.g. ["chronos2", "ttfmlf"]).
+        List of baseline names (e.g. ["chronos2", "migas15"]).
     """
     enabled = []
     for name in BASELINE_REGISTRY:
@@ -390,7 +390,7 @@ def get_expected_prediction_keys(args) -> list:
         args: Parsed namespace from parse_args().
 
     Returns:
-        List of unique prediction keys (e.g. ["chronos_univar", "ttfm", "timeseries"]).
+        List of unique prediction keys (e.g. ["chronos_univar", "migas15", "timeseries"]).
     """
     keys = []
     for name in get_enabled_baselines(args):
@@ -731,12 +731,12 @@ def evaluate_single_dataset(
         args: Parsed namespace (batch_size, pred_len, device, etc.).
         LateFusionDataset: Dataset class.
         late_fusion_collate: Collate function.
-        models: Dict of loaded models (e.g. {"model": ttfmlf}).
+        models: Dict of loaded models (e.g. {"model": migas15}).
         baselines_to_eval: List of baseline names to run.
         precomputed_results: Optional cached result dict to update. Defaults to None.
         summaries_dir: Optional directory with pre-cached LLM summaries.
             When provided, summaries are loaded from {summaries_dir}/{dataset_name}/
-            and passed to the TTFM model, bypassing on-the-fly LLM generation.
+            and passed to the Migas-1.5 model, bypassing on-the-fly LLM generation.
 
     Returns:
         Dict with "input", "gt", "predictions", or None if dataset is empty or evaluation fails.
@@ -798,15 +798,15 @@ def evaluate_single_dataset(
         for func_arg, args_attr in config.extra_args_map.items():
             kwargs[func_arg] = getattr(args, args_attr)
 
-        if baseline_name == "ttfmlf":
+        if baseline_name == "migas15":
             model = models.get("model")
             result = config.eval_func(
                 model,
                 dataloader,
                 args.device,
                 args.pred_len,
-                model_type="ttfmlf",
-                prediction_key="ttfm",
+                model_type="migas15",
+                prediction_key="migas15",
                 use_timestamps=args.use_timestamps,
                 univariate_model=univariate_model,
                 precomputed_summaries=cached_summaries,
@@ -814,15 +814,15 @@ def evaluate_single_dataset(
                 precomputed_forecast=cached_forecast,
                 batch_size=args.batch_size,
             )
-        elif baseline_name == "ttfmlf_timesfm":
+        elif baseline_name == "migas15_timesfm":
             model = models.get("model_timesfm")
             result = config.eval_func(
                 model,
                 dataloader,
                 args.device,
                 args.pred_len,
-                model_type="ttfmlf",
-                prediction_key="ttfm_timesfm",
+                model_type="migas15",
+                prediction_key="migas15_timesfm",
                 use_timestamps=args.use_timestamps,
                 univariate_model="timesfm",
                 precomputed_summaries=cached_summaries,
@@ -830,15 +830,15 @@ def evaluate_single_dataset(
                 precomputed_forecast=cached_forecast,
                 batch_size=args.batch_size,
             )
-        elif baseline_name == "ttfmlf_prophet":
+        elif baseline_name == "migas15_prophet":
             model = models.get("model")
             result = config.eval_func(
                 model,
                 dataloader,
                 args.device,
                 args.pred_len,
-                model_type="ttfmlf",
-                prediction_key="ttfm_prophet",
+                model_type="migas15",
+                prediction_key="migas15_prophet",
                 use_timestamps=args.use_timestamps,
                 univariate_model="prophet",
                 precomputed_summaries=cached_summaries,
@@ -903,7 +903,7 @@ def flatten_metrics_for_csv(dataset_name: str, metrics: dict, pred_len: int) -> 
 
     Returns:
         Dict with dataset_name, and columns like {model}_scaled_mean_mae, {model}_dir_acc_step1, etc.
-        If both "timeseries" and "ttfm" exist, adds mae_improvement_pct.
+        If both "timeseries" and "migas15" exist, adds mae_improvement_pct.
     """
     row = {"dataset_name": dataset_name}
     for model_name, model_metrics in metrics.items():
@@ -920,11 +920,11 @@ def flatten_metrics_for_csv(dataset_name: str, metrics: dict, pred_len: int) -> 
             row[f"{model_name}_dir_acc_step{step}"] = model_metrics["directional_acc"][
                 step
             ]
-    if "timeseries" in metrics and "ttfm" in metrics:
+    if "timeseries" in metrics and "migas15" in metrics:
         ts_mae = metrics["timeseries"]["scaled"]["mean_mae"]
-        ttfm_mae = metrics["ttfm"]["scaled"]["mean_mae"]
+        migas15_mae = metrics["migas15"]["scaled"]["mean_mae"]
         row["mae_improvement_pct"] = (
-            ((ts_mae - ttfm_mae) / ts_mae * 100) if ts_mae > 0 else 0
+            ((ts_mae - migas15_mae) / ts_mae * 100) if ts_mae > 0 else 0
         )
     return row
 
@@ -963,7 +963,7 @@ def generate_overall_stats_csv(
 ) -> None:
     """Write per-dataset summary CSVs (all samples and June 2024+ filtered).
 
-    Reads cached results from output_dir, computes MAE/MSE/MAPE and TTFM vs timeseries
+    Reads cached results from output_dir, computes MAE/MSE/MAPE and Migas-1.5 vs timeseries
     improvement, and writes stats_Context_<seq_len>_allsamples.csv and
     stats_Context_<seq_len>_june2024plus.csv.
 
@@ -1011,11 +1011,11 @@ def generate_overall_stats_csv(
             row_data[f"{model_name}_mean_mape"] = np.mean(mape)
             row_data[f"{model_name}_median_mape"] = np.median(mape)
             row_data[f"{model_name}_std_mape"] = np.std(mape)
-        if "ttfm" in mae_dict and "timeseries" in mae_dict:
-            ttfm_wins = np.sum(mae_dict["ttfm"] < mae_dict["timeseries"])
-            row_data["ttfm_win_pct"] = (ttfm_wins / n_samples) * 100
-            gap_mean = row_data["timeseries_mean_mae"] - row_data["ttfm_mean_mae"]
-            gap_median = row_data["timeseries_median_mae"] - row_data["ttfm_median_mae"]
+        if "migas15" in mae_dict and "timeseries" in mae_dict:
+            migas15_wins = np.sum(mae_dict["migas15"] < mae_dict["timeseries"])
+            row_data["migas15_win_pct"] = (migas15_wins / n_samples) * 100
+            gap_mean = row_data["timeseries_mean_mae"] - row_data["migas15_mean_mae"]
+            gap_median = row_data["timeseries_median_mae"] - row_data["migas15_median_mae"]
             row_data["gap_mean"] = gap_mean
             row_data["gap_median"] = gap_median
             ts_mean = row_data["timeseries_mean_mae"]
@@ -1052,7 +1052,7 @@ def generate_overall_stats_csv(
             if col in overall_df.columns:
                 ordered_cols.append(col)
     for col in [
-        "ttfm_win_pct",
+        "migas15_win_pct",
         "gap_median",
         "gap_mean",
         "improvement_pct_mean",
@@ -1107,16 +1107,16 @@ def generate_overall_stats_csv(
             row_data[f"{model_name}_mean_mape"] = np.mean(mape)
             row_data[f"{model_name}_median_mape"] = np.median(mape)
             row_data[f"{model_name}_std_mape"] = np.std(mape)
-        if "ttfm_mean_mae" in row_data and "timeseries_mean_mae" in row_data:
-            ttfm_pred = dataset_results["predictions"]["ttfm"].numpy()[filtered_indices]
+        if "migas15_mean_mae" in row_data and "timeseries_mean_mae" in row_data:
+            migas15_pred = dataset_results["predictions"]["migas15"].numpy()[filtered_indices]
             ts_pred = dataset_results["predictions"]["timeseries"].numpy()[
                 filtered_indices
             ]
-            mae_ttfm = np.mean(np.abs(ttfm_pred - gt_np_f), axis=1)
+            mae_migas15 = np.mean(np.abs(migas15_pred - gt_np_f), axis=1)
             mae_ts = np.mean(np.abs(ts_pred - gt_np_f), axis=1)
-            row_data["ttfm_win_pct"] = (np.sum(mae_ttfm < mae_ts) / n_f) * 100
-            gap_mean = row_data["timeseries_mean_mae"] - row_data["ttfm_mean_mae"]
-            gap_median = row_data["timeseries_median_mae"] - row_data["ttfm_median_mae"]
+            row_data["migas15_win_pct"] = (np.sum(mae_migas15 < mae_ts) / n_f) * 100
+            gap_mean = row_data["timeseries_mean_mae"] - row_data["migas15_mean_mae"]
+            gap_median = row_data["timeseries_median_mae"] - row_data["migas15_median_mae"]
             row_data["gap_mean"] = gap_mean
             row_data["gap_median"] = gap_median
             ts_mean = row_data["timeseries_mean_mae"]
@@ -1143,24 +1143,24 @@ def generate_overall_stats_csv(
 
 
 def load_models(args) -> dict:
-    """Load TTFM (and TTFM-TimesFM) checkpoints for enabled baselines.
+    """Load Migas-1.5 (and Migas-1.5-TimesFM) checkpoints for enabled baselines.
 
     Args:
         args: Parsed namespace with checkpoint, checkpoint_timesfm, device, text_embedder, etc.
 
     Returns:
-        Dict with keys "model" and/or "model_timesfm" (TTFMLF instances). Empty if neither baseline enabled.
+        Dict with keys "model" and/or "model_timesfm" (Migas-1.5 instances). Empty if neither baseline enabled.
 
     Raises:
-        FileNotFoundError: If --eval_ttfmlf or --eval_ttfmlf_timesfm is set but checkpoint is missing.
+        FileNotFoundError: If --eval_migas15 or --eval_migas15_timesfm is set but checkpoint is missing.
     """
     models = {}
     enabled = get_enabled_baselines(args)
 
-    if "ttfmlf" in enabled:
+    if "migas15" in enabled:
         checkpoint_path = args.checkpoint
         if checkpoint_path and not os.path.isfile(checkpoint_path):
-            from ttfmeval.pipeline import _resolve_checkpoint_path
+            from migaseval.pipeline import _resolve_checkpoint_path
 
             checkpoint_path = _resolve_checkpoint_path(
                 checkpoint_path,
@@ -1169,11 +1169,11 @@ def load_models(args) -> dict:
             )
         if not checkpoint_path or not os.path.isfile(checkpoint_path):
             raise FileNotFoundError(
-                "TTFM checkpoint required for --eval_ttfmlf. "
-                "By default this uses Synthefy/ttfm; override with --checkpoint "
-                "or set TTFM_CHECKPOINT to another HF repo id or local path."
+                "Migas-1.5 checkpoint required for --eval_migas15. "
+                "By default this uses Synthefy/migas-1.5; override with --checkpoint "
+                "or set MIGAS_CHECKPOINT to another HF repo id or local path."
             )
-        print("\nLoading TTFM model...")
+        print("\nLoading Migas-1.5 model...")
         checkpoint = torch.load(checkpoint_path, map_location=args.device)
         state_dict = checkpoint.get("state_dict", checkpoint)
         model = build_model(
@@ -1188,14 +1188,14 @@ def load_models(args) -> dict:
         model.eval()
         model.to(args.device)
         models["model"] = model
-        print("TTFM model loaded.")
+        print("Migas-1.5 model loaded.")
 
-    if "ttfmlf_timesfm" in enabled:
+    if "migas15_timesfm" in enabled:
         if not args.checkpoint_timesfm or not os.path.isfile(args.checkpoint_timesfm):
             raise FileNotFoundError(
-                "TTFM-TimesFM checkpoint required for --eval_ttfmlf_timesfm. Set --checkpoint_timesfm."
+                "Migas-1.5-TimesFM checkpoint required for --eval_migas15_timesfm. Set --checkpoint_timesfm."
             )
-        print("\nLoading TTFM-TimesFM model...")
+        print("\nLoading Migas-1.5-TimesFM model...")
         checkpoint = torch.load(args.checkpoint_timesfm, map_location=args.device)
         state_dict = checkpoint.get("state_dict", checkpoint)
         model = build_model(
@@ -1210,7 +1210,7 @@ def load_models(args) -> dict:
         model.eval()
         model.to(args.device)
         models["model_timesfm"] = model
-        print("TTFM-TimesFM model loaded.")
+        print("Migas-1.5-TimesFM model loaded.")
 
     return models
 
@@ -1254,7 +1254,7 @@ def main() -> None:
 
     # --cache_summaries: generate LLM summaries for all datasets and exit
     if args.cache_summaries:
-        from ttfmeval.model.util import ContextSummarizer
+        from migaseval.model.util import ContextSummarizer
 
         summaries_save_dir = output_dir
         os.makedirs(summaries_save_dir, exist_ok=True)
@@ -1281,7 +1281,7 @@ def main() -> None:
 
     if not enabled_baselines:
         print(
-            "No baselines enabled. Use --eval_<name> (e.g. --eval_ttfmlf --eval_chronos2)."
+            "No baselines enabled. Use --eval_<name> (e.g. --eval_migas15 --eval_chronos2)."
         )
         return
 

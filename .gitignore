@@ -40,3 +40,12 @@ results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Data (large / generated)
+/data/te_electricity
+/data/fnspid/
+/data
+/results_mar7/fnspid_2/context_384
+/results_new/fnspid_2/context_64
+/results_simple
+/results_summarsd/fnspid_0.5_complement_csvs_copy/context_384

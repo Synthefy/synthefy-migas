@@ -1,7 +1,7 @@
 [project]
-name = "synthefy-ttfm"
+name = "synthefy-migas"
 version = "0.1.0"
-description = "TTFM inference and evaluation: text-conditioned time series forecasting with pre-trained weights and baselines"
+description = "Migas-1.5 inference and evaluation: text-conditioned time series forecasting with pre-trained weights and baselines"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
 dependencies = [
@@ -34,14 +34,14 @@ timesfm = { git = "https://github.com/google-research/timesfm.git", rev = "bf88c
 # toto = ["toto-ts"]
 
 [project.scripts]
-synthefy-ttfm = "ttfmeval.evaluation:main"
+synthefy-migas = "migaseval.evaluation:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ttfmeval"]
+packages = ["src/migaseval"]
 
 [tool.hatch.build.targets.sdist]
-packages = ["src/ttfmeval"]
+packages = ["src/migaseval"]

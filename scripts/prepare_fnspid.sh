@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Prepare FNSPID evaluation data for TTFM.
+# Prepare FNSPID evaluation data for Migas-1.5.
 #
 # Downloads the FNSPID dataset (Zihan1004/FNSPID) which includes both news
 # articles and stock price history. Extracts per-symbol text and (optionally)
@@ -15,7 +15,7 @@
 #
 # The final CSVs land in data/fnspid/output/ and can be used directly with
 # the evaluation CLI:
-#   uv run python -m ttfmeval.evaluation --datasets_dir data/fnspid/output ...
+#   uv run python -m migaseval.evaluation --datasets_dir data/fnspid/output ...
 
 set -euo pipefail
 
@@ -265,5 +265,5 @@ echo "════════════════════════�
 echo "Done! Final CSVs (t, y_t, text) are in: ${OUTPUT_DIR}/"
 echo ""
 echo "Run evaluation with:"
-echo "  uv run python -m ttfmeval.evaluation --datasets_dir ${OUTPUT_DIR} ..."
+echo "  uv run python -m migaseval.evaluation --datasets_dir ${OUTPUT_DIR} ..."
 echo "═══════════════════════════════════════════════════════════════════"

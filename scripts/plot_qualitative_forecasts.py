@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Generate qualitative forecast plots comparing TTFM and Chronos (or other models).
-Finds samples where TTFM has the largest advantage over the baseline model
+Generate qualitative forecast plots comparing Migas-1.5 and Chronos (or other models).
+Finds samples where Migas-1.5 has the largest advantage over the baseline model
 and creates professional ICML-standard plots showing the forecasts.
 
 Usage:
@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
-# Add repo root and src so ttfmeval is importable (synthefy-ttfm repo)
+# Add repo root and src so migaseval is importable (synthefy-migaseval repo)
 _repo_root = Path(__file__).resolve().parent.parent
 _src = _repo_root / "src"
 if _src.exists():
@@ -73,7 +73,7 @@ def setup_icml_style():
 # Define a professional color palette
 COLORS = {
     "ground_truth": "#2C3E50",  # Dark blue-gray
-    "ttfm": "#27AE60",  # Green (our model)
+    "migas15": "#27AE60",  # Green (our model)
     "chronos": "#E74C3C",  # Red (baseline)
     "timeseries": "#3498DB",  # Blue
     "input": "#0066CC",  # Darker Blue
@@ -95,7 +95,7 @@ def _find_dataset_file(datasets_dir, dataset_name: str) -> Path:
     return dd / f"{dataset_name}.csv"
 
 
-from ttfmeval.baselines.registry import MODEL_DISPLAY_NAMES
+from migaseval.baselines.registry import MODEL_DISPLAY_NAMES
 
 
 @dataclass
@@ -113,7 +113,7 @@ class SampleData:
     preds_denormalized: Dict[str, np.ndarray]
     history_mean: float
     history_std: float
-    mae_ttfm: float
+    mae_migas15: float
     mae_baseline: float
     mae_advantage: float
     # New fields for dates and text
@@ -215,13 +215,13 @@ def generate_context_summaries(
         The same list of samples with context_summary filled in
     """
     try:
-        from ttfmeval.model.util import ContextSummarizer
+        from migaseval.model.util import ContextSummarizer
     except ImportError:
         try:
             from src.context_summary import ContextSummarizer
         except ImportError:
             print(
-                "  Skipping context summaries (ttfmeval.model.util.ContextSummarizer not available; install synthefy-ttfm or add ContextSummarizer for LLM summaries)."
+                "  Skipping context summaries (migaseval.model.util.ContextSummarizer not available; install synthefy-migaseval or add ContextSummarizer for LLM summaries)."
             )
             return samples
 
@@ -342,7 +342,7 @@ def load_predictions_from_outputs(
 
     # Known model names to look for
     model_names = [
-        "ttfm",
+        "migas15",
         "timeseries",
         "chronos_univar",
         "chronos_multivar",
@@ -354,7 +354,7 @@ def load_predictions_from_outputs(
         "tabpfn_ts",
         "prophet",
         "naive",
-        "ttfm_timesfm",
+        "migas15_timesfm",
         "migas",
     ]
 
@@ -416,7 +416,7 @@ def load_predictions(results_dir: Path) -> Dict[str, np.ndarray]:
 
     # Map file names to model names
     pred_files = {
-        "ttfm": "ttfm_pred.npy",
+        "migas15": "migas15_pred.npy",
         "timeseries": "timeseries_pred.npy",
         "chronos_univar": "chronos_univar_pred.npy",
         "chronos_multivar": "chronos_multivar_pred.npy",
@@ -447,7 +447,7 @@ def compute_raw_mean_std(
     Returns:
         Tuple of (history_means, history_stds, dataset_names_per_sample) arrays
     """
-    from ttfmeval.dataset import LateFusionDataset, collate_fn as late_fusion_collate
+    from migaseval.dataset import LateFusionDataset, collate_fn as late_fusion_collate
     from torch.utils.data import DataLoader
 
     df = pd.read_csv(per_dataset_csv)
@@ -534,7 +534,7 @@ def find_absolute_best_samples(
     history_stds: np.ndarray,
     dataset_names: List[str],
     per_dataset_csv: Path,
-    model_name: str = "ttfm",
+    model_name: str = "migas15",
     top_k: int = 10,
     per_dataset: bool = True,
 ) -> List[SampleData]:
@@ -624,10 +624,10 @@ def find_absolute_best_samples(
                     preds_denormalized=preds_denorm,
                     history_mean=mean,
                     history_std=std,
-                    mae_ttfm=mae_model[global_idx],
+                    mae_migas15=mae_model[global_idx],
                     mae_baseline=mae_model[
                         global_idx
-                    ],  # Same as ttfm for absolute best
+                    ],  # Same as Migas-1.5 for absolute best
                     mae_advantage=0.0,  # No comparison
                 )
                 best_samples.append(sample)
@@ -663,7 +663,7 @@ def find_absolute_best_samples(
                 preds_denormalized=preds_denorm,
                 history_mean=mean,
                 history_std=std,
-                mae_ttfm=mae_model[global_idx],
+                mae_migas15=mae_model[global_idx],
                 mae_baseline=mae_model[global_idx],
                 mae_advantage=0.0,
             )
@@ -680,13 +680,13 @@ def find_best_samples(
     history_stds: np.ndarray,
     dataset_names: List[str],
     per_dataset_csv: Path,
-    ttfm_model: str = "ttfm",
+    migas15_model: str = "migas15",
     baseline_model: str = "chronos_univar",
     top_k: int = 10,
     per_dataset: bool = True,
 ) -> List[SampleData]:
     """
-    Find samples where TTFM has the largest advantage over the baseline model.
+    Find samples where Migas-1.5 has the largest advantage over the baseline model.
 
     Args:
         predictions: Dict of model predictions
@@ -696,7 +696,7 @@ def find_best_samples(
         history_stds: Normalization stds
         dataset_names: Dataset name for each sample
         per_dataset_csv: Path to per-dataset metrics CSV
-        ttfm_model: Name of TTFM model
+        migas15_model: Name of Migas-1.5 model
         baseline_model: Name of baseline model to compare against
         top_k: Number of top samples to return (per dataset if per_dataset=True)
         per_dataset: If True, return top_k samples per dataset
@@ -704,27 +704,27 @@ def find_best_samples(
     Returns:
         List of SampleData objects for the best samples
     """
-    if ttfm_model not in predictions:
-        raise ValueError(f"TTFM model '{ttfm_model}' not found in predictions")
+    if migas15_model not in predictions:
+        raise ValueError(f"Migas-1.5 model '{migas15_model}' not found in predictions")
     if baseline_model not in predictions:
         raise ValueError(f"Baseline model '{baseline_model}' not found in predictions")
 
-    ttfm_pred = predictions[ttfm_model]
+    migas15_pred = predictions[migas15_model]
     baseline_pred = predictions[baseline_model]
 
     # Compute MAE per sample
-    mae_ttfm = compute_mae(ttfm_pred, gt)
+    mae_migas15 = compute_mae(migas15_pred, gt)
     mae_baseline = compute_mae(baseline_pred, gt)
 
-    # Compute advantage (positive = TTFM better)
-    mae_advantage = mae_baseline - mae_ttfm
+    # Compute advantage (positive = Migas-1.5 better)
+    mae_advantage = mae_baseline - mae_migas15
 
-    # Filter to samples where TTFM is better
-    ttfm_better_mask = mae_advantage > 0
+    # Filter to samples where Migas-1.5 is better
+    migas15_better_mask = mae_advantage > 0
 
     print(
-        f"\n  TTFM wins on {ttfm_better_mask.sum()}/{len(mae_advantage)} samples "
-        f"({100 * ttfm_better_mask.sum() / len(mae_advantage):.1f}%)"
+        f"\n  Migas-1.5 wins on {migas15_better_mask.sum()}/{len(mae_advantage)} samples "
+        f"({100 * migas15_better_mask.sum() / len(mae_advantage):.1f}%)"
     )
 
     best_samples = []
@@ -744,13 +744,13 @@ def find_best_samples(
             # Get indices for this dataset
             dataset_slice = slice(current_idx, current_idx + n_samples)
             dataset_advantage = mae_advantage[dataset_slice]
-            dataset_ttfm_better = ttfm_better_mask[dataset_slice]
+            dataset_migas15_better = migas15_better_mask[dataset_slice]
 
-            # Find indices where TTFM is better
-            better_local_indices = np.where(dataset_ttfm_better)[0]
+            # Find indices where Migas-1.5 is better
+            better_local_indices = np.where(dataset_migas15_better)[0]
 
             if len(better_local_indices) == 0:
-                print(f"  {dataset_name}: No samples where TTFM is better")
+                print(f"  {dataset_name}: No samples where Migas-1.5 is better")
                 current_idx += n_samples
                 continue
 
@@ -792,7 +792,7 @@ def find_best_samples(
                     preds_denormalized=preds_denorm,
                     history_mean=mean,
                     history_std=std,
-                    mae_ttfm=mae_ttfm[global_idx],
+                    mae_migas15=mae_migas15[global_idx],
                     mae_baseline=mae_baseline[global_idx],
                     mae_advantage=mae_advantage[global_idx],
                 )
@@ -801,7 +801,7 @@ def find_best_samples(
             current_idx += n_samples
     else:
         # Global top_k
-        better_indices = np.where(ttfm_better_mask)[0]
+        better_indices = np.where(migas15_better_mask)[0]
         sorted_indices = better_indices[
             np.argsort(mae_advantage[better_indices])[::-1]
         ][:top_k]
@@ -832,7 +832,7 @@ def find_best_samples(
                 preds_denormalized=preds_denorm,
                 history_mean=mean,
                 history_std=std,
-                mae_ttfm=mae_ttfm[global_idx],
+                mae_migas15=mae_migas15[global_idx],
                 mae_baseline=mae_baseline[global_idx],
                 mae_advantage=mae_advantage[global_idx],
             )
@@ -903,7 +903,7 @@ def _create_forecast_plot(
 
     # Model colors
     model_colors = {
-        "ttfm": COLORS["ttfm"],
+        "migas15": COLORS["migas15"],
         "chronos_univar": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
         "timesfm_univar": "#9B59B6",
@@ -959,7 +959,7 @@ def _create_forecast_plot(
                 color=color,
                 linewidth=3,
                 label=display_name,
-                zorder=5 if model_name == "ttfm" else 4,
+                zorder=5 if model_name == "migas15" else 4,
                 alpha=0.9,
             )
 
@@ -1016,7 +1016,7 @@ def _create_forecast_plot(
                 color=color,
                 linewidth=3,
                 label=display_name,
-                zorder=5 if model_name == "ttfm" else 4,
+                zorder=5 if model_name == "migas15" else 4,
                 alpha=0.9,
             )
 
@@ -1040,17 +1040,17 @@ def _create_forecast_plot(
 
     # MAE annotation
     if show_mae:
-        mae_ttfm_str = (
-            f"{sample.mae_ttfm:.4f}"
+        mae_migas15_str = (
+            f"{sample.mae_migas15:.4f}"
             if show_normalized
-            else f"{sample.mae_ttfm * sample.history_std:.4f}"
+            else f"{sample.mae_migas15 * sample.history_std:.4f}"
         )
         mae_base_str = (
             f"{sample.mae_baseline:.4f}"
             if show_normalized
             else f"{sample.mae_baseline * sample.history_std:.4f}"
         )
-        mae_text = f"MAE: TTFM={mae_ttfm_str}, Chronos2={mae_base_str}"
+        mae_text = f"MAE: Migas-1.5={mae_migas15_str}, Chronos2={mae_base_str}"
         ax.text(
             0.02,
             0.98,
@@ -1207,7 +1207,7 @@ def plot_multi_sample_comparison(
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, squeeze=False)
 
     model_colors = {
-        "ttfm": COLORS["ttfm"],
+        "migas15": COLORS["migas15"],
         "chronos_univar": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
         "timesfm_univar": "#9B59B6",
@@ -1216,7 +1216,7 @@ def plot_multi_sample_comparison(
     }
 
     model_markers = {
-        "ttfm": "^",
+        "migas15": "^",
         "chronos_univar": "v",
         "timeseries": "D",
         "timesfm_univar": "p",
@@ -1340,24 +1340,24 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage - find samples where TTFM beats Chronos
+  # Basic usage - find samples where Migas-1.5 beats Chronos
   python plot_qualitative_forecasts.py \\
       --results_dir /path/to/results/context_16 \\
       --datasets_dir /path/to/datasets \\
       --pred_len 4 --top_k 10
 
-  # Find samples with lowest absolute MAE for TTFM (best predictions)
+  # Find samples with lowest absolute MAE for Migas-1.5 (best predictions)
   python plot_qualitative_forecasts.py \\
       --results_dir /path/to/results/context_16 \\
       --datasets_dir /path/to/datasets \\
-      --absolute_best --better_model ttfm
+      --absolute_best --better_model migas15
 
-  # Compare TimesFM vs TTFM (samples where TimesFM is better)
+  # Compare TimesFM vs Migas-1.5 (samples where TimesFM is better)
   python plot_qualitative_forecasts.py \\
       --results_dir /path/to/results/context_16 \\
       --datasets_dir /path/to/datasets \\
-      --better_model timesfm_univar --worse_model ttfm \\
-      --models_to_plot ttfm,timesfm_univar,chronos_univar
+      --better_model timesfm_univar --worse_model migas15 \\
+      --models_to_plot migas15,timesfm_univar,chronos_univar
 
   # Create grid plots showing multiple samples per figure
   python plot_qualitative_forecasts.py \\
@@ -1397,7 +1397,7 @@ Examples:
     parser.add_argument(
         "--better_model",
         type=str,
-        default="ttfm",
+        default="migas15",
         help="Model that should have lower MAE (the one we want to show is better)",
     )
     parser.add_argument(
@@ -1408,7 +1408,7 @@ Examples:
     )
     # Keep old args for backward compatibility
     parser.add_argument(
-        "--ttfm_model",
+        "--migas15_model",
         type=str,
         default=None,
         help="(Deprecated) Use --better_model instead",
@@ -1422,7 +1422,7 @@ Examples:
     parser.add_argument(
         "--models_to_plot",
         type=str,
-        default="ttfm,chronos_univar",
+        default="migas15,chronos_univar",
         help="Comma-separated list of models to plot",
     )
     parser.add_argument(
@@ -1486,7 +1486,7 @@ Examples:
     datasets_dir = Path(args.datasets_dir)
 
     # Handle backward compatibility for deprecated args
-    better_model = args.ttfm_model if args.ttfm_model else args.better_model
+    better_model = args.migas15_model if args.migas15_model else args.better_model
     worse_model = args.baseline_model if args.baseline_model else args.worse_model
 
     # Auto-detect context length from directory name
@@ -1623,7 +1623,7 @@ Examples:
             history_stds=history_stds,
             dataset_names=dataset_names,
             per_dataset_csv=per_dataset_csv,
-            ttfm_model=worse_model,  # Swapped
+            migas15_model=worse_model,  # Swapped
             baseline_model=better_model,  # Swapped
             top_k=args.top_k,
             per_dataset=not args.global_selection,
@@ -1638,7 +1638,7 @@ Examples:
             history_stds=history_stds,
             dataset_names=dataset_names,
             per_dataset_csv=per_dataset_csv,
-            ttfm_model=better_model,
+            migas15_model=better_model,
             baseline_model=worse_model,
             top_k=args.top_k,
             per_dataset=not args.global_selection,
@@ -1743,7 +1743,7 @@ Examples:
                 "sample_idx": sample.sample_idx,
                 "dataset_name": sample.dataset_name,
                 "local_idx": sample.local_idx,
-                "mae_ttfm": sample.mae_ttfm,
+                "mae_migas15": sample.mae_migas15,
                 "mae_baseline": sample.mae_baseline,
                 "mae_advantage": sample.mae_advantage,
                 "history_mean": sample.history_mean,

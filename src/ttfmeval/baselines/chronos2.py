@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from ttfmeval.model import util as train_util
+from migaseval.model import util as train_util
 
 CHRONOS2_PIPELINE = None
 

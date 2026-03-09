@@ -19,32 +19,32 @@ from .naive import evaluate_naive
 from .prophet import evaluate_prophet
 from .tabpfn import evaluate_tabpfn
 from .timesfm import evaluate_timesfm
-from .ttfm import eval_ttfm
+from .migas15 import eval_migas15
 from .toto import evaluate_toto
 
 register_baseline(
-    name="ttfmlf",
-    eval_func=eval_ttfm,
-    prediction_keys=["ttfm", "timeseries"],
-    help_text="Evaluate TTFM model (with Chronos2GPT)",
+    name="migas15",
+    eval_func=eval_migas15,
+    prediction_keys=["migas15", "timeseries"],
+    help_text="Evaluate Migas-1.5 model (with Chronos2GPT)",
     requires_model=True,
     model_attr="model",
 )
 
 register_baseline(
-    name="ttfmlf_timesfm",
-    eval_func=eval_ttfm,
-    prediction_keys=["ttfm_timesfm", "timeseries"],
-    help_text="Evaluate TTFM model with TimesFM as univariate model",
+    name="migas15_timesfm",
+    eval_func=eval_migas15,
+    prediction_keys=["migas15_timesfm", "timeseries"],
+    help_text="Evaluate Migas-1.5 model with TimesFM as univariate model",
     requires_model=True,
     model_attr="model_timesfm",
 )
 
 register_baseline(
-    name="ttfmlf_prophet",
-    eval_func=eval_ttfm,
-    prediction_keys=["ttfm_prophet", "timeseries"],
-    help_text="Evaluate TTFM model with Prophet as univariate model",
+    name="migas15_prophet",
+    eval_func=eval_migas15,
+    prediction_keys=["migas15_prophet", "timeseries"],
+    help_text="Evaluate Migas-1.5 model with Prophet as univariate model",
     requires_model=True,
     model_attr="model",
 )

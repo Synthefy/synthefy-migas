@@ -1,8 +1,8 @@
-"""Synthefy TTFM - Inference and evaluation for TTFM and forecasting baselines."""
+"""Synthefy Migas-1.5 - Inference and evaluation for Migas-1.5 and forecasting baselines."""
 
 __version__ = "0.1.0"
 
-from ttfmeval.dataset import (
+from migaseval.dataset import (
     LateFusionDataset,
     collate_fn,
     get_datasets_dir_from_hf,
@@ -10,8 +10,8 @@ from ttfmeval.dataset import (
     list_data_files,
     read_datafile,
 )
-from ttfmeval.model import build_model
-from ttfmeval.pipeline import TTFMPipeline
+from migaseval.model import build_model
+from migaseval.pipeline import MigasPipeline
 
 __all__ = [
     "LateFusionDataset",
@@ -21,5 +21,5 @@ __all__ = [
     "list_data_files",
     "read_datafile",
     "build_model",
-    "TTFMPipeline",
+    "MigasPipeline",
 ]

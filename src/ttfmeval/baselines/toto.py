@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from ttfmeval.model import util as train_util
+from migaseval.model import util as train_util
 
 TOTO_FORECASTER = None
 

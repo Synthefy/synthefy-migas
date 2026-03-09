@@ -1,17 +1,17 @@
-"""TTFM/TTFMLF evaluation."""
+"""Migas-1.5 evaluation."""
 
 import torch
 from tqdm import tqdm
 
 
 @torch.no_grad()
-def eval_ttfm(
+def eval_migas15(
     model,
     loader,
     device,
     pred_len: int = 4,
-    model_type: str = "ttfmlf",
-    prediction_key: str = "ttfm",
+    model_type: str = "migas15",
+    prediction_key: str = "migas15",
     use_timestamps: bool = False,
     univariate_model: str = "chronos",
     precomputed_summaries: list = None,
@@ -21,20 +21,20 @@ def eval_ttfm(
     precomputed_stds: list = None,
     batch_size: int = 64,
 ) -> dict:
-    """Evaluate TTFM (late fusion) model on a data loader or precomputed data.
+    """Evaluate Migas-1.5 (late fusion) model on a data loader or precomputed data.
 
     When precomputed_summaries, precomputed_historic, and precomputed_forecast
     are all provided, the DataLoader is bypassed and batches are built directly
     from the cached data. This avoids re-running the LLM summarizer.
 
     Args:
-        model: TTFMLF or compatible module.
+        model: Migas-1.5 or compatible module.
         loader: DataLoader with "ts", "text", and optionally "timestamps".
             Ignored when precomputed data is provided.
         device: Torch device for model and tensors.
         pred_len: Forecast horizon. Defaults to 4.
-        model_type: Model variant (e.g. "ttfm", "ttfmlf"). Defaults to "ttfmlf".
-        prediction_key: Key under which to store TTFM predictions. Defaults to "ttfm".
+        model_type: Model variant. Defaults to "migas15".
+        prediction_key: Key under which to store Migas-1.5 predictions. Defaults to "migas15".
         use_timestamps: Whether to pass timestamps into the model. Defaults to False.
         univariate_model: Univariate backend ("chronos", "timesfm", "prophet"). Defaults to "chronos".
         precomputed_summaries: Pre-generated LLM summaries (one per sample).
@@ -63,7 +63,7 @@ def eval_ttfm(
         num_samples = len(precomputed_summaries)
         num_batches = (num_samples + batch_size - 1) // batch_size
 
-        pbar = tqdm(range(num_batches), desc="Evaluating TTFM (cached)")
+        pbar = tqdm(range(num_batches), desc="Evaluating Migas-1.5 (cached)")
         for batch_idx in pbar:
             start = batch_idx * batch_size
             end = min(start + batch_size, num_samples)
@@ -87,7 +87,7 @@ def eval_ttfm(
                 ).to(device)
 
             model_pred_len = pred_len
-            if model_type in ("ttfm", "ttfmlf") and hasattr(model, "pred_len"):
+            if model_type == "migas15" and hasattr(model, "pred_len"):
                 try:
                     model_pred_len = int(getattr(model, "pred_len"))
                 except Exception:
@@ -112,30 +112,30 @@ def eval_ttfm(
                     summaries=batch_summaries,
                 )
 
-            ttfm_forecast, timeseries_forecast = model_output[0], model_output[1]
+            migas15_forecast, timeseries_forecast = model_output[0], model_output[1]
 
-            if model_type in ("ttfm", "ttfmlf"):
-                ttfm_forecast = model.postprocess_predictions(ttfm_forecast)
+            if model_type == "migas15":
+                migas15_forecast = model.postprocess_predictions(migas15_forecast)
                 timeseries_forecast = model.postprocess_predictions(timeseries_forecast)
 
-            ttfm_forecast = ttfm_forecast[:, :pred_len, ...]
+            migas15_forecast = migas15_forecast[:, :pred_len, ...]
             timeseries_forecast = timeseries_forecast[:, :pred_len, ...]
 
-            all_preds[prediction_key].append(ttfm_forecast[:, :, 0].cpu())
+            all_preds[prediction_key].append(migas15_forecast[:, :, 0].cpu())
             all_preds["timeseries"].append(timeseries_forecast[:, :, 0].cpu())
             all_gts.append(yb.cpu())
             all_inputs.append(xb.cpu())
 
-            ttfm_so_far = torch.cat(all_preds[prediction_key], dim=0)
+            migas15_so_far = torch.cat(all_preds[prediction_key], dim=0)
             ts_so_far = torch.cat(all_preds["timeseries"], dim=0)
             gt_so_far = torch.cat(all_gts, dim=0)
-            ttfm_mae = torch.mean(torch.abs(ttfm_so_far - gt_so_far).mean(dim=1)).item()
+            migas15_mae = torch.mean(torch.abs(migas15_so_far - gt_so_far).mean(dim=1)).item()
             ts_mae = torch.mean(torch.abs(ts_so_far - gt_so_far).mean(dim=1)).item()
-            pbar.set_postfix({"TTFM_MAE": f"{ttfm_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"})
+            pbar.set_postfix({"MIGAS15_MAE": f"{migas15_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"})
     else:
         sample_offset = 0
 
-        pbar = tqdm(loader, desc="Evaluating TTFM")
+        pbar = tqdm(loader, desc="Evaluating Migas-1.5")
         for batch_dict in pbar:
             xb = batch_dict["ts"]
             text = batch_dict["text"]
@@ -162,7 +162,7 @@ def eval_ttfm(
                     text_inputs.append(per_sample_text_inputs)
 
             model_pred_len = pred_len
-            if model_type in ("ttfm", "ttfmlf") and hasattr(model, "pred_len"):
+            if model_type == "migas15" and hasattr(model, "pred_len"):
                 try:
                     model_pred_len = int(getattr(model, "pred_len"))
                 except Exception:
@@ -200,39 +200,39 @@ def eval_ttfm(
 
             if isinstance(model_output, tuple) and len(model_output) == 4:
                 (
-                    ttfm_forecast_four,
-                    ttfm_forecast_eight,
-                    ttfm_forecast_sixteen,
+                    migas15_forecast_four,
+                    migas15_forecast_eight,
+                    migas15_forecast_sixteen,
                     timeseries_forecast,
                 ) = model_output
-                ttfm_forecast = (
-                    ttfm_forecast_four
+                migas15_forecast = (
+                    migas15_forecast_four
                     if pred_len == 4
-                    else ttfm_forecast_eight
+                    else migas15_forecast_eight
                     if pred_len == 8
-                    else ttfm_forecast_sixteen
+                    else migas15_forecast_sixteen
                 )
             else:
-                ttfm_forecast, timeseries_forecast = model_output[0], model_output[1]
+                migas15_forecast, timeseries_forecast = model_output[0], model_output[1]
 
-            if model_type in ("ttfm", "ttfmlf"):
-                ttfm_forecast = model.postprocess_predictions(ttfm_forecast)
+            if model_type == "migas15":
+                migas15_forecast = model.postprocess_predictions(migas15_forecast)
                 timeseries_forecast = model.postprocess_predictions(timeseries_forecast)
 
-            ttfm_forecast = ttfm_forecast[:, :pred_len, ...]
+            migas15_forecast = migas15_forecast[:, :pred_len, ...]
             timeseries_forecast = timeseries_forecast[:, :pred_len, ...]
 
-            all_preds[prediction_key].append(ttfm_forecast[:, :, 0].cpu())
+            all_preds[prediction_key].append(migas15_forecast[:, :, 0].cpu())
             all_preds["timeseries"].append(timeseries_forecast[:, :, 0].cpu())
             all_gts.append(yb.cpu())
             all_inputs.append(xb.cpu())
 
-            ttfm_so_far = torch.cat(all_preds[prediction_key], dim=0)
+            migas15_so_far = torch.cat(all_preds[prediction_key], dim=0)
             ts_so_far = torch.cat(all_preds["timeseries"], dim=0)
             gt_so_far = torch.cat(all_gts, dim=0)
-            ttfm_mae = torch.mean(torch.abs(ttfm_so_far - gt_so_far).mean(dim=1)).item()
+            migas15_mae = torch.mean(torch.abs(migas15_so_far - gt_so_far).mean(dim=1)).item()
             ts_mae = torch.mean(torch.abs(ts_so_far - gt_so_far).mean(dim=1)).item()
-            pbar.set_postfix({"TTFM_MAE": f"{ttfm_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"})
+            pbar.set_postfix({"MIGAS15_MAE": f"{migas15_mae:.4f}", "TS_MAE": f"{ts_mae:.4f}"})
 
     return {
         "input": torch.cat(all_inputs, dim=0),

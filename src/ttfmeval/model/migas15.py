@@ -1,4 +1,4 @@
-"""TTFM Late Fusion Model - Combines univariate forecaster with text context."""
+"""Migas-1.5 Late Fusion Model - Combines univariate forecaster with text context."""
 
 import os
 from typing import List, Optional
@@ -64,8 +64,8 @@ class GatedAttentionFusion(nn.Module):
         return h_ts + gate * attn_out
 
 
-class TTFMLF(nn.Module):
-    """TTFM Late Fusion model: univariate forecaster + LLM summaries + gated attention fusion.
+class Migas15(nn.Module):
+    """Migas-1.5 Late Fusion model: univariate forecaster + LLM summaries + gated attention fusion.
 
     Combines a configurable univariate forecaster (Chronos/TimesFM/Prophet/ensemble)
     with LLM-generated factual/predictive summaries and gated cross-attention fusion
@@ -83,7 +83,7 @@ class TTFMLF(nn.Module):
         text_embedder_device: Optional[str] = None,
         use_convex_combination: bool = True,
     ):
-        """Initialize TTFMLF.
+        """Initialize Migas-1.5.
 
         Args:
             pred_len: Maximum forecast horizon (e.g. 16).
@@ -170,7 +170,7 @@ class TTFMLF(nn.Module):
         univariate_model: UnivariateModel = "chronos",
         trim_text: bool = True,
     ) -> tuple:
-        """Run one forward pass: univariate forecast + text fusion -> TTFM forecast.
+        """Run one forward pass: univariate forecast + text fusion -> Migas-1.5 forecast.
 
         Args:
             x: (B, seq_len) or (B, seq_len, 1) context time series.
@@ -338,8 +338,8 @@ def build_model(
     text_embedder_device: Optional[str] = None,
     use_convex_combination: bool = True,
     **kwargs,
-) -> TTFMLF:
-    """Build a TTFMLF model with the given configuration.
+) -> Migas15:
+    """Build a Migas-1.5 model with the given configuration.
 
     Args:
         pred_len: Maximum forecast horizon. Defaults to 16.
@@ -351,9 +351,9 @@ def build_model(
         **kwargs: Ignored (for API compatibility).
 
     Returns:
-        Configured TTFMLF instance.
+        Configured Migas-1.5 instance.
     """
-    return TTFMLF(
+    return Migas15(
         pred_len=pred_len,
         device=device,
         chronos_device=chronos_device,

@@ -3,21 +3,21 @@
 Lightweight evaluation from pre-cached LLM summaries.
 
 Operates entirely from summary JSONs produced by
-``python -m ttfmeval.evaluation --cache_summaries --datasets_dir <dir>``.
+``python -m migaseval.evaluation --cache_summaries --datasets_dir <dir>``.
 Never touches raw CSV files or LateFusionDataset. Supports sweeping multiple
 context lengths in a single run and caches per-model predictions as .npz files.
 
-Baselines: Chronos (via TTFM), TimesFM, Toto, TabPFN, Prophet, Seasonal ARIMA.
+Baselines: Chronos (via Migas-1.5), TimesFM, Toto, TabPFN, Prophet, Seasonal ARIMA.
 
 Typical two-step workflow:
     # Step 1: Cache summaries (requires vLLM server)
-    python -m ttfmeval.evaluation --cache_summaries --datasets_dir ./data/test
+    python -m migaseval.evaluation --cache_summaries --datasets_dir ./data/test
 
     # Step 2: Evaluate from cached summaries (no LLM needed)
     python scripts/eval_simple.py --summaries_dir ./results/test/context_64 \\
-        --checkpoint Synthefy/ttfm
+        --checkpoint Synthefy/migas-1.5
     python scripts/eval_simple.py --summaries_dir ./results/test/context_64 \\
-        --checkpoint Synthefy/ttfm --context_lengths 32 64 128 256 384 \\
+        --checkpoint Synthefy/migas-1.5 --context_lengths 32 64 128 256 384 \\
         --eval_timesfm --eval_prophet
 """
 
@@ -31,9 +31,9 @@ import torch
 from tqdm import tqdm
 from tabulate import tabulate
 
-from ttfmeval.baselines.ttfm import eval_ttfm
-from ttfmeval.model import build_model
-from ttfmeval.pipeline import _resolve_checkpoint_path
+from migaseval.baselines.migas15 import eval_migas15
+from migaseval.model import build_model
+from migaseval.pipeline import _resolve_checkpoint_path
 
 PRED_LEN = 16
 BATCH_SIZE = 128
@@ -74,7 +74,7 @@ def evaluate_timesfm_precomputed(
     batch_size: int = 32,
 ) -> dict:
     """Run TimesFM 2.5 on precomputed data (unscales before forecast, rescales after)."""
-    from ttfmeval.baselines.timesfm import load_timesfm_model
+    from migaseval.baselines.timesfm import load_timesfm_model
 
     tfm_model = load_timesfm_model("cuda")
     num_samples = len(historic)
@@ -123,7 +123,7 @@ def evaluate_toto_precomputed(
 ) -> dict:
     """Run Toto on precomputed data (unscales before forecast, rescales after)."""
     from toto.data.util.dataset import MaskedTimeseries
-    from ttfmeval.baselines.toto import load_toto_model
+    from migaseval.baselines.toto import load_toto_model
 
     device = "cuda"
     forecaster = load_toto_model(device)
@@ -464,20 +464,20 @@ def _has_preds(ctx_dir: str, ds_name: str, model_key: str) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Lightweight TTFM evaluation from pre-cached summaries",
+        description="Lightweight Migas-1.5 evaluation from pre-cached summaries",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--checkpoint",
-        default=os.environ.get("TTFM_CHECKPOINT", "Synthefy/ttfm"),
-        help="TTFM checkpoint source: HF repo id or local path. Defaults to Synthefy/ttfm; override with --checkpoint or TTFM_CHECKPOINT.",
+        default=os.environ.get("MIGAS_CHECKPOINT", "Synthefy/migas-1.5"),
+        help="Migas-1.5 checkpoint source: HF repo id or local path. Defaults to Synthefy/migas-1.5; override with --checkpoint or MIGAS_CHECKPOINT.",
     )
     parser.add_argument(
         "--summaries_dir",
         required=True,
         help="Directory containing pre-cached summary JSONs. "
         "Each dataset has a subdirectory with summary_0.json, summary_1.json, etc. "
-        "Generate with: python -m ttfmeval.evaluation --cache_summaries --datasets_dir <dir>",
+        "Generate with: python -m migaseval.evaluation --cache_summaries --datasets_dir <dir>",
     )
     parser.add_argument(
         "--output_dir",
@@ -505,7 +505,7 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # ── Build & load TTFM model ──────────────────────────────────────────
+    # ── Build & load Migas-1.5 model ──────────────────────────────────────────
     checkpoint_path = args.checkpoint
     if checkpoint_path and not os.path.isfile(checkpoint_path):
         checkpoint_path = _resolve_checkpoint_path(
@@ -571,7 +571,7 @@ def main():
         csv_path = os.path.join(ctx_dir, f"results_{test_set_name}_ctx{ctx_len}.csv")
 
         rows = []
-        ttfm_wins, chronos_wins, ties = 0, 0, 0
+        migas15_wins, chronos_wins, ties = 0, 0, 0
 
         for ds_name in tqdm(all_datasets, desc=f"Eval ctx={ctx_len}"):
             summaries, historic, forecast, means, stds = all_datasets[ds_name]
@@ -607,14 +607,14 @@ def main():
                 )
                 return preds
 
-            # ── TTFM + Chronos (core) ────────────────────────────────
+            # ── Migas-1.5 + Chronos (core) ────────────────────────────────
             def _run_core():
-                res = eval_ttfm(
+                res = eval_migas15(
                     model,
                     loader=None,
                     device=args.device,
                     pred_len=args.pred_len,
-                    prediction_key="ttfm",
+                    prediction_key="migas15",
                     univariate_model=UNIVARIATE_MODEL,
                     precomputed_summaries=summaries,
                     precomputed_historic=hist_eval,
@@ -624,40 +624,40 @@ def main():
                     batch_size=args.batch_size,
                 )
                 return (
-                    res["predictions"]["ttfm"].numpy(),
+                    res["predictions"]["migas15"].numpy(),
                     res["predictions"]["timeseries"].numpy(),
                     res["gt"].numpy(),
                 )
 
             if (
-                _has_preds(ctx_dir, ds_name, "ttfm")
+                _has_preds(ctx_dir, ds_name, "migas15")
                 and _has_preds(ctx_dir, ds_name, "chronos")
             ):
-                _ttfm_c = _load_preds(ctx_dir, ds_name, "ttfm")
+                _migas15_c = _load_preds(ctx_dir, ds_name, "migas15")
                 _chro_c = _load_preds(ctx_dir, ds_name, "chronos")
-                if _ttfm_c is None or _chro_c is None:
+                if _migas15_c is None or _chro_c is None:
                     print(f"  {ds_name}: cache corrupt, recomputing")
-                    ttfm_preds, chronos_preds, gt = _run_core()
+                    migas15_preds, chronos_preds, gt = _run_core()
                     _save_preds(
-                        ctx_dir, ds_name, "ttfm",
-                        hist_arr, ttfm_preds, gt, means_arr, stds_arr,
+                        ctx_dir, ds_name, "migas15",
+                        hist_arr, migas15_preds, gt, means_arr, stds_arr,
                     )
                     _save_preds(
                         ctx_dir, ds_name, "chronos",
                         hist_arr, chronos_preds, gt, means_arr, stds_arr,
                     )
                 else:
-                    ttfm_preds, chronos_preds, gt = (
-                        _ttfm_c["predictions"],
+                    migas15_preds, chronos_preds, gt = (
+                        _migas15_c["predictions"],
                         _chro_c["predictions"],
-                        _ttfm_c["gt"],
+                        _migas15_c["gt"],
                     )
                     print(f"  {ds_name}: core cached")
             else:
-                ttfm_preds, chronos_preds, gt = _run_core()
+                migas15_preds, chronos_preds, gt = _run_core()
                 _save_preds(
-                    ctx_dir, ds_name, "ttfm",
-                    hist_arr, ttfm_preds, gt, means_arr, stds_arr,
+                    ctx_dir, ds_name, "migas15",
+                    hist_arr, migas15_preds, gt, means_arr, stds_arr,
                 )
                 _save_preds(
                     ctx_dir, ds_name, "chronos",
@@ -665,40 +665,40 @@ def main():
                 )
 
             n_samples = gt.shape[0]
-            ttfm_m = compute_metrics(ttfm_preds, gt)
+            migas15_m = compute_metrics(migas15_preds, gt)
             chro_m = compute_metrics(chronos_preds, gt)
 
-            ttfm_per_w = np.mean(np.abs(ttfm_preds - gt), axis=1)
+            migas15_per_w = np.mean(np.abs(migas15_preds - gt), axis=1)
             chro_per_w = np.mean(np.abs(chronos_preds - gt), axis=1)
-            w_ttfm = int(np.sum(ttfm_per_w < chro_per_w))
-            w_chro = int(np.sum(ttfm_per_w > chro_per_w))
-            w_tied = n_samples - w_ttfm - w_chro
+            w_migas15 = int(np.sum(migas15_per_w < chro_per_w))
+            w_chro = int(np.sum(migas15_per_w > chro_per_w))
+            w_tied = n_samples - w_migas15 - w_chro
 
             row = {
                 "dataset": ds_name,
                 "n_samples": n_samples,
-                "ttfm_mean_mae": ttfm_m["mean_mae"],
-                "ttfm_median_mae": ttfm_m["median_mae"],
+                "migas15_mean_mae": migas15_m["mean_mae"],
+                "migas15_median_mae": migas15_m["median_mae"],
                 "chronos_mean_mae": chro_m["mean_mae"],
                 "chronos_median_mae": chro_m["median_mae"],
-                "ttfm_mean_mse": ttfm_m["mean_mse"],
+                "migas15_mean_mse": migas15_m["mean_mse"],
                 "chronos_mean_mse": chro_m["mean_mse"],
-                "ttfm_mean_mape": ttfm_m["mean_mape"],
-                "ttfm_median_mape": ttfm_m["median_mape"],
+                "migas15_mean_mape": migas15_m["mean_mape"],
+                "migas15_median_mape": migas15_m["median_mape"],
                 "chronos_mean_mape": chro_m["mean_mape"],
                 "chronos_median_mape": chro_m["median_mape"],
                 "mae_improvement_pct": (
-                    (chro_m["mean_mae"] - ttfm_m["mean_mae"])
+                    (chro_m["mean_mae"] - migas15_m["mean_mae"])
                     / chro_m["mean_mae"]
                     * 100
                     if chro_m["mean_mae"] > 0
                     else 0.0
                 ),
-                "windows_ttfm_better": w_ttfm,
+                "windows_migas15_better": w_migas15,
                 "windows_chronos_better": w_chro,
                 "windows_tied": w_tied,
-                "pct_windows_ttfm_better": (
-                    w_ttfm / n_samples * 100 if n_samples > 0 else 0.0
+                "pct_windows_migas15_better": (
+                    w_migas15 / n_samples * 100 if n_samples > 0 else 0.0
                 ),
             }
 
@@ -720,8 +720,8 @@ def main():
                 row["timesfm_mean_mse"] = tfm_m["mean_mse"]
                 row["timesfm_mean_mape"] = tfm_m["mean_mape"]
                 row["timesfm_median_mape"] = tfm_m["median_mape"]
-                row["ttfm_vs_timesfm_improvement_pct"] = (
-                    (tfm_m["mean_mae"] - ttfm_m["mean_mae"])
+                row["migas15_vs_timesfm_improvement_pct"] = (
+                    (tfm_m["mean_mae"] - migas15_m["mean_mae"])
                     / tfm_m["mean_mae"]
                     * 100
                     if tfm_m["mean_mae"] > 0
@@ -746,8 +746,8 @@ def main():
                 row["toto_mean_mse"] = toto_m["mean_mse"]
                 row["toto_mean_mape"] = toto_m["mean_mape"]
                 row["toto_median_mape"] = toto_m["median_mape"]
-                row["ttfm_vs_toto_improvement_pct"] = (
-                    (toto_m["mean_mae"] - ttfm_m["mean_mae"])
+                row["migas15_vs_toto_improvement_pct"] = (
+                    (toto_m["mean_mae"] - migas15_m["mean_mae"])
                     / toto_m["mean_mae"]
                     * 100
                     if toto_m["mean_mae"] > 0
@@ -772,8 +772,8 @@ def main():
                 row["tabpfn_mean_mse"] = tabpfn_m["mean_mse"]
                 row["tabpfn_mean_mape"] = tabpfn_m["mean_mape"]
                 row["tabpfn_median_mape"] = tabpfn_m["median_mape"]
-                row["ttfm_vs_tabpfn_improvement_pct"] = (
-                    (tabpfn_m["mean_mae"] - ttfm_m["mean_mae"])
+                row["migas15_vs_tabpfn_improvement_pct"] = (
+                    (tabpfn_m["mean_mae"] - migas15_m["mean_mae"])
                     / tabpfn_m["mean_mae"]
                     * 100
                     if tabpfn_m["mean_mae"] > 0
@@ -797,8 +797,8 @@ def main():
                 row["prophet_mean_mse"] = prophet_m["mean_mse"]
                 row["prophet_mean_mape"] = prophet_m["mean_mape"]
                 row["prophet_median_mape"] = prophet_m["median_mape"]
-                row["ttfm_vs_prophet_improvement_pct"] = (
-                    (prophet_m["mean_mae"] - ttfm_m["mean_mae"])
+                row["migas15_vs_prophet_improvement_pct"] = (
+                    (prophet_m["mean_mae"] - migas15_m["mean_mae"])
                     / prophet_m["mean_mae"]
                     * 100
                     if prophet_m["mean_mae"] > 0
@@ -821,8 +821,8 @@ def main():
                 row["sarima_mean_mse"] = sarima_m["mean_mse"]
                 row["sarima_mean_mape"] = sarima_m["mean_mape"]
                 row["sarima_median_mape"] = sarima_m["median_mape"]
-                row["ttfm_vs_sarima_improvement_pct"] = (
-                    (sarima_m["mean_mae"] - ttfm_m["mean_mae"])
+                row["migas15_vs_sarima_improvement_pct"] = (
+                    (sarima_m["mean_mae"] - migas15_m["mean_mae"])
                     / sarima_m["mean_mae"]
                     * 100
                     if sarima_m["mean_mae"] > 0
@@ -831,12 +831,12 @@ def main():
 
             rows.append(row)
 
-            r_ttfm = float(row["ttfm_mean_mae"])
+            r_migas15 = float(row["migas15_mean_mae"])
             r_chro = float(row["chronos_mean_mae"])
-            if r_ttfm < r_chro:
-                ttfm_wins += 1
-                winner = "TTFM"
-            elif r_ttfm > r_chro:
+            if r_migas15 < r_chro:
+                migas15_wins += 1
+                winner = "Migas-1.5"
+            elif r_migas15 > r_chro:
                 chronos_wins += 1
                 winner = "Chronos"
             else:
@@ -845,7 +845,7 @@ def main():
 
             parts = [
                 f"  {ds_name:30s}  n={n_samples:4d}",
-                f"TTFM={r_ttfm:.4f}",
+                f"Migas-1.5={r_migas15:.4f}",
                 f"Chronos={r_chro:.4f}",
             ]
             if args.eval_timesfm and "timesfm_mean_mae" in row:
@@ -868,7 +868,7 @@ def main():
         print(f"SUMMARY  (context_length = {ctx_len})")
         print("=" * 80)
         print(f"Datasets evaluated: {n_datasets}")
-        print(f"TTFM wins (vs Chronos): {ttfm_wins}/{n_datasets}")
+        print(f"Migas-1.5 wins (vs Chronos): {migas15_wins}/{n_datasets}")
         print(f"Chronos wins:           {chronos_wins}/{n_datasets}")
         if ties:
             print(f"Ties:                   {ties}/{n_datasets}")
@@ -882,7 +882,7 @@ def main():
                 "mean_mape": "Mean MAPE",
                 "median_mape": "Median MAPE",
             }
-            models_list = [("TTFM (Ours)", "ttfm"), ("Chronos", "chronos")]
+            models_list = [("Migas-1.5 (Ours)", "migas15"), ("Chronos", "chronos")]
             _optional = [
                 (args.eval_timesfm, "TimesFM", "timesfm"),
                 (args.eval_toto, "Toto", "toto"),
@@ -918,16 +918,16 @@ def main():
 
             all_impr = [r["mae_improvement_pct"] for r in rows]
             total_windows = sum(r["n_samples"] for r in rows)
-            total_ttfm_better = sum(r["windows_ttfm_better"] for r in rows)
+            total_migas15_better = sum(r["windows_migas15_better"] for r in rows)
             total_chro_better = sum(r["windows_chronos_better"] for r in rows)
             total_tied = sum(r["windows_tied"] for r in rows)
-            avg_pct = np.mean([r["pct_windows_ttfm_better"] for r in rows])
+            avg_pct = np.mean([r["pct_windows_migas15_better"] for r in rows])
 
-            print(f"\nPer-window stats -- TTFM vs Chronos (across all datasets):")
+            print(f"\nPer-window stats -- Migas-1.5 vs Chronos (across all datasets):")
             print(f"  Total windows:       {total_windows}")
             print(
-                f"  TTFM better:         {total_ttfm_better}/{total_windows} "
-                f"({total_ttfm_better / total_windows * 100:.1f}%)"
+                f"  Migas-1.5 better:         {total_migas15_better}/{total_windows} "
+                f"({total_migas15_better / total_windows * 100:.1f}%)"
             )
             print(
                 f"  Chronos better:      {total_chro_better}/{total_windows} "
@@ -938,19 +938,19 @@ def main():
                     f"  Tied:                {total_tied}/{total_windows} "
                     f"({total_tied / total_windows * 100:.1f}%)"
                 )
-            print(f"  Avg % windows TTFM better (per dataset): {avg_pct:.1f}%")
+            print(f"  Avg % windows Migas-1.5 better (per dataset): {avg_pct:.1f}%")
 
-            print(f"\n  TTFM vs Chronos improvement: {np.mean(all_impr):+.2f}%")
+            print(f"\n  Migas-1.5 vs Chronos improvement: {np.mean(all_impr):+.2f}%")
             for _flag, _lbl, _pfx in _optional:
-                _impr_key = f"ttfm_vs_{_pfx}_improvement_pct"
+                _impr_key = f"migas15_vs_{_pfx}_improvement_pct"
                 _mae_key = f"{_pfx}_mean_mae"
                 if _flag and all(_impr_key in r for r in rows):
                     _impr_vals = [r[_impr_key] for r in rows]
-                    print(f"  TTFM vs {_lbl} improvement: {np.mean(_impr_vals):+.2f}%")
+                    print(f"  Migas-1.5 vs {_lbl} improvement: {np.mean(_impr_vals):+.2f}%")
                     _beats = sum(
-                        1 for r in rows if r["ttfm_mean_mae"] < r[_mae_key]
+                        1 for r in rows if r["migas15_mean_mae"] < r[_mae_key]
                     )
-                    print(f"  TTFM beats {_lbl}: {_beats}/{n_datasets}")
+                    print(f"  Migas-1.5 beats {_lbl}: {_beats}/{n_datasets}")
 
         # ── Save CSV ─────────────────────────────────────────────────
         if rows:
@@ -966,7 +966,7 @@ def main():
 
             with open(csv_path, "a") as f:
                 f.write(
-                    f"\n# TTFM wins: {ttfm_wins}/{n_datasets}  "
+                    f"\n# Migas-1.5 wins: {migas15_wins}/{n_datasets}  "
                     f"Chronos wins: {chronos_wins}/{n_datasets}  "
                     f"Avg improvement: {np.mean(all_impr):+.2f}%\n"
                 )

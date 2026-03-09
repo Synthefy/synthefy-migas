@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Start vLLM server for TTFM evaluation (context summarization) and --eval_gpt_forecast.
-# Run this in a separate terminal before running evaluation with --eval_ttfmlf.
+# Start vLLM server for Migas-1.5 evaluation (context summarization) and --eval_gpt_forecast.
+# Run this in a separate terminal before running evaluation with --eval_migas15.
 # Requires vLLM in this project's environment (e.g. from repo root: uv add vllm).
 
 set -e
@@ -20,7 +20,7 @@ if [[ -n "${VLLM_TENSOR_PARALLEL_SIZE:-}" ]]; then
 	    TENSOR_PARALLEL_SIZE=$(echo "$GPU" | tr ',' '\n' | wc -l)
 fi
 
-echo "Starting vLLM server for TTFM eval:"
+echo "Starting vLLM server for Migas-1.5 eval:"
 echo "  Model: $MODEL"
 echo "  Port:  $PORT"
 echo "  GPU:   $GPU"

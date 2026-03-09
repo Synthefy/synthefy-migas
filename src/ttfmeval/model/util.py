@@ -1,4 +1,4 @@
-"""Utility modules for TTFM (text embedder, context summarizer)."""
+"""Utility modules for Migas-1.5 (text embedder, context summarizer)."""
 
 import math
 import asyncio
@@ -177,7 +177,7 @@ def get_text_embedding_size(text_embedder_name: str) -> int:
 
 
 # ============================================================================
-# Context Summarization (for TTFM)
+# Context Summarization (for Migas-1.5)
 # ============================================================================
 
 

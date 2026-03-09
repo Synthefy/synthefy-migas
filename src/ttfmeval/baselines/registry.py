@@ -30,8 +30,8 @@ class BaselineConfig:
 BASELINE_REGISTRY: Dict[str, BaselineConfig] = {}
 
 MODEL_DISPLAY_NAMES: Dict[str, str] = {
-    "ttfm": "TTFM",
-    "ttfm_timesfm": "TTFM-TimesFM",
+    "migas15": "Migas-1.5",
+    "migas15_timesfm": "Migas-1.5-TimesFM",
     "timeseries": "TS-Only",
     "chronos_univar": "Chronos2",
     "chronos_multivar": "Chronos2-MV",
@@ -95,7 +95,7 @@ def get_all_prediction_keys() -> List[str]:
     """Return all possible prediction keys from all registered baselines.
 
     Returns:
-        Sorted list of unique prediction keys (e.g. ["chronos_univar", "ttfm", ...]).
+        Sorted list of unique prediction keys (e.g. ["chronos_univar", "migas15", ...]).
     """
     keys = []
     for config in BASELINE_REGISTRY.values():
@@ -107,7 +107,7 @@ def get_baseline_for_prediction_key(key: str) -> Optional[str]:
     """Return the baseline name that produces a given prediction key.
 
     Args:
-        key: Prediction key (e.g. "ttfm", "chronos_univar").
+        key: Prediction key (e.g. "migas15", "chronos_univar").
 
     Returns:
         Baseline name that registers that key, or None if not found.
