@@ -77,70 +77,43 @@ Run the evaluation CLI on your time-series data. Each data file (CSV or Parquet)
 **Example: baselines only (no Migas-1.5, no LLM)**
 
 ```bash
-uv run python -m migaseval.evaluation \
+uv run python scripts/eval_simple.py \
   --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
   --output_dir ./results \
   --seq_len 384 \
   --pred_len 16 \
   --batch_size 64 \
-  --eval_chronos2 \
   --eval_timesfm \
-  --eval_prophet \
-  --eval_naive
+  --eval_prophet
 ```
 
 **Example: with Migas-1.5**
 
-By default, `--eval_migas15` loads Migas-1.5 from the Hugging Face repo `Synthefy/migas-1.5`. You only need `--checkpoint` if you want to override that default with another HF repo id or a local checkpoint path.
+By default, `--eval_migas15` loads Migas-1.5 from the Hugging Face repo `Synthefy/migas-1.5`. You only need `--checkpoint` if you want to override that default with another HF repo id or a local checkpoint path. On first run, an LLM server is needed for summary generation (see [Migas-1.5 and the LLM server](#migas-15-and-the-llm-server)); subsequent runs reuse cached summaries automatically.
 
 ```bash
-uv run python -m migaseval.evaluation \
+uv run python scripts/eval_simple.py \
   --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
   --output_dir ./results \
   --seq_len 384 \
   --pred_len 16 \
   --batch_size 64 \
   --eval_migas15 \
-  --eval_chronos2 \
   --eval_timesfm
 ```
 
-Migas-1.5 evaluation requires a running vLLM (or OpenAI-compatible) server for context summarization. Start it before running the above (see [Migas-1.5 and the LLM server](#migas-15-and-the-llm-server)).
-
 **Fast path: use pre-computed summaries (no LLM server needed)**
 
-If you downloaded pre-computed summaries from Hugging Face (see [FNSPID evaluation data](#fnspid-evaluation-data)), pass `--summaries_dir` to skip on-the-fly LLM generation entirely:
+If you downloaded pre-computed summaries from Hugging Face (see [FNSPID evaluation data](#fnspid-evaluation-data)), pass `--summaries_dir` to skip LLM generation entirely:
 
 ```bash
-uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+uv run python scripts/eval_simple.py \
   --summaries_dir ./data/fnspid_prepared/fnspid_0.5_complement \
   --output_dir ./results \
-  --seq_len 384 \
-  --pred_len 16 \
-  --batch_size 64 \
   --eval_migas15 \
-  --checkpoint Synthefy/migas-1.5
-```
-
-Alternatively, you can cache your own summaries and then evaluate with the lightweight evaluator:
-
-```bash
-# Step 1) Cache summaries (requires LLM server; writes to results/<suite>/context_<seq_len>/...)
-uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
-  --output_dir ./results \
-  --seq_len 384 \
-  --pred_len 16 \
-  --batch_size 64 \
-  --cache_summaries
-
-# Step 2) Evaluate from cached summaries (no LLM calls)
-uv run python scripts/eval_simple.py \
-  --summaries_dir ./results/output/context_384 \
   --checkpoint Synthefy/migas-1.5 \
   --context_lengths 32 64 128 256 384 \
-  --eval_timesfm --eval_toto --eval_prophet
+  --eval_timesfm --eval_prophet
 ```
 
 After running evals, generate the final post-eval report and plots:
@@ -191,11 +164,10 @@ uv run python scripts/download_fnspid.py --all --local_dir ./my_data
 After downloading, use the prepared CSVs and summaries with the evaluation CLI:
 
 ```bash
-uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+uv run python scripts/eval_simple.py \
   --summaries_dir ./data/fnspid_prepared/fnspid_0.5_complement \
   --checkpoint Synthefy/migas-1.5 \
-  --eval_migas15 --eval_chronos2 --eval_timesfm
+  --eval_migas15 --eval_timesfm
 ```
 
 <details>
@@ -252,17 +224,12 @@ Enable with `--eval_<name>`:
 
 | Flag | Description |
 |------|-------------|
-| `--eval_migas15` | Migas-1.5 model (defaults to HF repo `Synthefy/migas-1.5`; override with `--checkpoint` or `MIGAS_CHECKPOINT`, including a local path) |
-| `--eval_migas15_timesfm` | Migas-1.5 with TimesFM as univariate (requires `--checkpoint_timesfm`) |
-| `--eval_chronos2` | Chronos-2 univariate |
-| `--eval_chronos2_multivar` | Chronos-2 with covariates |
-| `--eval_chronos2_gpt` | Chronos-2 + GPT forecasts (run `--eval_gpt_forecast` first or have cached) |
-| `--eval_gpt_forecast` | LLM-only forecast (needs vLLM / OpenAI-compatible server) |
+| `--eval_migas15` | Migas-1.5 model (defaults to HF repo `Synthefy/migas-1.5`; override with `--checkpoint` or `MIGAS_CHECKPOINT`). Also produces standalone Chronos predictions. |
 | `--eval_timesfm` | TimesFM 2.5 univariate |
-| `--eval_naive` | Naive (last value) |
-| `--eval_prophet` | Prophet |
-| `--eval_tabpfn` | TabPFN 2.5 time-series (requires `HF_TOKEN`) |
 | `--eval_toto` | Toto (optional: `pip install -e ".[toto]"`) |
+| `--eval_tabpfn` | TabPFN 2.5 time-series (requires `HF_TOKEN`) |
+| `--eval_prophet` | Prophet |
+| `--eval_sarima` | Seasonal ARIMA |
 
 ### Output layout
 
@@ -272,19 +239,21 @@ Under `--output_dir`:
 <output_dir>/
   <datasets_dir_name>/
     context_<seq_len>/
-      eval_meta.json          # datasets_dir, seq_len, pred_len (for post_eval)
-      stats_Context_<seq_len>_allsamples.csv
-      stats_Context_<seq_len>_june2024plus.csv  (if applicable)
-      outputs/
+      eval_meta.json              # datasets_dir, seq_len, pred_len
+      <dataset_name>/             # per-window cache
+        summary_0.json            # historic_values, forecast_values, mean, std, optional summary
+        summary_1.json
+        ...
+      predictions/                # per-model prediction cache
         <dataset_name>/
-          input.npy
-          gt.npy
-          migas_pred.npy
-          chronos_univar_pred.npy
+          migas15.npz
+          chronos.npz
+          timesfm.npz
           ...
+      results_<suite>_ctx<len>.csv
 ```
 
-Re-runs skip datasets that already have all requested model outputs. Use a new `--output_dir` or delete `outputs/<dataset_name>/` to re-evaluate.
+Re-runs reuse cached windows and predictions. Delete a model's `.npz` to re-evaluate it.
 
 ### After evaluation: report and plots
 

@@ -33,8 +33,8 @@ timesfm = { git = "https://github.com/google-research/timesfm.git", rev = "bf88c
 # Toto baseline (install with: uv sync --extra toto). May conflict with torch/vllm versions.
 # toto = ["toto-ts"]
 
-[project.scripts]
-synthefy-migas = "migaseval.evaluation:main"
+# [project.scripts]
+# Entry point removed; use: python scripts/eval_simple.py
 
 [build-system]
 requires = ["hatchling"]

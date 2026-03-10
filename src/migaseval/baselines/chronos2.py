@@ -17,18 +17,28 @@ def load_chronos2_pipeline(device):
         device: Torch device or device_map for the pipeline.
 
     Returns:
-        BaseChronosPipeline: Loaded Chronos-2 pipeline (cached).
+        Chronos2Pipeline: Loaded Chronos-2 pipeline (cached).
     """
-    from chronos import BaseChronosPipeline
-
     global CHRONOS2_PIPELINE
     if CHRONOS2_PIPELINE is None:
         print("Loading Chronos-2 pipeline...")
-        CHRONOS2_PIPELINE = BaseChronosPipeline.from_pretrained(
-            "amazon/chronos-2",
-            device_map=device,
-            dtype=torch.bfloat16,
-        )
+        from chronos.chronos2 import Chronos2Model, Chronos2Pipeline
+
+        load_kwargs = {"torch_dtype": torch.bfloat16}
+        model = None
+        try:
+            model = Chronos2Model.from_pretrained(
+                "amazon/chronos-2", device_map=device, **load_kwargs
+            )
+        except TypeError:
+            model = Chronos2Model.from_pretrained("amazon/chronos-2", **load_kwargs)
+            try:
+                model = model.to(device)
+            except Exception:
+                pass
+
+        model.eval()
+        CHRONOS2_PIPELINE = Chronos2Pipeline(model)
         print("Chronos-2 pipeline loaded successfully")
     return CHRONOS2_PIPELINE
 

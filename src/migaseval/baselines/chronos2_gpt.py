@@ -118,7 +118,7 @@ def evaluate_chronos2_with_gpt_forecast(
     Raises:
         ValueError: If precomputed_gpt_forecasts is None.
     """
-    from chronos import BaseChronosPipeline
+    from .chronos2 import load_chronos2_pipeline
 
     if precomputed_gpt_forecasts is None:
         raise ValueError(
@@ -126,13 +126,7 @@ def evaluate_chronos2_with_gpt_forecast(
             "or ensure gpt_forecast_pred.npy exists in cache."
         )
 
-    print("Loading Chronos-2 pipeline...")
-    pipeline = BaseChronosPipeline.from_pretrained(
-        "amazon/chronos-2",
-        device_map=device,
-        dtype=torch.bfloat16,
-        local_files_only=True,
-    )
+    pipeline = load_chronos2_pipeline(device)
 
     all_inputs = []
     all_gts = []
