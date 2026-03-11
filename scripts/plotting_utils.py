@@ -2,8 +2,16 @@
 Shared forecasting plot utilities for Migas-1.5 and baselines (e.g. Chronos).
 
 Use from scripts or from Jupyter notebooks (add repo root to path or install package).
-Design: ground truth = black, Migas-1.5 = blue, Chronos = orange, forecast region emphasized (shaded + vline).
-Metrics shown in titles: MAPE (%) and Error (MAE over horizon).
+
+Call ``apply_migas_style()`` once at import time (done automatically) to set up
+consistent rcParams across all notebooks and scripts.
+
+Color scheme:
+  - Historical context = slate gray
+  - Ground truth = near-black charcoal
+  - Migas-1.5 = vibrant teal (hero color)
+  - Chronos / Chronos-2 = warm coral
+  - Forecast region = subtle warm wash
 
 Examples:
   # Single window, Migas-1.5 only
@@ -20,22 +28,116 @@ Examples:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Design: ground truth black; Chronos = saturated orange, Migas-1.5 = blue; historical dark gray
+# ---------------------------------------------------------------------------
+# Brand palette
+# ---------------------------------------------------------------------------
 COLORS = {
-    "ground_truth": "black",
-    "historical": "#2C3E50",
-    "Migas-1.5": "#E67E22",
-    "Chronos": "#2980B9",
-    "Chronos-2": "#2980B9",
+    "ground_truth": "#1B2631",
+    "historical": "#5D6D7E",
+    "Migas-1.5": "#F28C28",
+    "Chronos": "#E07A5F",
+    "Chronos-2": "#E07A5F",
+    "TimesFM": "#7B68EE",
+    "forecast_region": "#FDF6EC",
+    "forecast_vline": "#ABB2B9",
 }
-# Fallback for any other model name
-DEFAULT_MODEL_COLOR = "#3498DB"
+DEFAULT_MODEL_COLOR = "#6C8EBF"
 
+_STYLE_APPLIED = False
+
+
+def apply_migas_style() -> None:
+    """Set matplotlib rcParams for a clean, modern, release-quality look.
+
+    Safe to call multiple times — only applies once per process.
+    """
+    global _STYLE_APPLIED
+    if _STYLE_APPLIED:
+        return
+    _STYLE_APPLIED = True
+
+    plt.rcParams.update({
+        # --- typography ---
+        "font.family": "sans-serif",
+        "font.sans-serif": [
+            "Inter", "Helvetica Neue", "Helvetica", "Arial",
+            "DejaVu Sans", "Liberation Sans", "sans-serif",
+        ],
+        "font.size": 11,
+        "axes.titlesize": 12,
+        "axes.titleweight": 600,
+        "axes.labelsize": 11,
+        "axes.labelweight": 500,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "legend.title_fontsize": 10,
+
+        # --- figure ---
+        "figure.dpi": 140,
+        "figure.facecolor": "white",
+        "figure.edgecolor": "none",
+        "savefig.dpi": 300,
+        "savefig.bbox": "tight",
+        "savefig.pad_inches": 0.12,
+        "savefig.facecolor": "white",
+
+        # --- axes ---
+        "axes.facecolor": "#FAFBFC",
+        "axes.edgecolor": "#D5D8DC",
+        "axes.linewidth": 0.7,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "axes.axisbelow": True,
+
+        # --- grid ---
+        "grid.color": "#E5E8E8",
+        "grid.linewidth": 0.5,
+        "grid.alpha": 0.8,
+        "grid.linestyle": "-",
+
+        # --- ticks ---
+        "xtick.major.size": 0,
+        "ytick.major.size": 0,
+        "xtick.minor.size": 0,
+        "ytick.minor.size": 0,
+        "xtick.major.pad": 6,
+        "ytick.major.pad": 6,
+        "xtick.color": "#566573",
+        "ytick.color": "#566573",
+
+        # --- lines ---
+        "lines.linewidth": 2.0,
+        "lines.markersize": 5,
+        "lines.antialiased": True,
+
+        # --- legend ---
+        "legend.frameon": True,
+        "legend.framealpha": 0.92,
+        "legend.edgecolor": "#D5D8DC",
+        "legend.fancybox": True,
+        "legend.borderpad": 0.5,
+        "legend.columnspacing": 1.2,
+        "legend.handlelength": 1.8,
+
+        # --- layout ---
+        "figure.constrained_layout.use": False,
+    })
+
+
+apply_migas_style()
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
 
 def compute_mape(gt: np.ndarray, pred: np.ndarray, eps: float = 1e-8) -> float:
     """Mean absolute percentage error (0-100 scale). gt and pred same shape, 1d or 2d."""
@@ -57,15 +159,45 @@ def _mape_mae_1d(gt_1d: np.ndarray, pred_1d: np.ndarray, eps: float = 1e-8) -> t
     return mape, mae
 
 
-def _draw_forecast_region(ax: Any, context_len: int, pred_len: int) -> None:
-    """Shaded forecast region and vertical line at context end."""
-    ax.axvspan(
-        context_len - 0.5, context_len + pred_len - 0.5, alpha=0.15, color="gray"
-    )
+# ---------------------------------------------------------------------------
+# Drawing helpers
+# ---------------------------------------------------------------------------
+
+def _draw_forecast_region(
+    ax: Any,
+    context_len: int,
+    pred_len: int,
+    *,
+    boundary: Any | None = None,
+    boundary_end: Any | None = None,
+) -> None:
+    """Warm-tinted forecast band with a subtle divider line.
+
+    When *boundary* / *boundary_end* are given (e.g. datetime objects) they are
+    used instead of the integer ``context_len - 0.5`` / ``context_len + pred_len - 0.5``.
+    """
+    left = boundary if boundary is not None else context_len - 0.5
+    right = boundary_end if boundary_end is not None else context_len + pred_len - 0.5
+
+    ax.axvspan(left, right, alpha=0.45, color=COLORS["forecast_region"], zorder=0)
     ax.axvline(
-        x=context_len - 0.5, color="gray", linestyle="--", linewidth=1, alpha=0.7
+        x=left,
+        color=COLORS["forecast_vline"],
+        linestyle="--",
+        linewidth=0.9,
+        alpha=0.6,
+        zorder=1,
     )
 
+
+def _format_metric_badge(model_name: str, mape: float, mae: float) -> str:
+    """Compact metric string for annotation boxes."""
+    return f"{model_name}  MAPE {mape:.2f}%  ·  MAE {mae:.4f}"
+
+
+# ---------------------------------------------------------------------------
+# Core single-axes plot
+# ---------------------------------------------------------------------------
 
 def plot_one_forecast(
     ax: Any,
@@ -79,8 +211,9 @@ def plot_one_forecast(
     history_std: float | None = None,
     show_metrics: bool = True,
     title: str | None = None,
-    xlabel: str = "Time Step",
+    xlabel: str | None = None,
     ylabel: str = "Value",
+    timestamps: Sequence | np.ndarray | None = None,
 ) -> None:
     """
     Draw one forecast window on the given axes.
@@ -88,14 +221,18 @@ def plot_one_forecast(
     Args:
         ax: matplotlib axes
         history: shape (context_len,) — historical context
-        gt: shape (pred_len,) — ground truth, or None for inference-only (no GT line, no metrics)
-        preds: dict mapping model name -> array of shape (pred_len,). Keys like "Migas-1.5", "Chronos" get standard colors.
+        gt: shape (pred_len,) — ground truth, or None for inference-only
+        preds: dict mapping model name -> array of shape (pred_len,)
         context_len: length of history
         pred_len: length of gt and each prediction
-        history_mean, history_std: if provided, history/gt/preds are treated as normalized and denormalized for plotting
-        show_metrics: if True and gt is not None, add MAPE and Error to title for each model
-        title: optional title when no metrics (e.g. dataset name)
-        xlabel, ylabel: axis labels
+        history_mean, history_std: optional denormalization params
+        show_metrics: if True and gt is not None, add MAPE/MAE badge
+        title: optional title (e.g. dataset name)
+        xlabel: x-axis label (auto-set to "Date" or "Time Step" based on *timestamps*)
+        ylabel: y-axis label
+        timestamps: optional sequence of length ``context_len + pred_len`` with
+            datetime-like objects.  When provided the x-axis shows dates instead
+            of integer step indices.
     """
     hist = np.asarray(history, dtype=np.float64).ravel()
     if len(hist) != context_len:
@@ -117,23 +254,50 @@ def plot_one_forecast(
     else:
         preds = {k: np.asarray(v, dtype=np.float64).ravel() for k, v in preds.items()}
 
-    t_input = np.arange(context_len)
-    t_pred_extended = np.arange(context_len - 1, context_len + pred_len)
     last_input = float(hist[-1])
 
-    _draw_forecast_region(ax, context_len, pred_len)
+    # ---- resolve x-axis values ----
+    use_dates = timestamps is not None and len(timestamps) == context_len + pred_len
+    if use_dates:
+        import pandas as pd
+        ts = pd.to_datetime(list(timestamps))
+        t_input = ts[:context_len]
+        t_pred_extended = pd.DatetimeIndex([ts[context_len - 1]] + list(ts[context_len:]))
+        _draw_forecast_region(
+            ax, context_len, pred_len,
+            boundary=ts[context_len - 1],
+            boundary_end=ts[-1],
+        )
+    else:
+        t_input = np.arange(context_len)
+        t_pred_extended = np.arange(context_len - 1, context_len + pred_len)
+        _draw_forecast_region(ax, context_len, pred_len)
 
-    ax.plot(t_input, hist, color=COLORS["historical"], linewidth=2.5, label="Historical", zorder=3)
+    # Historical context
+    ax.plot(
+        t_input, hist,
+        color=COLORS["historical"],
+        linewidth=2.0,
+        label="Historical",
+        zorder=3,
+        solid_capstyle="round",
+    )
+
+    # Ground truth
     if has_gt:
         gt_extended = np.concatenate([[last_input], gt_arr])
-        ax.plot(t_pred_extended, gt_extended, color=COLORS["ground_truth"], linewidth=2.5, label="Ground Truth", zorder=4)
+        ax.plot(
+            t_pred_extended, gt_extended,
+            color=COLORS["ground_truth"],
+            linewidth=2.2,
+            label="Ground Truth",
+            zorder=4,
+            solid_capstyle="round",
+        )
 
-    # Draw Migas last so it appears in front of Chronos
+    # Draw Migas last so it renders on top
     def _model_order(item: tuple[str, np.ndarray]) -> int:
-        name = item[0]
-        if "Migas" in name:
-            return 1
-        return 0
+        return 1 if "Migas" in item[0] else 0
 
     for model_name, pred_arr in sorted(preds.items(), key=_model_order):
         color = COLORS.get(model_name, DEFAULT_MODEL_COLOR)
@@ -142,28 +306,65 @@ def plot_one_forecast(
             t_pred_extended,
             pred_extended,
             color=color,
-            linewidth=2.5,
+            linewidth=2.4,
             label=model_name,
             zorder=5,
-            alpha=0.9,
+            alpha=0.92,
+            solid_capstyle="round",
         )
 
-    ax.set_xlim(-0.5, context_len + pred_len - 0.5)
-    ax.set_xticks(np.arange(0, context_len + pred_len, max(1, (context_len + pred_len) // 10)))
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="best", fontsize=8)
+    # ---- x-axis formatting ----
+    if use_dates:
+        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+        for lbl in ax.get_xticklabels():
+            lbl.set_rotation(35)
+            lbl.set_ha("right")
+    else:
+        ax.set_xlim(-0.5, context_len + pred_len - 0.5)
+        step = max(1, (context_len + pred_len) // 8)
+        ax.set_xticks(np.arange(0, context_len + pred_len, step))
 
+    if xlabel is None:
+        xlabel = "Date" if use_dates else "Time Step"
+    ax.set_xlabel(xlabel, color="#566573")
+    ax.set_ylabel(ylabel, color="#566573")
+
+    # Legend
+    ax.legend(
+        loc="best",
+        fontsize=8,
+        handlelength=1.6,
+        labelspacing=0.35,
+        borderpad=0.45,
+    )
+
+    # Title / metrics badge
     if show_metrics and preds and has_gt and gt_arr is not None:
         parts = []
         for model_name, pred_arr in preds.items():
             mape, mae = _mape_mae_1d(gt_arr, pred_arr)
-            parts.append(f"{model_name} MAPE={mape:.2f}% Err={mae:.4f}")
-        ax.set_title("\n".join(parts), fontsize=9)
+            parts.append(_format_metric_badge(model_name, mape, mae))
+        badge = "    |    ".join(parts)
+        ax.annotate(
+            badge,
+            xy=(0.5, 1.0),
+            xycoords="axes fraction",
+            fontsize=8,
+            color="#5D6D7E",
+            ha="center",
+            va="bottom",
+            xytext=(0, 6),
+            textcoords="offset points",
+        )
+        if title:
+            ax.set_title(title, pad=18)
     elif title:
-        ax.set_title(title, fontsize=9)
+        ax.set_title(title)
 
+
+# ---------------------------------------------------------------------------
+# Convenience wrappers
+# ---------------------------------------------------------------------------
 
 def plot_forecast_single(
     history: np.ndarray,
@@ -175,20 +376,16 @@ def plot_forecast_single(
     history_mean: float | None = None,
     history_std: float | None = None,
     title: str | None = None,
-    figsize: tuple[float, float] = (7.0, 4.0),
+    figsize: tuple[float, float] = (8.0, 4.0),
     show_metrics: bool = True,
+    timestamps: Sequence | np.ndarray | None = None,
 ) -> tuple[plt.Figure, Any]:
     """
-    One figure with one window: history + optional ground truth + Migas-1.5 and/or Chronos.
+    One figure with one window: history + optional ground truth + model forecasts.
 
     Args:
-        history: (context_len,)
-        gt: (pred_len,) or None for inference-only (no GT line, no metrics)
-        preds: {"Migas-1.5": (pred_len,), "Chronos": (pred_len,)} or just one key
-        context_len, pred_len: lengths
-        history_mean, history_std: optional denormalization
-        title: optional subplot title (e.g. dataset name)
-        figsize, show_metrics: passed through
+        timestamps: optional sequence of length ``context_len + pred_len`` with
+            datetime-like objects.  When provided the x-axis shows dates.
 
     Returns:
         (fig, ax)
@@ -198,8 +395,9 @@ def plot_forecast_single(
         ax, history, gt, preds, context_len, pred_len,
         history_mean=history_mean, history_std=history_std,
         show_metrics=show_metrics, title=title,
+        timestamps=timestamps,
     )
-    plt.tight_layout()
+    fig.tight_layout(pad=1.2)
     return fig, ax
 
 
@@ -214,23 +412,27 @@ def plot_forecast_grid(
     history_means: np.ndarray | None = None,
     history_stds: np.ndarray | None = None,
     titles: list[str] | None = None,
-    figsize_per_subplot: tuple[float, float] = (5.5, 3.0),
+    figsize_per_subplot: tuple[float, float] = (5.5, 3.2),
     max_cols: int = 3,
     show_metrics: bool = True,
+    timestamps_2d: Sequence[Sequence] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Figure with a grid of subplots, one per sample index.
 
     Args:
         history_2d: (n_samples, context_len)
-        gt_2d: (n_samples, pred_len), or None for inference-only (no GT line, no metrics)
-        preds_2d: {"Migas-1.5": (n_samples, pred_len), "Chronos": (n_samples, pred_len)}
+        gt_2d: (n_samples, pred_len), or None for inference-only
+        preds_2d: {"Migas-1.5": (n_samples, pred_len), ...}
         context_len, pred_len: lengths
-        sample_indices: which rows to plot (e.g. [0, 1, 2, 5])
-        history_means, history_stds: optional (n_samples,) for denormalization
-        titles: optional list of title strings, one per sample (e.g. ["Sample 0", "Sample 1"])
+        sample_indices: which rows to plot
+        history_means, history_stds: optional (n_samples,) for denorm
+        titles: optional list of title strings
         figsize_per_subplot, max_cols: layout
-        show_metrics: include MAPE and Error in each subplot title
+        show_metrics: include MAPE and Error badge
+        timestamps_2d: optional list of timestamp sequences, one per sample
+            in *sample_indices* order (not indexed by sample_idx).  Each
+            sequence should have length ``context_len + pred_len``.
 
     Returns:
         (fig, axes) with axes 2d array (n_rows, n_cols)
@@ -258,15 +460,18 @@ def plot_forecast_grid(
 
         subplot_title = (titles[idx] if titles and idx < len(titles) else None) or f"Sample {sample_idx}"
 
+        ts = timestamps_2d[idx] if timestamps_2d is not None else None
+
         plot_one_forecast(
             ax, hist, gt, preds_one, context_len, pred_len,
             history_mean=mu, history_std=sigma,
             show_metrics=show_metrics, title=subplot_title,
+            timestamps=ts,
         )
 
     for idx in range(n_plots, n_rows * n_cols):
         row, col = idx // n_cols, idx % n_cols
         axes[row, col].set_visible(False)
 
-    plt.tight_layout()
+    fig.tight_layout(pad=1.0, h_pad=2.0, w_pad=1.5)
     return fig, axes

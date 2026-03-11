@@ -28,56 +28,23 @@ if _src.exists():
 sys.path.insert(0, str(_repo_root))
 
 
-# =============================================================================
-# ICML-style plot configuration
-# =============================================================================
+from plotting_utils import apply_migas_style, COLORS as _SHARED_COLORS
+
+apply_migas_style()
+
+
 def setup_icml_style():
-    """Configure matplotlib for ICML-standard publication-quality plots."""
-    plt.rcParams.update(
-        {
-            # Font settings
-            "font.family": "monospace",
-            "font.monospace": ["Roboto Mono", "DejaVu Sans Mono"],
-            "font.size": 10,
-            "axes.titlesize": 11,
-            "axes.labelsize": 13,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "legend.fontsize": 9,
-            # Figure settings
-            "figure.dpi": 150,
-            "savefig.dpi": 300,
-            "savefig.format": "png",
-            "savefig.bbox": "tight",
-            "savefig.pad_inches": 0.05,
-            # Line settings
-            "lines.linewidth": 3,
-            "lines.markersize": 4,
-            # Axes settings
-            "axes.linewidth": 0.8,
-            "axes.grid": True,
-            "grid.alpha": 0.3,
-            "grid.linewidth": 0.5,
-            # Legend settings
-            "legend.framealpha": 0.9,
-            "legend.edgecolor": "0.8",
-            "legend.fancybox": False,
-            # Use LaTeX for text rendering (if available)
-            "text.usetex": False,  # Set to True if LaTeX is installed
-            # Tight layout
-            "figure.constrained_layout.use": True,
-        }
-    )
+    """Alias kept for backward compatibility — delegates to ``apply_migas_style``."""
+    apply_migas_style()
 
 
-# Define a professional color palette
 COLORS = {
-    "ground_truth": "#2C3E50",  # Dark blue-gray
-    "migas15": "#27AE60",  # Green (our model)
-    "chronos": "#E74C3C",  # Red (baseline)
-    "timeseries": "#3498DB",  # Blue
-    "input": "#0066CC",  # Darker Blue
-    "forecast_region": "#F8F9FA",  # Light gray background for forecast region
+    "ground_truth": _SHARED_COLORS["ground_truth"],
+    "migas15": _SHARED_COLORS["Migas-1.5"],
+    "chronos": _SHARED_COLORS["Chronos"],
+    "timeseries": "#6C8EBF",
+    "input": _SHARED_COLORS["historical"],
+    "forecast_region": _SHARED_COLORS["forecast_region"],
 }
 
 
@@ -901,14 +868,13 @@ def _create_forecast_plot(
     last_input = input_data[-1]
     gt_extended = np.concatenate([[last_input], gt_data])
 
-    # Model colors
     model_colors = {
         "migas15": COLORS["migas15"],
         "chronos_univar": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
-        "timesfm_univar": "#9B59B6",
-        "gpt_forecast": "#F39C12",
-        "migas": "#E67E22",
+        "timesfm_univar": "#7B68EE",
+        "gpt_forecast": "#E8A838",
+        "migas": COLORS["migas15"],
     }
 
     # Check if we have dates
@@ -919,33 +885,23 @@ def _create_forecast_plot(
         dates_pred = sample.dates[context_len:]
         dates_pred_extended = [dates_context[-1]] + list(dates_pred)
 
-        # Shaded forecast region
-        ax.axvspan(dates_context[-1], dates_pred[-1], alpha=0.15, color="gray")
+        ax.axvspan(dates_context[-1], dates_pred[-1], alpha=0.45, color=COLORS["forecast_region"], zorder=0)
         ax.axvline(
-            x=dates_context[-1], color="gray", linestyle="--", linewidth=1, alpha=0.7
+            x=dates_context[-1], color="#ABB2B9", linestyle="--", linewidth=0.9, alpha=0.6, zorder=1,
         )
 
-        # Plot input context
         ax.plot(
-            dates_context,
-            input_data,
-            color=COLORS["input"],
-            linewidth=3,
-            label="Historical",
-            zorder=3,
+            dates_context, input_data,
+            color=COLORS["input"], linewidth=2.2,
+            label="Historical", zorder=3, solid_capstyle="round",
         )
 
-        # Plot ground truth
         ax.plot(
-            dates_pred_extended,
-            gt_extended,
-            color=COLORS["ground_truth"],
-            linewidth=3,
-            label="Ground Truth",
-            zorder=4,
+            dates_pred_extended, gt_extended,
+            color=COLORS["ground_truth"], linewidth=2.4,
+            label="Ground Truth", zorder=4, solid_capstyle="round",
         )
 
-        # Plot predictions
         for model_name in models_to_plot:
             if model_name not in preds_data:
                 continue
@@ -954,13 +910,11 @@ def _create_forecast_plot(
             color = model_colors.get(model_name, "#95A5A6")
             display_name = MODEL_DISPLAY_NAMES.get(model_name, model_name)
             ax.plot(
-                dates_pred_extended,
-                pred_extended,
-                color=color,
-                linewidth=3,
+                dates_pred_extended, pred_extended,
+                color=color, linewidth=2.4,
                 label=display_name,
                 zorder=5 if model_name == "migas15" else 4,
-                alpha=0.9,
+                alpha=0.92, solid_capstyle="round",
             )
 
         # Format x-axis dates
@@ -968,41 +922,31 @@ def _create_forecast_plot(
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         if rotate_xticks:
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
-        ax.set_xlabel("Date")
+        ax.set_xlabel("Date", color="#566573")
     else:
         # Use step indices
         t_input = np.arange(context_len)
         t_pred_extended = np.arange(context_len - 1, context_len + pred_len)
 
-        # Shaded forecast region
         ax.axvspan(
-            context_len - 0.5, context_len + pred_len - 0.5, alpha=0.15, color="gray"
+            context_len - 0.5, context_len + pred_len - 0.5, alpha=0.45, color=COLORS["forecast_region"], zorder=0,
         )
         ax.axvline(
-            x=context_len - 0.5, color="gray", linestyle="--", linewidth=1, alpha=0.7
+            x=context_len - 0.5, color="#ABB2B9", linestyle="--", linewidth=0.9, alpha=0.6, zorder=1,
         )
 
-        # Plot input context
         ax.plot(
-            t_input,
-            input_data,
-            color=COLORS["input"],
-            linewidth=3,
-            label="Historical",
-            zorder=3,
+            t_input, input_data,
+            color=COLORS["input"], linewidth=2.2,
+            label="Historical", zorder=3, solid_capstyle="round",
         )
 
-        # Plot ground truth
         ax.plot(
-            t_pred_extended,
-            gt_extended,
-            color=COLORS["ground_truth"],
-            linewidth=3,
-            label="Ground Truth",
-            zorder=4,
+            t_pred_extended, gt_extended,
+            color=COLORS["ground_truth"], linewidth=2.4,
+            label="Ground Truth", zorder=4, solid_capstyle="round",
         )
 
-        # Plot predictions
         for model_name in models_to_plot:
             if model_name not in preds_data:
                 continue
@@ -1011,25 +955,22 @@ def _create_forecast_plot(
             color = model_colors.get(model_name, "#95A5A6")
             display_name = MODEL_DISPLAY_NAMES.get(model_name, model_name)
             ax.plot(
-                t_pred_extended,
-                pred_extended,
-                color=color,
-                linewidth=3,
+                t_pred_extended, pred_extended,
+                color=color, linewidth=2.4,
                 label=display_name,
                 zorder=5 if model_name == "migas15" else 4,
-                alpha=0.9,
+                alpha=0.92, solid_capstyle="round",
             )
 
-        ax.set_xlabel("Time Step")
+        ax.set_xlabel("Time Step", color="#566573")
         ax.set_xlim(-0.5, context_len + pred_len - 0.5)
+        step = max(1, (context_len + pred_len) // 8)
         ax.set_xticks(
-            np.arange(0, context_len + pred_len, max(1, (context_len + pred_len) // 10))
+            np.arange(0, context_len + pred_len, step)
         )
 
-    # Labels
-    ax.set_ylabel(ylabel)
+    ax.set_ylabel(ylabel, color="#566573")
 
-    # Title
     if show_title:
         display_dataset = (
             sample.dataset_name.replace("_", " ").replace("with text", "").strip()
@@ -1038,7 +979,6 @@ def _create_forecast_plot(
             display_dataset = display_dataset[:37] + "..."
         ax.set_title(display_dataset, fontweight="bold", fontsize=11)
 
-    # MAE annotation
     if show_mae:
         mae_migas15_str = (
             f"{sample.mae_migas15:.4f}"
@@ -1050,54 +990,39 @@ def _create_forecast_plot(
             if show_normalized
             else f"{sample.mae_baseline * sample.history_std:.4f}"
         )
-        mae_text = f"MAE: Migas-1.5={mae_migas15_str}, Chronos2={mae_base_str}"
-        ax.text(
-            0.02,
-            0.98,
+        mae_text = f"Migas-1.5 MAE {mae_migas15_str}  ·  Chronos-2 MAE {mae_base_str}"
+        ax.annotate(
             mae_text,
-            transform=ax.transAxes,
-            fontsize=8,
-            verticalalignment="top",
-            horizontalalignment="left",
-            bbox=dict(
-                boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.9
-            ),
+            xy=(0.5, 1.0), xycoords="axes fraction",
+            fontsize=8, color="#5D6D7E",
+            ha="center", va="bottom",
+            xytext=(0, 6), textcoords="offset points",
         )
 
-    # Legend
     if show_legend:
         ax.legend(
             loc="upper left",
-            framealpha=0.95,
             fontsize=8,
+            handlelength=1.6, labelspacing=0.35,
+            borderpad=0.45,
             ncol=2 if len(models_to_plot) > 3 else 1,
         )
 
-    # Grid
-    ax.grid(True, which="major", linestyle="-", alpha=0.3)
-    ax.grid(True, which="minor", linestyle=":", alpha=0.2)
-
-    # Context summary
     if show_summary and sample.context_summary:
-        # Escape special characters that matplotlib interprets as LaTeX
         safe_summary = sample.context_summary
         for char in ["$", "%", "_", "^", "&", "#", "{", "}", "~"]:
             safe_summary = safe_summary.replace(char, "\\" + char)
         wrapped_summary = textwrap.fill(safe_summary, width=100)
         fig.text(
-            0.5,
-            -0.02,
-            wrapped_summary,
-            ha="center",
-            va="top",
-            fontsize=8,
-            wrap=True,
-            transform=ax.transAxes,
+            0.5, -0.02, wrapped_summary,
+            ha="center", va="top",
+            fontsize=8, color="#34495E",
+            wrap=True, transform=ax.transAxes,
             bbox=dict(
                 boxstyle="round,pad=0.5",
-                facecolor="lightyellow",
-                edgecolor="gray",
-                alpha=0.9,
+                facecolor="#FDF6EC",
+                edgecolor="#D5D8DC",
+                alpha=0.92,
             ),
         )
 
@@ -1210,18 +1135,9 @@ def plot_multi_sample_comparison(
         "migas15": COLORS["migas15"],
         "chronos_univar": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
-        "timesfm_univar": "#9B59B6",
-        "gpt_forecast": "#F39C12",
-        "migas": "#E67E22",
-    }
-
-    model_markers = {
-        "migas15": "^",
-        "chronos_univar": "v",
-        "timeseries": "D",
-        "timesfm_univar": "p",
-        "gpt_forecast": "*",
-        "migas": "h",
+        "timesfm_univar": "#7B68EE",
+        "gpt_forecast": "#E8A838",
+        "migas": COLORS["migas15"],
     }
 
     for idx, sample in enumerate(samples):
@@ -1241,72 +1157,53 @@ def plot_multi_sample_comparison(
         # Extended time for forecast (includes last context point)
         t_pred_extended = np.arange(context_len - 1, context_len + pred_len)
 
-        # Shaded forecast region
         ax.axvspan(
-            context_len - 0.5, context_len + pred_len - 0.5, alpha=0.15, color="gray"
+            context_len - 0.5, context_len + pred_len - 0.5,
+            alpha=0.45, color=COLORS["forecast_region"], zorder=0,
         )
         ax.axvline(
-            x=context_len - 0.5, color="gray", linestyle="--", linewidth=0.8, alpha=0.7
+            x=context_len - 0.5, color="#ABB2B9", linestyle="--",
+            linewidth=0.9, alpha=0.6, zorder=1,
         )
 
-        # Plot input
         ax.plot(
-            t_input,
-            input_data,
-            color=COLORS["input"],
-            linewidth=3,
-            # marker='o', markersize=3,
-            label="Historical",
+            t_input, input_data,
+            color=COLORS["input"], linewidth=2.0,
+            label="Historical", zorder=3, solid_capstyle="round",
         )
 
-        # Plot ground truth (extended to include last context point)
         gt_extended = np.concatenate([[last_input], gt_data])
         ax.plot(
-            t_pred_extended,
-            gt_extended,
-            color=COLORS["ground_truth"],
-            linewidth=3,
-            # marker='s', markersize=4,
-            label="Ground Truth",
+            t_pred_extended, gt_extended,
+            color=COLORS["ground_truth"], linewidth=2.2,
+            label="Ground Truth", zorder=4, solid_capstyle="round",
         )
 
-        # Plot predictions (extended to include last context point)
         for model_name in models_to_plot:
             if model_name not in preds_data:
                 continue
             pred = preds_data[model_name]
             pred_extended = np.concatenate([[last_input], pred])
             color = model_colors.get(model_name, "#95A5A6")
-            marker = model_markers.get(model_name, "o")
             display_name = MODEL_DISPLAY_NAMES.get(model_name, model_name)
 
             ax.plot(
-                t_pred_extended,
-                pred_extended,
-                color=color,
-                linewidth=3,
-                # marker=marker, markersize=4,
-                label=display_name,
+                t_pred_extended, pred_extended,
+                color=color, linewidth=2.4,
+                label=display_name, alpha=0.92,
+                zorder=5 if model_name == "migas15" else 4,
+                solid_capstyle="round",
             )
 
-        # Title - clean up dataset name and add sample number
         display_dataset = (
             sample.dataset_name.replace("_", " ").replace("with text", "").strip()
         )
-        ax.set_title(
-            f"{display_dataset} (Sample {sample.sample_idx})",
-            fontsize=10,
-            fontweight="bold",
-        )
+        ax.set_title(f"{display_dataset}", fontsize=10, fontweight=600)
 
-        # Axis labels (only on edges)
         if row == n_rows - 1:
-            ax.set_xlabel("Time Step", fontsize=10)
+            ax.set_xlabel("Time Step", fontsize=10, color="#566573")
         if col == 0:
-            ax.set_ylabel("Value", fontsize=10)
-
-        ax.tick_params(axis="both", labelsize=9)
-        ax.grid(True, alpha=0.3)
+            ax.set_ylabel("Value", fontsize=10, color="#566573")
 
     # Remove empty subplots
     for idx in range(n_samples, n_rows * n_cols):
@@ -1314,21 +1211,19 @@ def plot_multi_sample_comparison(
         col = idx % n_cols
         axes[row, col].set_visible(False)
 
-    # Shared legend at the bottom
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(
-        handles,
-        labels,
+        handles, labels,
         loc="lower center",
         ncol=len(models_to_plot) + 2,
-        fontsize=10,
+        fontsize=9,
         bbox_to_anchor=(0.5, -0.01),
-        framealpha=0.95,
+        handlelength=1.8,
+        columnspacing=1.5,
     )
 
-    plt.tight_layout()
-    # Adjust spacing: more space between subplots and room for legend at bottom
-    plt.subplots_adjust(bottom=0.08, hspace=0.35, wspace=0.25)
+    fig.tight_layout(pad=1.0, h_pad=2.0, w_pad=1.5)
+    plt.subplots_adjust(bottom=0.06)
 
     plt.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
