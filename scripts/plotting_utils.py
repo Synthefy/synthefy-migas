@@ -128,7 +128,14 @@ def plot_one_forecast(
         gt_extended = np.concatenate([[last_input], gt_arr])
         ax.plot(t_pred_extended, gt_extended, color=COLORS["ground_truth"], linewidth=2.5, label="Ground Truth", zorder=4)
 
-    for model_name, pred_arr in preds.items():
+    # Draw Migas last so it appears in front of Chronos
+    def _model_order(item: tuple[str, np.ndarray]) -> int:
+        name = item[0]
+        if "Migas" in name:
+            return 1
+        return 0
+
+    for model_name, pred_arr in sorted(preds.items(), key=_model_order):
         color = COLORS.get(model_name, DEFAULT_MODEL_COLOR)
         pred_extended = np.concatenate([[last_input], pred_arr])
         ax.plot(
