@@ -25,7 +25,7 @@ uv sync
 # or: pip install -e .
 ```
 
-If you want to run the notebook and evaluation examples in this README as-is, also download the prepared FNSPID assets (CSVs and optional summaries) from [FNSPID evaluation data](#fnspid-evaluation-data).
+If you want to run the notebook and evaluation examples in this README as-is, also download prepared assets (FNSPID or suite) — see [Downloading evaluation data](#downloading-evaluation-data).
 
 ---
 
@@ -72,7 +72,7 @@ For more inference scenarios (quick start, bring your own data, batch inference,
 
 Run the evaluation CLI on your time-series data. Each data file (CSV or Parquet) must have columns `t`, `y_t`, and `text` (see [Data format](#data-format)).
 
-**Data source:** Put CSV or Parquet files in a folder and pass `--datasets_dir /path/to/folder`. The default is `./data/test` (or set `MIGAS_EVAL_DATASETS_DIR`). For FNSPID, download ready-to-use assets from Hugging Face — see [FNSPID evaluation data](#fnspid-evaluation-data).
+**Data source:** Put CSV or Parquet files in a folder and pass `--datasets_dir /path/to/folder`. The default is `./data/test` (or set `MIGAS_EVAL_DATASETS_DIR`). For FNSPID or the Migas-1.5 suite, download ready-to-use assets from Hugging Face — see [Downloading evaluation data](#downloading-evaluation-data).
 
 **Example: baselines only (no Migas-1.5, no LLM)**
 
@@ -109,7 +109,7 @@ Migas-1.5 evaluation requires a running vLLM (or OpenAI-compatible) server for c
 
 **Fast path: use pre-computed summaries (no LLM server needed)**
 
-If you downloaded pre-computed summaries from Hugging Face (see [FNSPID evaluation data](#fnspid-evaluation-data)), pass `--summaries_dir` to skip on-the-fly LLM generation entirely:
+If you downloaded pre-computed summaries from Hugging Face (see [Downloading evaluation data](#downloading-evaluation-data)), pass `--summaries_dir` to skip on-the-fly LLM generation entirely:
 
 ```bash
 uv run python -m migaseval.evaluation \
@@ -159,6 +159,32 @@ For other post-eval options (`--scatter`, `--qualitative`, or individual plottin
 |-----------|---------------|
 | **Model** | [Synthefy/migas-1.5](https://huggingface.co/Synthefy/migas-1.5/tree/main) |
 | **FNSPID (prepared)** | [Synthefy/fnspid](https://huggingface.co/datasets/Synthefy/fnspid) |
+| **Migas-1.5 suite** | [Synthefy/migas-1.5-suite](https://huggingface.co/datasets/Synthefy/migas-1.5-suite) |
+
+### Downloading evaluation data
+
+One script downloads both datasets (and supports custom Hugging Face dataset repos). Use `--dataset fnspid` or `--dataset suite`; choose what to fetch with `--csvs`, `--summaries`, or `--all`.
+
+**FNSPID** (default) — prepared financial-news evaluation assets:
+
+```bash
+uv run python scripts/download_data.py --dataset fnspid --csvs      # CSVs only
+uv run python scripts/download_data.py --dataset fnspid --summaries # summaries only
+uv run python scripts/download_data.py --dataset fnspid --all       # both
+```
+
+**Suite** — Migas-1.5 ICML suite (CSVs + optional summaries):
+
+```bash
+uv run python scripts/download_data.py --dataset suite --csvs
+uv run python scripts/download_data.py --dataset suite --summaries
+uv run python scripts/download_data.py --dataset suite --all
+```
+
+- Default destinations: `data/fnspid_prepared/` (fnspid), `data/migas_1_5_suite/` (suite). Override with `--local_dir`.
+- List presets: `uv run python scripts/download_data.py --list`.
+- Custom repo: `uv run python scripts/download_data.py --repo_id org/my-dataset --local_dir ./data/my --all`.
+- If you hit Hugging Face rate limits (429), use `--max-workers 1` (default).
 
 ---
 
@@ -169,26 +195,7 @@ The [FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) dataset (Dong et 
 - **CSVs** (`fnspid_0.5_complement_csvs/`) — files with columns `t`, `y_t`, `text`, ready for evaluation or inference.
 - **Pre-computed summaries** (`fnspid_0.5_complement/`) — per-dataset subdirectories with cached LLM summaries, so you can run Migas-1.5 evaluation without a running LLM server.
 
-### Downloading prepared assets
-
-```bash
-# Download CSVs only
-uv run python scripts/download_fnspid.py --csvs
-
-# Download pre-computed summaries only
-uv run python scripts/download_fnspid.py --summaries
-
-# Download both
-uv run python scripts/download_fnspid.py --all
-```
-
-By default, assets are saved to `data/fnspid_prepared/`. Change with `--local_dir`:
-
-```bash
-uv run python scripts/download_fnspid.py --all --local_dir ./my_data
-```
-
-After downloading, use the prepared CSVs and summaries with the evaluation CLI:
+After [downloading](#downloading-evaluation-data), use the prepared paths with the evaluation CLI:
 
 ```bash
 uv run python -m migaseval.evaluation \
@@ -204,6 +211,22 @@ uv run python -m migaseval.evaluation \
 If you want to preprocess the raw FNSPID dataset yourself instead of using the prepared assets above, use `scripts/prepare_fnspid.sh` and the individual scripts under `scripts/fnspid/`. This requires downloading the raw FNSPID dataset from [Zihan1004/FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) and running an LLM server for the summarization step. See the scripts for usage details.
 
 </details>
+
+---
+
+## Migas-1.5 suite
+
+The [Synthefy/migas-1.5-suite](https://huggingface.co/datasets/Synthefy/migas-1.5-suite) dataset provides the ICML evaluation suite: CSVs and optional pre-computed summaries in the same format as FNSPID. Download with `--dataset suite` (see [Downloading evaluation data](#downloading-evaluation-data)).
+
+Assets are saved to `data/migas_1_5_suite/` (`icml_suite_csvs/`, `icml_suite/`). Use with the evaluation CLI:
+
+```bash
+uv run python -m migaseval.evaluation \
+  --datasets_dir ./data/migas_1_5_suite/icml_suite_csvs \
+  --summaries_dir ./data/migas_1_5_suite/icml_suite \
+  --checkpoint Synthefy/migas-1.5 \
+  --eval_migas15 --eval_chronos2 --eval_timesfm
+```
 
 ---
 
