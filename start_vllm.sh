@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Start vLLM server for Migas-1.5 evaluation (context summarization) and --eval_gpt_forecast.
 # Run this in a separate terminal before running evaluation with --eval_migas15.
-# Requires vLLM in this project's environment (e.g. from repo root: uv add vllm).
+# vLLM is optional in this project. Install it from repo root with:
+#   uv sync --extra vllm
 
 set -e
+
+if ! uv run python -c "import vllm" >/dev/null 2>&1; then
+  echo "vLLM is not installed in this environment."
+  echo "Install the optional dependency with:"
+  echo "  uv sync --extra vllm"
+  exit 1
+fi
 
 # Configuration — edit as needed
 MODEL="${VLLM_MODEL:-openai/gpt-oss-120b}"
