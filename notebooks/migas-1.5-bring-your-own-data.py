@@ -14,11 +14,6 @@
 
 # %%
 import warnings
-from collections import defaultdict
-
-import requests
-
-from migaseval.model.inference_utils import evaluate_chronos_quantiles
 
 warnings.filterwarnings("ignore", message="IProgress not found")
 
@@ -33,6 +28,7 @@ import torch
 import yfinance as yf
 
 from migaseval import MigasPipeline
+from migaseval.model.inference_utils import evaluate_chronos_quantiles
 
 sys.path.insert(0, "..")
 from scripts.counterfactual_utils import (composite_trend_score,
@@ -40,6 +36,7 @@ from scripts.counterfactual_utils import (composite_trend_score,
                                           linear_slope, splice_summary)
 from scripts.plotting_utils import (COLORS, _draw_forecast_region,
                                     apply_migas_style, plot_forecast_single)
+from scripts.summary_utils import generate_summary
 
 apply_migas_style()
 
@@ -52,9 +49,9 @@ print(f"Using device: {device}")
 # %% [markdown]
 # ## 1. Get Time Series Data
 #
-# Migas-1.5 accepts context windows between **64 and 384 time steps**. Below we fetch two years of daily closing prices for Gold (GLD) from Yahoo Finance — no API key required — and keep the last `SEQ_LEN + PRED_LEN` trading days. The first `SEQ_LEN` days form the **context window** fed to the model; the remaining `PRED_LEN` days are held out as **ground truth** so we can measure forecast accuracy.
+# Below we fetch two years of daily closing prices for Gold (GLD) from Yahoo Finance — no API key required — and keep the last `SEQ_LEN + PRED_LEN` trading days. The first `SEQ_LEN` days form the **context window** fed to the model; the remaining `PRED_LEN` days are held out as **ground truth** so we can measure forecast accuracy.
 #
-# **Why GLD?** Gold has moderate volatility (~8% annualized vs. ~70% for BTC), so the model's median forecast shows a visible directional slope rather than a flat line. It also responds cleanly to macro text (Fed policy, inflation, risk-off flows), making the text-conditioning effect easy to demonstrate.
+# **Why GLD?** Gold responds cleanly to macro text (Fed policy, inflation, risk-off flows), making the text-conditioning effect easy to demonstrate.
 #
 # You can swap `TICKER` for any Yahoo Finance symbol: stocks (`AAPL`, `MSFT`), ETFs (`SPY`, `GLD`), or futures (`CL=F` for crude oil). **Avoid high-volatility crypto** — the median forecast will look flat regardless of text input.
 
@@ -133,205 +130,36 @@ print(summary)
 # (timestamped entries with price values alongside the text). The LLM then distills this into
 # `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS`.
 #
-# **Required environment variables** (set at least one pair):
-# - `ALPHA_VANTAGE_API_KEY` — free at alphavantage.co (25 req/day on free tier)
-# - `LLM_PROVIDER` + one of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`
+# **Required environment variables:**
+# - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` — required to call the LLM.
+# - `ALPHA_VANTAGE_API_KEY` — *optional* (free at alphavantage.co, 25 req/day).
+#   When provided, the prompt is enriched with per-day news headlines for the
+#   context window, which generally improves summary quality.  Without it, the
+#   LLM still generates a summary from the price series alone.
 #
-# If either key is missing the section is skipped and the pre-computed summary is kept.
-# Free Alpha Vantage keys support ~2 years of historical news, which covers our 64-day window.
+# If no LLM key is found the section is skipped and the pre-computed summary is kept.
 
 # %%
 
 LLM_PROVIDER = "anthropic"  # "openai" | "anthropic"
-
-_KEY_ENV = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
-LLM_API_KEY = os.getenv(_KEY_ENV[LLM_PROVIDER])
-LLM_BASE_URL = os.getenv("VLLM_BASE_URL", None)  # None → use provider default
-LLM_MODEL = os.getenv("VLLM_MODEL", None)  # None → use provider default
-ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
-
+LLM_API_KEY   = os.getenv({"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}[LLM_PROVIDER])
+LLM_BASE_URL  = os.getenv("VLLM_BASE_URL")   # None → use provider default
+LLM_MODEL     = os.getenv("VLLM_MODEL")       # None → use provider default
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")  # optional — enriches prompt with news
 
 # %%
-def call_llm(
-    prompt,
-    *,
-    provider=LLM_PROVIDER,
-    api_key=LLM_API_KEY,
-    base_url=LLM_BASE_URL,
-    model=LLM_MODEL,
-):
-    """Call an LLM and return the response text.
-
-    Supports OpenAI-compatible endpoints (including local vLLM: set LLM_BASE_URL
-    and keep provider='openai') and the Anthropic Messages API.
-    """
-    if provider == "openai":
-        from openai import OpenAI
-
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        resp = client.chat.completions.create(
-            model=model or "gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content.strip()
-    elif provider == "anthropic":
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model=model or "claude-haiku-4-5-20251001",
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.content[0].text.strip()
-    else:
-        raise ValueError(
-            f"Unknown LLM_PROVIDER {provider!r}. Use 'openai' or 'anthropic'."
-        )
-
-
-def _to_av_ticker(ticker):
-    """Convert a yfinance ticker to Alpha Vantage News Sentiment format.
-
-    Alpha Vantage uses different conventions:
-      - Crypto  : BTC-USD  → CRYPTO:BTC
-      - Stocks  : AAPL     → AAPL  (unchanged)
-      - Futures : CL=F     → None  (not supported; search topic instead)
-    """
-    if "-USD" in ticker or "-USDT" in ticker:
-        return f"CRYPTO:{ticker.split('-')[0]}"
-    if ticker.endswith("=F"):
-        return None   # futures — caller should omit tickers param
-    return ticker
-
-
-def fetch_av_news(ticker, start_date, end_date, api_key, limit=200):
-    """Fetch news articles from Alpha Vantage News Sentiment API.
-
-    Returns a list of article dicts sorted by publication time.
-    Each dict has at minimum: time_published (str YYYYMMDDTHHMMSS), title, summary.
-    """
-    av_ticker = _to_av_ticker(ticker)
-    params = {
-        "function": "NEWS_SENTIMENT",
-        "time_from": start_date.strftime("%Y%m%dT0000"),
-        "time_to":   end_date.strftime("%Y%m%dT2359"),
-        "limit":     limit,
-        "apikey":    api_key,
-    }
-    if av_ticker:
-        params["tickers"] = av_ticker
-    else:
-        # Futures: fall back to a broad topic search (energy, commodities)
-        params["topics"] = "energy_transportation"
-
-    resp = requests.get("https://www.alphavantage.co/query", params=params, timeout=30)
-    data = resp.json()
-    if "Information" in data:
-        raise RuntimeError(f"Alpha Vantage API error: {data['Information']}")
-    return data.get("feed", [])
-
-
-def align_news_to_dates(articles, dates):
-    """Group articles by calendar date and return one text string per date.
-
-    Articles on the same day are concatenated as 'Title. Summary.' pairs,
-    separated by ' | '. Days with no coverage get an empty string.
-    """
-    by_date = defaultdict(list)
-    for art in articles:
-        pub = art.get("time_published", "")
-        if len(pub) < 8:
-            continue
-        date_key = f"{pub[:4]}-{pub[4:6]}-{pub[6:8]}"
-        title = art.get("title", "").strip()
-        summary = art.get("summary", "").strip()
-        text = f"{title}. {summary}" if summary else title
-        if text:
-            by_date[date_key].append(text)
-
-    return [" | ".join(by_date.get(d, [])) for d in dates]
-
-
-def build_context_summarizer_prompt(ticker, dates, prices, per_day_texts, pred_period):
-    """Build the same prompt structure as ContextSummarizer._create_prompt.
-
-    Each line: [date] (value: price): text   (or 'No text' if empty)
-    This is the exact format Migas-1.5 was trained to summarise.
-    """
-    lines = []
-    for date, price, text in zip(dates, prices, per_day_texts):
-        entry_text = text if text else "No text"
-        lines.append(f"[{date}] (value: {price:.4f}): {entry_text}")
-    combined = "\n---\n".join(lines)
-
-    return f"""\
-You are analyzing a time series with text annotations. \
-Extract information to help forecast future values for {ticker}.
-
-HISTORICAL DATA:
-{combined}
-
-PREDICTION PERIOD: {pred_period}
-
-Provide TWO sections:
-
-SECTION 1 - FACTUAL SUMMARY:
-Summarize observed facts, patterns, trends, and key events. (2-3 sentences)
-
-SECTION 2 - PREDICTIVE SIGNALS:
-Identify forward-looking directional signals, expectations, and sentiment for
-the forecast window. Express momentum and risk in RELATIVE terms only — for
-example: "likely to continue higher", "risk of 5-10% pullback", "bullish bias
-with upside momentum". Do NOT include absolute price levels, specific support/
-resistance numbers, or external analyst price targets — these often refer to a
-different instrument or unit (e.g. gold spot $/oz vs. ETF price) and will
-mislead the model. (2-3 sentences)
-
-Format:
-FACTUAL SUMMARY:
-[Your factual summary]
-
-PREDICTIVE SIGNALS:
-[Your predictive signals]"""
-
-
-# %%
-_missing = [
-    k
-    for k, v in [("LLM key", LLM_API_KEY), ("ALPHA_VANTAGE_API_KEY", ALPHA_VANTAGE_KEY)]
-    if not v
-]
-if _missing:
-    print(f"Skipping LLM summary generation — missing: {', '.join(_missing)}")
+if not LLM_API_KEY:
+    print("Skipping LLM summary generation — no LLM API key found.")
     print("Using the pre-computed summary.")
 else:
-    start_dt = pd.Timestamp(series["t"].iloc[0])
-    end_dt = pd.Timestamp(series["t"].iloc[-1])
-    pred_period = f"the {PRED_LEN} days after {series['t'].iloc[-1]}"
-
-    print(
-        f"Fetching Alpha Vantage news for {TICKER} "
-        f"({start_dt.date()} → {end_dt.date()}) …"
+    summary = generate_summary(
+        TICKER, series, PRED_LEN,
+        llm_provider=LLM_PROVIDER,
+        llm_api_key=LLM_API_KEY,
+        av_api_key=ALPHA_VANTAGE_KEY,   # omit or set to None to skip news fetching
+        llm_base_url=LLM_BASE_URL,
+        llm_model=LLM_MODEL,
     )
-    articles = fetch_av_news(TICKER, start_dt, end_dt, ALPHA_VANTAGE_KEY)
-    print(f"  Retrieved {len(articles)} articles")
-
-    dates = series["t"].tolist()
-    prices = series["y_t"].tolist()
-    per_day_texts = align_news_to_dates(articles, dates)
-
-    days_with_news = sum(1 for t in per_day_texts if t)
-    print(f"  Days with at least one article: {days_with_news} / {len(dates)}")
-
-    prompt = build_context_summarizer_prompt(
-        TICKER, dates, prices, per_day_texts, pred_period
-    )
-    print(f"Calling {LLM_PROVIDER} to generate summary …")
-    summary = call_llm(prompt)
-    print("\nGenerated summary:\n")
-    print(summary)
 
 # %% [markdown]
 # ## 4. Forecast: Chronos-2 Baseline vs. Migas-1.5
