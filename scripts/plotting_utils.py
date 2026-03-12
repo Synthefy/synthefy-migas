@@ -367,15 +367,38 @@ def plot_one_forecast(
 # Convenience wrappers
 # ---------------------------------------------------------------------------
 
-def _wrap_summary_text(text: str, width: int) -> str:
-    """Wrap a summary string, preserving paragraph breaks (FACTUAL / PREDICTIVE sections)."""
+def _format_summary_text(text: str, width: int) -> str:
+    """Format summary text with styled section headers and wrapped body text.
+
+    Sections starting with 'HEADER:' are reformatted as:
+        ◆ HEADER
+        ─────────────────────
+        <wrapped body text>
+    """
+    _RULE_CHAR = "─"
     paragraphs = text.strip().split("\n\n")
-    wrapped = []
+    parts = []
     for para in paragraphs:
-        para = " ".join(para.split()).strip()
-        if para:
-            wrapped.append(textwrap.fill(para, width=width))
-    return "\n\n".join(wrapped)
+        para = para.strip()
+        if not para:
+            continue
+        # Detect a section header: first line ends with ':'
+        first_line, _, rest = para.partition("\n")
+        first_line = first_line.strip()
+        if first_line.endswith(":") and len(first_line) < 60:
+            header = first_line.rstrip(":")
+            body = " ".join(rest.split()).strip() if rest.strip() else " ".join(para.split()[len(first_line.split()):]).strip()
+            rule = _RULE_CHAR * min(width, 52)
+            header_block = f"◆ {header}\n{rule}"
+            if body:
+                wrapped_body = textwrap.fill(body, width=width)
+                parts.append(f"{header_block}\n{wrapped_body}")
+            else:
+                parts.append(header_block)
+        else:
+            body = " ".join(para.split()).strip()
+            parts.append(textwrap.fill(body, width=width))
+    return "\n\n".join(parts)
 
 
 def plot_forecast_single(
@@ -422,7 +445,7 @@ def plot_forecast_single(
     # ---- layout with text panel below ----
     # Wrap text and estimate the height it needs in inches.
     wrap_width = max(60, int(figsize[0] * 11))
-    wrapped = _wrap_summary_text(text_summary, width=wrap_width)
+    wrapped = _format_summary_text(text_summary, width=wrap_width)
     n_lines = wrapped.count("\n") + 1
     pts_per_line = summary_fontsize * 1.55          # leading
     text_height_in = n_lines * pts_per_line / 72 + 0.55   # + padding
@@ -449,16 +472,16 @@ def plot_forecast_single(
         wrapped,
         ha="center", va="top",
         fontsize=summary_fontsize,
-        color="#4A4A4A",
+        color="#2C3E50",
         transform=text_ax.transAxes,
-        linespacing=1.5,
+        linespacing=1.6,
         bbox=dict(
             boxstyle="round,pad=0.7",
             facecolor="#F4F6F7",
             edgecolor="#D5D8DC",
             alpha=0.9,
         ),
-        fontfamily="monospace",
+        fontfamily="sans-serif",
     )
 
     fig.tight_layout(pad=1.2)
