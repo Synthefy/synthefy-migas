@@ -389,7 +389,7 @@ def _format_summary_text(text: str, width: int) -> str:
             header = first_line.rstrip(":")
             body = " ".join(rest.split()).strip() if rest.strip() else " ".join(para.split()[len(first_line.split()):]).strip()
             rule = _RULE_CHAR * min(width, 52)
-            header_block = f"◆ {header}\n{rule}"
+            header_block = f"• {header}\n{rule}"
             if body:
                 wrapped_body = textwrap.fill(body, width=width)
                 parts.append(f"{header_block}\n{wrapped_body}")
@@ -450,7 +450,7 @@ def plot_forecast_single(
     pts_per_line = summary_fontsize * 1.55          # leading
     text_height_in = n_lines * pts_per_line / 72 + 0.55   # + padding
 
-    fig = plt.figure(figsize=(figsize[0], figsize[1] + text_height_in))
+    fig = plt.figure(figsize=(figsize[0], figsize[1] + text_height_in), layout="constrained")
     gs = fig.add_gridspec(
         2, 1,
         height_ratios=[figsize[1], text_height_in],
@@ -484,7 +484,6 @@ def plot_forecast_single(
         fontfamily="sans-serif",
     )
 
-    fig.tight_layout(pad=1.2)
     return fig, ax
 
 
