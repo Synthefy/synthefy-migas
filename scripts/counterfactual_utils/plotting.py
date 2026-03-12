@@ -220,16 +220,50 @@ def display_text_comparison(
     summaries for rendering in a Jupyter notebook via ``IPython.display.HTML``.
     """
     teal = COLORS["Migas-1.5"]
-    return (
-        '<div style="display:flex;gap:20px;font-family:system-ui,-apple-system,sans-serif;font-size:13px;">'
-        f'<div style="flex:1;padding:16px;background:#F8FFFE;border-radius:8px;'
-        f'border-left:4px solid {teal};line-height:1.5;">'
-        f"<b style='color:{teal}'>Original Summary</b><br><br>{_html_escape(original_summary)}</div>"
-        '<div style="flex:1;padding:16px;background:#FDF2F0;border-radius:8px;'
-        f'border-left:4px solid {CF_COLOR};line-height:1.5;">'
-        f"<b style='color:{CF_COLOR}'>Counterfactual Summary</b><br><br>{_html_escape(counterfactual_summary)}</div>"
-        "</div>"
-    )
+    return f"""
+    <style>
+      .migas-text-compare {{
+        display: flex;
+        gap: 20px;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 13px;
+      }}
+      .migas-text-card {{
+        flex: 1;
+        padding: 16px;
+        border-radius: 8px;
+        line-height: 1.5;
+        color: #111827;
+      }}
+      .migas-text-card-original {{
+        background: #F8FFFE;
+        border-left: 4px solid {teal};
+      }}
+      .migas-text-card-counterfactual {{
+        background: #FDF2F0;
+        border-left: 4px solid {CF_COLOR};
+      }}
+      @media (prefers-color-scheme: dark) {{
+        .migas-text-card {{
+          color: #E5E7EB;
+        }}
+        .migas-text-card-original {{
+          background: #10211D;
+        }}
+        .migas-text-card-counterfactual {{
+          background: #2B1714;
+        }}
+      }}
+    </style>
+    <div class="migas-text-compare">
+      <div class="migas-text-card migas-text-card-original">
+        <b style="color:{teal}">Original Summary</b><br><br>{_html_escape(original_summary)}
+      </div>
+      <div class="migas-text-card migas-text-card-counterfactual">
+        <b style="color:{CF_COLOR}">Counterfactual Summary</b><br><br>{_html_escape(counterfactual_summary)}
+      </div>
+    </div>
+    """
 
 
 def _html_escape(text: str) -> str:
