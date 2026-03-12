@@ -385,7 +385,7 @@ print(f"\nWinner: candidate {best_idx + 1} (score {candidate_scores[best_idx]:+.
 
 # %%
 BEST_COLOR = "#C0392B"
-REST_COLOR = "#D5D8DC"
+REST_COLOR = "#8E9BB0"
 
 fig, ax = plt.subplots(figsize=(10, 5))
 _draw_forecast_region(ax, seq_len, pred_len)
@@ -415,8 +415,8 @@ for i, fc in enumerate(candidate_forecasts):
         t_pred,
         np.concatenate([[last_val], fc]),
         color=BEST_COLOR if is_best else REST_COLOR,
-        lw=2.4 if is_best else 1.0,
-        alpha=1.0 if is_best else 0.45,
+        lw=2.4 if is_best else 1.4,
+        alpha=1.0 if is_best else 0.65,
         label=f"Candidate {i + 1}{' (best)' if is_best else ''}",
         solid_capstyle="round",
     )
