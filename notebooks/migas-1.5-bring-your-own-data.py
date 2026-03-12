@@ -145,12 +145,10 @@ print(summary)
 LLM_PROVIDER = "anthropic"  # "openai" | "anthropic"
 
 _KEY_ENV = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
-# LLM_API_KEY = os.getenv(_KEY_ENV[LLM_PROVIDER])
-LLM_API_KEY = "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"
+LLM_API_KEY = os.getenv(_KEY_ENV[LLM_PROVIDER])
 LLM_BASE_URL = os.getenv("VLLM_BASE_URL", None)  # None → use provider default
 LLM_MODEL = os.getenv("VLLM_MODEL", None)  # None → use provider default
-# ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
-ALPHA_VANTAGE_KEY = "6RM2VZCN6CPXJ8B4"
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 
 
 # %%
@@ -413,6 +411,7 @@ fig, ax = plot_forecast_single(
     title=f"Chronos-2 (text-free) vs. Migas-1.5 (text-conditioned) — {TICKER}",
     figsize=(11, 4),
     show_metrics=True,
+    text_summary=summary,
 )
 # Add Chronos-2 uncertainty band (10th–90th percentile)
 ax.fill_between(
