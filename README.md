@@ -70,6 +70,7 @@ fig, ax = plot_forecast_single(
     {"Migas-1.5": forecast},
     context_len=len(context), pred_len=16,
     title="Crude oil — 128-step context, 16-step forecast",
+    text_summary=summary,
 )
 ax.set_ylabel("Price ($/barrel)")
 ```
