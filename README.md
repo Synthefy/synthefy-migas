@@ -4,9 +4,7 @@
 
 **Text-and-time-series fusion forecasting.** Migas-1.5 reads per-step text alongside historical values and fuses both into a single forecast. Rewrite the narrative — watch the forecast shift.
 
-![Scenario fan chart: original, bullish, and bearish forecasts on crude oil](assets/scenario_fan.png)
-
-*Same 64-step crude-oil context, three different summaries → three different forecasts. Generated with the [counterfactual notebook](notebooks/migas-1.5-counterfactual-scenarios.py.py).*
+*Same crude-oil dataset, three different summaries → three different forecasts. Generated with the [counterfactual notebook](notebooks/migas-1.5-counterfactual-scenarios.py.py).*
 
 ---
 
@@ -14,7 +12,6 @@
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv
-git clone https://github.com/Synthefy/migas-1.5 && cd migas-1.5
 uv sync
 ```
 
@@ -31,10 +28,10 @@ from migaseval import MigasPipeline
 # Load the bundled crude-oil context window
 df = pd.read_csv("data/oil_scenario_sim.csv")
 df.head()
-#             t      y_t         split
-# 0  2024-08-27  71.870   context
-# 1  2024-08-28  71.610   context
-# 2  2024-08-29  72.120   context
+#             t      y_t 
+# 0  2024-08-27  71.870  
+# 1  2024-08-28  71.610  
+# 2  2024-08-29  72.120  
 # ...
 
 ctx_df = df[df["split"] == "context"]
@@ -75,7 +72,6 @@ fig, ax = plot_forecast_single(
     title="Crude oil — 128-step context, 16-step forecast",
 )
 ax.set_ylabel("Price ($/barrel)")
-plt.show()
 ```
 
 ---
