@@ -3,7 +3,7 @@
 # 
 # This notebook shows how to run Migas-1.5 on **multiple time series** in a single `predict()` call and how to iterate over a directory of CSV files to collect forecasts.
 # 
-# **Requirements:** Install the package (`uv sync`). For live summarization a vLLM server must be running; to skip it, pass `summaries=` (see the [Offline Summaries](migas-1.5-offline-summaries.ipynb) notebook).
+# **Requirements:** Install the package (`uv sync`). For live summarization a vLLM server must be running; to skip it, pass `summaries=` (pre-computed summaries are used in the second half of this notebook). See [LLM server setup](../README.md#optional-llm-server) in the README.
 # 
 # **Data:** Download prepared FNSPID CSVs and summaries:
 # ```bash

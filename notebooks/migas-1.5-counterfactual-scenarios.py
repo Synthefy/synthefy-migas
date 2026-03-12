@@ -12,7 +12,7 @@
 # - How to quantify the trend impact using directional metrics
 # - How Best-of-N selection works when an LLM server is available
 #
-# **Requirements:** Install the package from the repo root (`uv sync`). The main bullish/bearish walkthrough below uses hand-written scenario text, so it runs **without** vLLM. A vLLM server is only required for the **Best-of-N candidate generation** section later in the notebook (`VLLM_BASE_URL` / `VLLM_MODEL`, default: `http://localhost:8004/v1`, model: `openai/gpt-oss-120b`). This notebook uses a committed crude-oil sample under `data/oil_scenario_sim.json`.
+# **Requirements:** Install the package from the repo root (`uv sync`). The main bullish/bearish walkthrough uses hand-written scenario text, so it runs **without** vLLM. A vLLM server is only required for the **Best-of-N candidate generation** section — see [LLM server setup](../README.md#optional-llm-server) in the README. This notebook uses a committed crude-oil sample under `data/oil_scenario_sim.csv`.
 #
 # **See also:** [Inference Quick Start](migas-1.5-inference-quickstart.ipynb) · [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 

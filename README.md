@@ -101,9 +101,13 @@ forecast = pipeline.predict_from_dataframe(
 
 ## Notebooks
 
-| Notebook | Description |
-|----------|-------------|
-| [Counterfactual scenarios](notebooks/migas-1.5-counterfactual-scenarios.ipynb) | Swap bullish/bearish narratives and measure forecast shifts. First half runs without an LLM. |
+| Notebook | LLM needed? | Description |
+|----------|-------------|-------------|
+| [Inference Quick Start](notebooks/migas-1.5-inference-quickstart.ipynb) | No | Fetch live market data from Yahoo Finance, provide a pre-written summary, and run a forecast. Zero setup beyond `uv sync`. |
+| [Bring Your Own Data](notebooks/migas-1.5-bring-your-own-data.ipynb) | Optional | End-to-end on any Yahoo Finance ticker: fetch data, write or auto-generate a summary, compare Chronos-2 vs Migas-1.5, and explore counterfactual scenarios. LLM only needed for auto-generating window-aligned summaries (Section 3). |
+| [Counterfactual Scenarios](notebooks/migas-1.5-counterfactual-scenarios.ipynb) | Optional | Swap bullish/bearish predictive signals and watch the forecast shift. Hand-written scenarios run without an LLM. Best-of-N candidate selection requires a vLLM server. |
+| [Batch Inference](notebooks/migas-1.5-batch-inference.ipynb) | Optional | Run Migas-1.5 on multiple time series in one `predict()` call and iterate over a directory of CSVs. Pre-computed summaries skip the LLM entirely. |
+| [Backtest and Metrics](notebooks/migas-1.5-backtest-and-metrics.ipynb) | Optional | Rolling-window backtest comparing Migas-1.5 and Chronos-2 with MAE, MSE, MAPE, and directional accuracy. Offline mode uses pre-computed summaries. |
 
 ---
 
@@ -119,11 +123,25 @@ forecast = pipeline.predict_from_dataframe(
 
 ## Optional: LLM server
 
-When you pass per-step text without pre-computed summaries, Migas calls a local LLM to generate them. Start any OpenAI-compatible server (e.g. vLLM):
+When you pass per-step text without pre-computed summaries, Migas calls a local LLM to generate them. The easiest way to start a server is the bundled helper script:
+
+```bash
+bash start_vllm.sh
+# Reads VLLM_MODEL (default: openai/gpt-oss-120b), VLLM_PORT (default: 8004),
+# CUDA_VISIBLE_DEVICES, and VLLM_TENSOR_PARALLEL_SIZE from the environment.
+# Exits with a helpful message if vLLM is not installed.
+```
+
+Install vLLM first if needed:
+
+```bash
+uv sync --extra vllm
+```
+
+Or start any OpenAI-compatible server manually:
 
 ```bash
 uv run vllm serve openai/gpt-oss-120b --port 8004
-# or point to your own model
 ```
 
 Then set the environment variables (defaults shown):
