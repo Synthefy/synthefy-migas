@@ -55,8 +55,6 @@ print(forecast.round(2))
 
 **Plot it:**
 
-![Crude oil forecast — 128-step context, 16-step ahead](data/crude_oil_migas.png)
-
 ```python
 import sys
 sys.path.insert(0, ".")  # repo root
