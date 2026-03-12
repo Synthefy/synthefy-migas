@@ -52,18 +52,6 @@ apply_migas_style()
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device="cuda")
 print("Pipeline loaded.")
 
-# %% [markdown]
-# ## Load a sample window
-# 
-# We use pre-cached crude-oil evaluation windows from `data/oil_ctx128/`. Each JSON sample contains a 128-step context window, ground truth, the Migas-1.5 forecast, a Chronos-2 baseline forecast, and the LLM summary that was used at evaluation time.
-# 
-# Every summary has two parts:
-# 
-# - **FACTUAL SUMMARY** — describes what already happened (price movements, supply data, geopolitical events).
-# - **PREDICTIVE SIGNALS** — the model's forward-looking interpretation of the text.
-# 
-# The counterfactual experiment targets the predictive section: we keep the facts, but rewrite the outlook.
-
 # %%
 pred_len = 16
 
@@ -81,14 +69,6 @@ with open("../data/oil_scenario_sim_summary.txt") as f:
 print(f"Context length: {seq_len}")
 print(f"Pred length:    {pred_len}")
 print(f"Price range:    ${context_unscaled.min():.2f} – ${context_unscaled.max():.2f}")
-print(f"Summary length: {len(original_summary)} chars")
-
-# %%
-print("=" * 70)
-print(extract_factual(original_summary))
-print()
-print("=" * 70)
-print(extract_predictive(original_summary))
 
 # %% [markdown]
 # ## Baseline forecast
@@ -119,16 +99,28 @@ print(f"Forecast trend score: {composite_trend_score(chronos2_forecast, 'up', co
 
 # %% [markdown]
 # ## The core idea: rewrite the narrative, shift the forecast
-# 
+#
 # Here is the key insight behind counterfactual scenario analysis:
-# 
+#
 # 1. **Keep the facts** — the factual summary stays the same (what already happened doesn't change).
 # 2. **Rewrite the outlook** — we replace only the predictive-signals paragraph with a bullish (or bearish) scenario.
 # 3. **Re-forecast** — feed the spliced summary back to Migas-1.5 and observe how the prediction changes.
-# 
-# If the model truly integrates text with time series, the forecast should shift in the direction of the new narrative. This is not a trivial result: the model's numerical backbone (Chronos) sees the exact same numbers — only the text embedding changes.
-# 
-# For the first bullish/bearish walkthrough we use hand-written predictive signals so this notebook works without a local LLM server. The **Best-of-N** section later uses a local vLLM server to generate multiple candidate narratives and automatically pick the strongest one.
+#
+# If the model truly integrates text with time series, the forecast should shift in the direction of the new narrative. This is not a trivial result: the model's numerical backbone (Chronos-2) sees the exact same numbers — only the text embedding changes.
+#
+# Every Migas-1.5 summary has two parts:
+#
+# - **FACTUAL SUMMARY** — describes what already happened (price movements, supply data, geopolitical events).
+# - **PREDICTIVE SIGNALS** — the model's forward-looking interpretation of that context.
+#
+# The counterfactual experiment targets the predictive section only. Here is what the sample summary looks like:
+
+# %%
+print("=" * 70)
+print(extract_factual(original_summary))
+print()
+print("=" * 70)
+print(extract_predictive(original_summary))
 
 # %% [markdown]
 # ## Hand-written bullish counterfactual
