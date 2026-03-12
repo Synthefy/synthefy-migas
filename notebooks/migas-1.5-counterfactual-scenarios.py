@@ -92,27 +92,30 @@ print(extract_predictive(original_summary))
 
 # %% [markdown]
 # ## Baseline forecast
-# 
-# First, run Migas-1.5 with the **original, unmodified summary**. This is the baseline we will compare counterfactual scenarios against.
+#
+# We run **Chronos-2** (pure time-series, no text) as the baseline we will compare counterfactual Migas-1.5 scenarios against.
 
 # %%
-original_forecast = pipeline.predict_from_dataframe(
-    ctx_df, pred_len=pred_len, summaries=[original_summary],
-)
+import torch
+from migaseval.model.inference_utils import evaluate_chronos
 
 from scripts.plotting_utils import plot_forecast_single
 
+_ctx_tensor = torch.tensor(context_unscaled).unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
+_chronos2_out = evaluate_chronos(_ctx_tensor, pred_len=pred_len, device="cuda", chronos_device="cuda")
+chronos2_forecast = _chronos2_out[0, :, 0].cpu().numpy()
+
 fig, ax = plot_forecast_single(
     context_unscaled, ground_truth,
-    {"Migas-1.5": original_forecast},
+    {"Chronos-2": chronos2_forecast},
     seq_len, pred_len,
-    title=f"Baseline forecast — crude oil (context={seq_len})",
+    title=f"Baseline forecast (Chronos-2) — crude oil (context={seq_len})",
 )
 ax.set_ylabel("Price ($/barrel)")
 plt.show()
 
-print(f"Forecast slope:       {linear_slope(original_forecast):+.5f}")
-print(f"Forecast trend score: {composite_trend_score(original_forecast, 'up', context_unscaled):+.3f}")
+print(f"Forecast slope:       {linear_slope(chronos2_forecast):+.5f}")
+print(f"Forecast trend score: {composite_trend_score(chronos2_forecast, 'up', context_unscaled):+.3f}")
 
 # %% [markdown]
 # ## The core idea: rewrite the narrative, shift the forecast
@@ -156,22 +159,22 @@ bullish_forecast = pipeline.predict_from_dataframe(
 
 fig, ax = plot_scenario_comparison(
     context_unscaled,
-    original_forecast,
+    chronos2_forecast,
     bullish_forecast,
     ground_truth=ground_truth,
     direction="up",
-    title="Bullish counterfactual vs. original forecast",
+    title="Bullish counterfactual vs. Chronos-2 baseline",
 )
 ax.set_ylabel("Price ($/barrel)")
 plt.show()
 
-orig_slope = linear_slope(original_forecast)
+orig_slope = linear_slope(chronos2_forecast)
 bull_slope = linear_slope(bullish_forecast)
-print(f"Original slope:       {orig_slope:+.5f}")
-print(f"Bullish slope:        {bull_slope:+.5f}")
-print(f"Slope shift:          {bull_slope - orig_slope:+.5f}")
-print(f"Trend score (orig):   {composite_trend_score(original_forecast, 'up', context_unscaled):+.3f}")
-print(f"Trend score (bull):   {composite_trend_score(bullish_forecast, 'up', context_unscaled):+.3f}")
+print(f"Chronos-2 slope:        {orig_slope:+.5f}")
+print(f"Bullish slope:          {bull_slope:+.5f}")
+print(f"Slope shift:            {bull_slope - orig_slope:+.5f}")
+print(f"Trend score (chronos2): {composite_trend_score(chronos2_forecast, 'up', context_unscaled):+.3f}")
+print(f"Trend score (bull):     {composite_trend_score(bullish_forecast, 'up', context_unscaled):+.3f}")
 
 # %% [markdown]
 # ## Hand-written bearish counterfactual
@@ -195,17 +198,17 @@ bearish_forecast = pipeline.predict_from_dataframe(
 
 fig, ax = plot_scenario_comparison(
     context_unscaled,
-    original_forecast,
+    chronos2_forecast,
     bearish_forecast,
     ground_truth=ground_truth,
     direction="down",
-    title="Bearish counterfactual vs. original forecast",
+    title="Bearish counterfactual vs. Chronos-2 baseline",
 )
 ax.set_ylabel("Price ($/barrel)")
 plt.show()
 
 bear_slope = linear_slope(bearish_forecast)
-print(f"Original slope:       {orig_slope:+.5f}")
+print(f"Chronos-2 slope:      {orig_slope:+.5f}")
 print(f"Bearish slope:        {bear_slope:+.5f}")
 print(f"Slope shift:          {bear_slope - orig_slope:+.5f}")
 
@@ -231,8 +234,8 @@ ax.plot(t_ctx, context_unscaled, color=COLORS["historical"], lw=2.0,
         label="Historical", solid_capstyle="round")
 ax.plot(t_pred, np.concatenate([[last_val], ground_truth]),
         color=COLORS["ground_truth"], lw=2.2, label="Ground Truth", solid_capstyle="round")
-ax.plot(t_pred, np.concatenate([[last_val], original_forecast]),
-        color=COLORS["Migas-1.5"], lw=2.2, ls="--", label="Original forecast",
+ax.plot(t_pred, np.concatenate([[last_val], chronos2_forecast]),
+        color=COLORS["Chronos-2"], lw=2.2, ls="--", label="Chronos-2 baseline",
         alpha=0.85, solid_capstyle="round")
 ax.plot(t_pred, np.concatenate([[last_val], bullish_forecast]),
         color=BULLISH_COLOR, lw=2.4, label="Bullish scenario", solid_capstyle="round")
@@ -248,7 +251,7 @@ ax.fill_between(
 
 ax.set_xlabel("Time Step", color="#566573")
 ax.set_ylabel("Price ($/barrel)", color="#566573")
-ax.set_title("Migas-1.5 scenario fan: the same numbers, three different stories",
+ax.set_title("Migas-1.5 scenario fan vs. Chronos-2: the same numbers, three different stories",
              fontsize=11, fontweight=600)
 ax.legend(fontsize=8, handlelength=1.6, labelspacing=0.35, borderpad=0.45)
 fig.tight_layout(pad=1.2)
@@ -275,7 +278,7 @@ from scripts.counterfactual_utils import endpoint_change, monotonicity, breakout
 
 rows = []
 for label, fc, direction in [
-    ("Original",  original_forecast, "up"),
+    ("Chronos-2", chronos2_forecast, "up"),
     ("Bullish",   bullish_forecast,  "up"),
     ("Bearish",   bearish_forecast,  "down"),
 ]:
@@ -335,8 +338,8 @@ _draw_forecast_region(ax, seq_len, pred_len)
 
 ax.plot(t_ctx, context_unscaled, color=COLORS["historical"], lw=2.0,
         label="Historical", solid_capstyle="round")
-ax.plot(t_pred, np.concatenate([[last_val], original_forecast]),
-        color=COLORS["Migas-1.5"], lw=2.2, ls="--", label="Original",
+ax.plot(t_pred, np.concatenate([[last_val], chronos2_forecast]),
+        color=COLORS["Chronos-2"], lw=2.2, ls="--", label="Chronos-2",
         alpha=0.85, solid_capstyle="round")
 
 for i, fc in enumerate(candidate_forecasts):
