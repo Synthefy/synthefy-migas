@@ -4,7 +4,7 @@
 
 **Text-and-time-series fusion forecasting.** Migas-1.5 reads per-step text alongside historical values and fuses both into a single forecast. Rewrite the narrative — watch the forecast shift.
 
-*Same crude-oil dataset, three different summaries → three different forecasts. Generated with the [counterfactual notebook](notebooks/migas-1.5-counterfactual-scenarios.py.py).*
+*Same crude-oil dataset, three different summaries → three different forecasts. Generated with the [counterfactual notebook](notebooks/migas-1.5-counterfactual-scenarios.ipynb).*
 
 ---
 
@@ -103,7 +103,7 @@ forecast = pipeline.predict_from_dataframe(
 
 | Notebook | Description |
 |----------|-------------|
-| [Counterfactual scenarios](notebooks/migas-1.5-counterfactual-scenarios.py.py) | Swap bullish/bearish narratives and measure forecast shifts. First half runs without an LLM. |
+| [Counterfactual scenarios](notebooks/migas-1.5-counterfactual-scenarios.ipynb) | Swap bullish/bearish narratives and measure forecast shifts. First half runs without an LLM. |
 
 ---
 
