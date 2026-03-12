@@ -16,13 +16,19 @@ import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-import json, os
+import json, os, sys
 import numpy as np
 import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from migaseval import MigasPipeline
 from migaseval.model.inference_utils import evaluate_chronos
+
+sys.path.insert(0, "..")
+from scripts.plotting_utils import plot_forecast_grid, apply_migas_style
+
+apply_migas_style()
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device=device)
 print(f"Using device: {device}")
@@ -129,10 +135,6 @@ print(f"\nTop 4 lowest-MAE window indices: {show_indices.tolist()}")
 # Plot a few individual windows so you can visually inspect forecast quality.
 
 # %%
-import sys
-sys.path.insert(0, "..")
-from scripts.plotting_utils import plot_forecast_grid
-
 tail = 60  # how many context steps to show before the forecast
 history_2d = np.array([df["y_t"].values[idx * stride + seq_len - tail : idx * stride + seq_len] for idx in show_indices])
 gt_2d = ground_truths[show_indices]

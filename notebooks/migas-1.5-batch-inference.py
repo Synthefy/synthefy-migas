@@ -15,11 +15,17 @@
 import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 
-import json, os
+import json, os, sys
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import torch
 from migaseval import MigasPipeline, list_data_files
+
+sys.path.insert(0, "..")
+from scripts.plotting_utils import plot_forecast_grid, apply_migas_style
+
+apply_migas_style()
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device=device)
@@ -60,11 +66,6 @@ print(f"Batch forecast shape: {forecast_batch.shape}")  # (B, pred_len, 1)
 # ## Plotting batch results
 
 # %%
-import sys
-sys.path.insert(0, "..")
-from scripts.plotting_utils import plot_forecast_grid
-import matplotlib.pyplot as plt
-
 context_len = context_batch.shape[1]
 history_2d = context_batch
 preds_2d = {"Migas-1.5": forecast_batch[:, :, 0].detach().cpu().numpy()}
