@@ -20,7 +20,7 @@
 import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 
-import json, sys
+import sys
 from textwrap import dedent
 import numpy as np
 import pandas as pd
@@ -65,19 +65,18 @@ print("Pipeline loaded.")
 # The counterfactual experiment targets the predictive section: we keep the facts, but rewrite the outlook.
 
 # %%
-sample_path = "../data/oil_scenario_sim.json"
 pred_len = 16
 
-with open(sample_path, "r") as f:
-    sample = json.load(f)
+df = pd.read_csv("../data/oil_scenario_sim.csv")
+ctx_df = df[df["split"] == "context"].reset_index(drop=True)
+gt_df  = df[df["split"] == "ground_truth"].reset_index(drop=True)
 
-seq_len = len(sample["history_scaled"])
-context = np.array(sample["history_scaled"], dtype=np.float32)
-ground_truth = np.array(sample["ground_truth_unscaled"], dtype=np.float32)
-original_summary = sample["summary"]
-h_mean, h_std = sample["history_mean"], sample["history_std"]
+context_unscaled = ctx_df["y_t"].values.astype(np.float32)
+ground_truth     = gt_df["y_t"].values.astype(np.float32)
+seq_len          = len(context_unscaled)
 
-context_unscaled = context * h_std + h_mean
+with open("../data/oil_scenario_sim_summary.txt") as f:
+    original_summary = f.read().strip()
 
 print(f"Context length: {seq_len}")
 print(f"Pred length:    {pred_len}")
@@ -97,11 +96,9 @@ print(extract_predictive(original_summary))
 # First, run Migas-1.5 with the **original, unmodified summary**. This is the baseline we will compare counterfactual scenarios against.
 
 # %%
-original_forecast = pipeline.predict(
-    context=context_unscaled[np.newaxis],
-    summaries=[original_summary],
-    pred_len=pred_len,
-).squeeze().cpu().numpy()
+original_forecast = pipeline.predict_from_dataframe(
+    ctx_df, pred_len=pred_len, summaries=[original_summary],
+)
 
 from scripts.plotting_utils import plot_forecast_single
 
@@ -109,7 +106,7 @@ fig, ax = plot_forecast_single(
     context_unscaled, ground_truth,
     {"Migas-1.5": original_forecast},
     seq_len, pred_len,
-    title=f"Baseline forecast — crude oil window {sample['index']} (context={seq_len})",
+    title=f"Baseline forecast — crude oil (context={seq_len})",
 )
 ax.set_ylabel("Price ($/barrel)")
 plt.show()
@@ -153,11 +150,9 @@ display(HTML(display_text_comparison(original_summary, bullish_summary)))
 # Now we run the same context window through Migas-1.5, but with the counterfactual summary. The numerical input is identical — only the text embedding changes.
 
 # %%
-bullish_forecast = pipeline.predict(
-    context=context_unscaled[np.newaxis],
-    summaries=[bullish_summary],
-    pred_len=pred_len,
-).squeeze().cpu().numpy()
+bullish_forecast = pipeline.predict_from_dataframe(
+    ctx_df, pred_len=pred_len, summaries=[bullish_summary],
+)
 
 fig, ax = plot_scenario_comparison(
     context_unscaled,
@@ -194,11 +189,9 @@ bearish_summary = splice_summary(original_summary, bearish_predictive)
 
 display(HTML(display_text_comparison(original_summary, bearish_summary)))
 
-bearish_forecast = pipeline.predict(
-    context=context_unscaled[np.newaxis],
-    summaries=[bearish_summary],
-    pred_len=pred_len,
-).squeeze().cpu().numpy()
+bearish_forecast = pipeline.predict_from_dataframe(
+    ctx_df, pred_len=pred_len, summaries=[bearish_summary],
+)
 
 fig, ax = plot_scenario_comparison(
     context_unscaled,
@@ -322,11 +315,9 @@ candidate_scores = []
 candidate_forecasts = []
 for i, text in enumerate(candidates[0]):
     cf_summary = splice_summary(original_summary, text)
-    fc = pipeline.predict(
-        context=context_unscaled[np.newaxis],
-        summaries=[cf_summary],
-        pred_len=pred_len,
-    ).squeeze().cpu().numpy()
+    fc = pipeline.predict_from_dataframe(
+        ctx_df, pred_len=pred_len, summaries=[cf_summary],
+    )
     score = composite_trend_score(fc, "up", context_unscaled)
     candidate_scores.append(score)
     candidate_forecasts.append(fc)
