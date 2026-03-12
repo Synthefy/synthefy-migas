@@ -77,19 +77,11 @@ print(f"Price range    : ${series['y_t'].min():.2f} – ${series['y_t'].max():.2
 # %%
 summary = """\
 FACTUAL SUMMARY:
-Gold (GLD) has trended steadily higher over the past two months, supported by a
-weakening U.S. dollar, persistent inflation above the Fed's 2% target, and elevated
-geopolitical uncertainty. Central bank buying — particularly from emerging-market
-central banks — has provided a durable bid, while real yields dipped as rate-cut
-expectations were pulled forward following softer-than-expected labor-market data.
+GLD has experienced a strong uptrend throughout late 2025 and early 2026, driven by geopolitical tensions, central bank buying, a weakening US dollar, and safe-haven demand during economic uncertainty. The ETF surged dramatically from ~$375 in mid-November 2025 to nearly $495 in late January 2026, though it has since consolidated in the $440-$470 range in early February 2026 with periodic volatility. Institutional investors including prominent billionaire hedge fund managers have significantly increased gold exposure, viewing GLD as an attractive diversifier during policy uncertainty and market turbulence.
 
 PREDICTIVE SIGNALS:
-Analysts broadly expect gold to remain well-bid near current levels, with upside
-risk if the Fed signals an earlier pivot or geopolitical tensions escalate further.
-ETF inflows have turned positive after months of outflows, suggesting renewed
-institutional interest. The primary downside risk is a sharp re-pricing of U.S.
-rate expectations higher, which could push real yields up and weigh on the
-non-yielding metal.\
+The prevailing bias remains bullish with upward momentum sustained by structural tailwinds (continued geopolitical concerns, central bank buying, ETF inflows, and weakening dollar dynamics), though recent consolidation suggests a pause before potential further advances. The forecast window faces moderate risk of a 5-10% pullback given recent rapid appreciation and technical overbought conditions, but any pullback would likely attract renewed institutional buying given the strong conviction among major investors. Sentiment remains constructive with expectations tilted toward continuation of higher prices, though volatility risk persists amid broader economic and policy uncertainties.
+
 """
 
 print(summary)
