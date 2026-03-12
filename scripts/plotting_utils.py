@@ -28,6 +28,7 @@ Examples:
 
 from __future__ import annotations
 
+import textwrap
 from typing import Any, Sequence
 
 import matplotlib.dates as mdates
@@ -366,6 +367,17 @@ def plot_one_forecast(
 # Convenience wrappers
 # ---------------------------------------------------------------------------
 
+def _wrap_summary_text(text: str, width: int) -> str:
+    """Wrap a summary string, preserving paragraph breaks (FACTUAL / PREDICTIVE sections)."""
+    paragraphs = text.strip().split("\n\n")
+    wrapped = []
+    for para in paragraphs:
+        para = " ".join(para.split()).strip()
+        if para:
+            wrapped.append(textwrap.fill(para, width=width))
+    return "\n\n".join(wrapped)
+
+
 def plot_forecast_single(
     history: np.ndarray,
     gt: np.ndarray | None,
@@ -379,6 +391,8 @@ def plot_forecast_single(
     figsize: tuple[float, float] = (8.0, 4.0),
     show_metrics: bool = True,
     timestamps: Sequence | np.ndarray | None = None,
+    text_summary: str | None = None,
+    summary_fontsize: int = 8,
 ) -> tuple[plt.Figure, Any]:
     """
     One figure with one window: history + optional ground truth + model forecasts.
@@ -386,17 +400,67 @@ def plot_forecast_single(
     Args:
         timestamps: optional sequence of length ``context_len + pred_len`` with
             datetime-like objects.  When provided the x-axis shows dates.
+        text_summary: optional summary string printed below the plot in a styled
+            text panel.  Paragraph breaks (FACTUAL / PREDICTIVE sections) are
+            preserved; long lines are wrapped automatically.
+        summary_fontsize: font size for the summary text panel (default 8).
 
     Returns:
         (fig, ax)
     """
-    fig, ax = plt.subplots(figsize=figsize)
+    if text_summary is None:
+        fig, ax = plt.subplots(figsize=figsize)
+        plot_one_forecast(
+            ax, history, gt, preds, context_len, pred_len,
+            history_mean=history_mean, history_std=history_std,
+            show_metrics=show_metrics, title=title,
+            timestamps=timestamps,
+        )
+        fig.tight_layout(pad=1.2)
+        return fig, ax
+
+    # ---- layout with text panel below ----
+    # Wrap text and estimate the height it needs in inches.
+    wrap_width = max(60, int(figsize[0] * 11))
+    wrapped = _wrap_summary_text(text_summary, width=wrap_width)
+    n_lines = wrapped.count("\n") + 1
+    pts_per_line = summary_fontsize * 1.55          # leading
+    text_height_in = n_lines * pts_per_line / 72 + 0.55   # + padding
+
+    fig = plt.figure(figsize=(figsize[0], figsize[1] + text_height_in))
+    gs = fig.add_gridspec(
+        2, 1,
+        height_ratios=[figsize[1], text_height_in],
+        hspace=0.35,
+    )
+    ax = fig.add_subplot(gs[0])
+    text_ax = fig.add_subplot(gs[1])
+
     plot_one_forecast(
         ax, history, gt, preds, context_len, pred_len,
         history_mean=history_mean, history_std=history_std,
         show_metrics=show_metrics, title=title,
         timestamps=timestamps,
     )
+
+    text_ax.axis("off")
+    text_ax.text(
+        0.5, 1.0,
+        wrapped,
+        ha="center", va="top",
+        fontsize=summary_fontsize,
+        color="#4A4A4A",
+        transform=text_ax.transAxes,
+        linespacing=1.5,
+        bbox=dict(
+            boxstyle="round,pad=0.7",
+            facecolor="#F4F6F7",
+            edgecolor="#D5D8DC",
+            alpha=0.9,
+        ),
+        fontfamily="monospace",
+    )
+
     fig.tight_layout(pad=1.2)
     return fig, ax
 
