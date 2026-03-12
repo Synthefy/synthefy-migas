@@ -114,7 +114,8 @@ class MigasPipeline:
         univariate_model: str = "chronos",
         timestamps: Optional[List[List[str]]] = None,
         summaries: Optional[List[str]] = None,
-    ) -> torch.Tensor:
+        return_univariate: bool = False,
+    ) -> Union[torch.Tensor, tuple]:
         """Run Migas-1.5 forward and return the forecast for the requested horizon.
 
         The context is automatically normalized (zero-mean, unit-variance) before
@@ -131,9 +132,14 @@ class MigasPipeline:
             univariate_model: Univariate backbone: "chronos", "timesfm", "prophet", or "ensemble".
             timestamps: Optional per-sample timestamps for summarization.
             summaries: Pre-computed LLM summaries; if set, the pipeline does not call the LLM.
+            return_univariate: If True, also return the univariate (Chronos) forecast
+                that Migas used internally as a baseline, in the same scale as the main
+                forecast. Returns a tuple (forecast, univariate_forecast).
 
         Returns:
-            Forecast tensor of shape (B, pred_len, 1) on the pipeline device.
+            When return_univariate=False: forecast tensor of shape (B, pred_len, 1).
+            When return_univariate=True: tuple of (forecast (B, pred_len, 1),
+                univariate_forecast (B, pred_len, 1)) — both on the pipeline device.
         """
         if text is None and summaries is None:
             raise ValueError(
@@ -181,6 +187,14 @@ class MigasPipeline:
         sigma = sigma.to(forecast.device)
         forecast = forecast * (sigma + 1e-8) + mu
 
+        if return_univariate:
+            # out[1] is timeseries_forecast (Chronos output, renormalized by the model).
+            # Denormalize it the same way to get it in the original value range.
+            ts_fc = out[1][:, :pred_len, 0]  # (B, pred_len)
+            ts_fc = ts_fc.to(forecast.device)
+            ts_fc = ts_fc * (sigma[:, :, 0] + 1e-8) + mu[:, :, 0]
+            return forecast, ts_fc.unsqueeze(-1)
+
         return forecast
 
     def predict_from_dataframe(
@@ -190,7 +204,8 @@ class MigasPipeline:
         seq_len: Optional[int] = None,
         univariate_model: str = "chronos",
         summaries: Optional[List[str]] = None,
-    ) -> np.ndarray:
+        return_univariate: bool = False,
+    ) -> Union[np.ndarray, tuple]:
         """Convenience method: forecast from a single DataFrame.
 
         Accepts a DataFrame with columns ``t``, ``y_t``, and ``text`` (the
@@ -204,9 +219,13 @@ class MigasPipeline:
             univariate_model: Univariate backbone. Defaults to ``"chronos"``.
             summaries: Pre-computed summary string(s). When provided the LLM
                 summarizer is skipped and ``text`` is unused.
+            return_univariate: If True, return a tuple (forecast, univariate_forecast)
+                where both are numpy arrays of shape ``(pred_len,)``. The univariate
+                forecast is the internal Chronos output that Migas used as its baseline.
 
         Returns:
-            Numpy array of shape ``(pred_len,)`` with the forecast.
+            When return_univariate=False: numpy array of shape ``(pred_len,)``.
+            When return_univariate=True: tuple of two numpy arrays of shape ``(pred_len,)``.
         """
         if seq_len is not None:
             df = df.tail(seq_len).reset_index(drop=True)
@@ -219,12 +238,19 @@ class MigasPipeline:
             if "t" in df.columns:
                 timestamps = [df["t"].astype(str).tolist()]
 
-        forecast = self.predict(
+        result = self.predict(
             context,
             text,
             pred_len=pred_len,
             univariate_model=univariate_model,
             timestamps=timestamps,
             summaries=summaries,
+            return_univariate=return_univariate,
         )
-        return forecast[0, :, 0].detach().cpu().numpy()
+        if return_univariate:
+            forecast, ts_fc = result
+            return (
+                forecast[0, :, 0].detach().cpu().numpy(),
+                ts_fc[0, :, 0].detach().cpu().numpy(),
+            )
+        return result[0, :, 0].detach().cpu().numpy()

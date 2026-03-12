@@ -36,7 +36,7 @@ def get_chronos_pipeline(device: str = "cuda:0"):
         _chronos_pipeline = BaseChronosPipeline.from_pretrained(
             "amazon/chronos-2",
             device_map=device,
-            dtype=torch.float16,
+            dtype=torch.float32,  # float16 overflows for assets priced above 65,504 (e.g. BTC)
         )
         _chronos_device = device
     return _chronos_pipeline
@@ -155,6 +155,56 @@ def evaluate_chronos(
 
     predictions = torch.stack(preds_list, dim=0)
     return predictions.to(device)
+
+
+@torch.no_grad()
+def evaluate_chronos_quantiles(
+    x: torch.Tensor,
+    pred_len: int,
+    device: str,
+    chronos_device: Optional[str] = None,
+    quantile_levels: List[float] = [0.1, 0.5, 0.9],
+) -> dict:
+    """Evaluate Chronos-2 and return point forecast + quantile bands.
+
+    Args:
+        x: (B, seq_len, 1) context tensor.
+        pred_len: Forecast horizon.
+        device: Torch device for output tensors.
+        chronos_device: Device for Chronos pipeline; defaults to "cuda:0".
+        quantile_levels: Quantile levels to return. Defaults to [0.1, 0.5, 0.9].
+
+    Returns:
+        dict with:
+          - "mean": np.ndarray (B, pred_len) — model's point forecast (median)
+          - str(q): np.ndarray (B, pred_len) for each q in quantile_levels
+    """
+    pipeline = get_chronos_pipeline(chronos_device or "cuda:0")
+    batch_size = x.shape[0]
+
+    context_df, future_df = _build_chronos_batch_frames(batch_x=x, pred_len=pred_len)
+
+    pred_df = pipeline.predict_df(
+        context_df,
+        future_df=future_df,
+        prediction_length=pred_len,
+        quantile_levels=quantile_levels,
+        id_column="id",
+        timestamp_column="timestamp",
+        target="target",
+    )
+
+    grouped = pred_df.groupby("id")
+    q_keys = ["mean"] + [str(q) for q in quantile_levels]
+    col_map = {"mean": "predictions", **{str(q): str(q) for q in quantile_levels}}
+    results: dict = {k: [] for k in q_keys}
+
+    for i in range(batch_size):
+        grp = grouped.get_group(f"series_{i}").sort_values("timestamp")
+        for k in q_keys:
+            results[k].append(grp[col_map[k]].to_numpy())
+
+    return {k: np.stack(v) for k, v in results.items()}
 
 
 # ============================================================================
