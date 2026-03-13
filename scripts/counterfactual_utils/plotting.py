@@ -14,6 +14,7 @@ import numpy as np
 
 try:
     from scripts.plotting_utils import COLORS, _draw_forecast_region, apply_migas_style
+
     apply_migas_style()
 except ImportError:
     COLORS = {
@@ -24,14 +25,19 @@ except ImportError:
         "forecast_vline": "#ABB2B9",
     }
 
-    def _draw_forecast_region(ax: Any, context_len: int, pred_len: int, **kwargs) -> None:
+    def _draw_forecast_region(
+        ax: Any, context_len: int, pred_len: int, **kwargs
+    ) -> None:
         left = kwargs.get("boundary", context_len - 0.5)
         right = kwargs.get("boundary_end", context_len + pred_len - 0.5)
         ax.axvspan(left, right, alpha=0.45, color="#FDF6EC", zorder=0)
-        ax.axvline(x=left, color="#ABB2B9", linestyle="--", linewidth=0.9, alpha=0.6, zorder=1)
+        ax.axvline(
+            x=left, color="#ABB2B9", linestyle="--", linewidth=0.9, alpha=0.6, zorder=1
+        )
 
     def apply_migas_style() -> None:
         pass
+
 
 CF_COLOR = "#C0392B"
 CF_COLOR_FILL = "#FADBD8"
@@ -70,7 +76,9 @@ def plot_scenario_comparison(
         ts = pd.to_datetime(list(timestamps))
         t_ctx = ts[:ctx_len]
         t_pred = pd.DatetimeIndex([ts[ctx_len - 1]] + list(ts[ctx_len:]))
-        _draw_forecast_region(ax, ctx_len, pred_len, boundary=t_pred[0], boundary_end=t_pred[-1])
+        _draw_forecast_region(
+            ax, ctx_len, pred_len, boundary=t_pred[0], boundary_end=t_pred[-1]
+        )
     else:
         t_ctx = np.arange(ctx_len)
         t_pred = np.arange(ctx_len - 1, ctx_len + pred_len)
@@ -79,9 +87,12 @@ def plot_scenario_comparison(
     last_val = float(context[-1])
 
     ax.plot(
-        t_ctx, context,
-        color=COLORS["historical"], lw=2.0,
-        label="Historical", zorder=3,
+        t_ctx,
+        context,
+        color=COLORS["historical"],
+        lw=2.0,
+        label="Historical",
+        zorder=3,
         solid_capstyle="round",
     )
 
@@ -89,37 +100,54 @@ def plot_scenario_comparison(
         gt = np.asarray(ground_truth).ravel()
         gt_ext = np.concatenate([[last_val], gt])
         ax.plot(
-            t_pred, gt_ext,
-            color=COLORS["ground_truth"], lw=2.2,
-            label="Ground Truth", zorder=4,
+            t_pred,
+            gt_ext,
+            color=COLORS["ground_truth"],
+            lw=2.2,
+            label="Ground Truth",
+            zorder=4,
             solid_capstyle="round",
         )
 
     orig_ext = np.concatenate([[last_val], original_forecast])
     ax.plot(
-        t_pred, orig_ext,
-        color=COLORS["Migas-1.5"], lw=2.0, ls="--",
-        label="Migas-1.5 (original)", zorder=5,
-        alpha=0.85, solid_capstyle="round",
+        t_pred,
+        orig_ext,
+        color=COLORS["Migas-1.5"],
+        lw=2.0,
+        ls="--",
+        label="Migas-1.5 (original)",
+        zorder=5,
+        alpha=0.85,
+        solid_capstyle="round",
     )
 
     cf_ext = np.concatenate([[last_val], counterfactual_forecast])
     direction_label = "bullish" if direction == "up" else "bearish"
     ax.plot(
-        t_pred, cf_ext,
-        color=CF_COLOR, lw=2.4,
+        t_pred,
+        cf_ext,
+        color=CF_COLOR,
+        lw=2.4,
         label=f"Migas-1.5 ({direction_label} scenario)",
-        zorder=6, solid_capstyle="round",
+        zorder=6,
+        solid_capstyle="round",
     )
 
     # Shaded area between original and counterfactual
     ax.fill_between(
-        t_pred, orig_ext, cf_ext,
-        color=CF_COLOR_FILL, alpha=0.35, zorder=2,
+        t_pred,
+        orig_ext,
+        cf_ext,
+        color=CF_COLOR_FILL,
+        alpha=0.35,
+        zorder=2,
     )
 
     if use_dates:
-        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+        ax.xaxis.set_major_formatter(
+            mdates.ConciseDateFormatter(ax.xaxis.get_major_locator())
+        )
         for lbl in ax.get_xticklabels():
             lbl.set_rotation(35)
             lbl.set_ha("right")
@@ -129,8 +157,10 @@ def plot_scenario_comparison(
         ax.set_xlabel("Time Step", color="#566573")
     ax.set_ylabel("Value", color="#566573")
     ax.legend(
-        loc="best", fontsize=8,
-        handlelength=1.6, labelspacing=0.35,
+        loc="best",
+        fontsize=8,
+        handlelength=1.6,
+        labelspacing=0.35,
         borderpad=0.45,
     )
 
@@ -140,10 +170,14 @@ def plot_scenario_comparison(
         badge = f"Slope shift {slope_shift:+.4f}   ·   Trend delta {trend_delta:+.3f}"
         ax.annotate(
             badge,
-            xy=(0.5, 1.0), xycoords="axes fraction",
-            fontsize=8.5, color="#5D6D7E",
-            ha="center", va="bottom",
-            xytext=(0, 6), textcoords="offset points",
+            xy=(0.5, 1.0),
+            xycoords="axes fraction",
+            fontsize=8.5,
+            color="#5D6D7E",
+            ha="center",
+            va="bottom",
+            xytext=(0, 6),
+            textcoords="offset points",
         )
 
     if fig is not None:
@@ -164,7 +198,8 @@ def plot_scenario_grid(
     n_rows = (n + n_cols - 1) // n_cols
 
     fig, axes = plt.subplots(
-        n_rows, n_cols,
+        n_rows,
+        n_cols,
         figsize=(figsize_per[0] * n_cols, figsize_per[1] * n_rows),
         squeeze=False,
     )
@@ -185,10 +220,14 @@ def plot_scenario_grid(
         badge = f"Window {idx}  ·  slope shift {r.slope_shift:+.4f}"
         ax.annotate(
             badge,
-            xy=(0.5, 1.0), xycoords="axes fraction",
-            fontsize=7.5, color="#5D6D7E",
-            ha="center", va="bottom",
-            xytext=(0, 4), textcoords="offset points",
+            xy=(0.5, 1.0),
+            xycoords="axes fraction",
+            fontsize=7.5,
+            color="#5D6D7E",
+            ha="center",
+            va="bottom",
+            xytext=(0, 4),
+            textcoords="offset points",
         )
 
     for idx in range(n, n_rows * n_cols):
@@ -213,14 +252,18 @@ def plot_trend_summary(
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
     bar_pos = [COLORS["Migas-1.5"] if d > 0 else "#6C8EBF" for d in deltas]
-    bars1 = ax1.bar(x, deltas, color=bar_pos, alpha=0.85, edgecolor="white", lw=0.6, zorder=3)
+    bars1 = ax1.bar(
+        x, deltas, color=bar_pos, alpha=0.85, edgecolor="white", lw=0.6, zorder=3
+    )
     ax1.axhline(0, color="#ABB2B9", lw=0.7, zorder=2)
     ax1.set_xlabel("Window", color="#566573")
     ax1.set_ylabel("Trend Score Delta", color="#566573")
     ax1.set_title("Trend Score Change", fontsize=11, fontweight=600)
 
     bar_pos2 = [COLORS["Migas-1.5"] if s > 0 else "#6C8EBF" for s in slopes]
-    bars2 = ax2.bar(x, slopes, color=bar_pos2, alpha=0.85, edgecolor="white", lw=0.6, zorder=3)
+    bars2 = ax2.bar(
+        x, slopes, color=bar_pos2, alpha=0.85, edgecolor="white", lw=0.6, zorder=3
+    )
     ax2.axhline(0, color="#ABB2B9", lw=0.7, zorder=2)
     ax2.set_xlabel("Window", color="#566573")
     ax2.set_ylabel("Slope Shift", color="#566573")

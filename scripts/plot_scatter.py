@@ -545,7 +545,9 @@ def plot_sample_level_scatter(
             all_compare_mae_filtered.extend(
                 compare_mae_dataset[window_start:window_end]
             )
-            all_migas15_mae_filtered.extend(migas15_mae_dataset[window_start:window_end])
+            all_migas15_mae_filtered.extend(
+                migas15_mae_dataset[window_start:window_end]
+            )
 
         compare_mae_for_stats = np.array(all_compare_mae_filtered)
         migas15_mae_for_stats = np.array(all_migas15_mae_filtered)

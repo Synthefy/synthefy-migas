@@ -20,19 +20,34 @@ Files ending in `_embeddings`, `_original`, `_temp`, `_results`, or `_temp_resul
 
 ## Downloading evaluation data
 
+All evaluation data lives in a single Hugging Face repo: **Synthefy/multimodal_datasets**. Use `--dataset` to choose which folder to download:
+
+| Choice | Contents | Default local path |
+|--------|----------|--------------------|
+| `fnspid` | FNSPID prepared financial-news assets | `data/fnspid_prepared/` |
+| `suite` | Migas-1.5 ICML suite | `data/migas_1_5_suite/` |
+| `subset` | Small set (2 time series) for quick runs | `data/subset/` |
+| `all` | All of the above | `data/` |
+
 ```bash
+# Subset — 2 datasets, good for notebooks and quick tests
+uv run python scripts/download_data.py --dataset subset --csvs
+uv run python scripts/download_data.py --dataset subset --all
+
 # FNSPID — prepared financial-news evaluation assets
-uv run python scripts/download_data.py --dataset fnspid --csvs      # CSVs only
-uv run python scripts/download_data.py --dataset fnspid --summaries # pre-computed summaries
-uv run python scripts/download_data.py --dataset fnspid --all       # both
+uv run python scripts/download_data.py --dataset fnspid --csvs
+uv run python scripts/download_data.py --dataset fnspid --all
 
 # Migas-1.5 ICML suite
 uv run python scripts/download_data.py --dataset suite --csvs
 uv run python scripts/download_data.py --dataset suite --all
+
+# Everything
+uv run python scripts/download_data.py --dataset all --all
 ```
 
-- Default destinations: `data/fnspid_prepared/` (fnspid), `data/migas_1_5_suite/` (suite).
-- Override with `--local_dir`. List presets: `--list`. Custom repo: `--repo_id org/my-dataset`.
+- Specify what to download: `--csvs`, `--summaries`, or `--all`. List presets: `--list`.
+- Override destination: `--local_dir`.
 - Hit 429 rate limits? Use `--max-workers 1` (default).
 
 ---
@@ -41,19 +56,23 @@ uv run python scripts/download_data.py --dataset suite --all
 
 ### Baselines only (no LLM)
 
+Example with **subset** (2 datasets):
+
 ```bash
 uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+  --datasets_dir ./data/subset/subset_migas15/subset_csvs \
   --output_dir   ./results \
   --seq_len 384 --pred_len 16 --batch_size 64 \
   --eval_chronos2 --eval_timesfm --eval_prophet --eval_naive
 ```
 
+For **FNSPID** or **suite**, use `./data/fnspid_prepared/fnspid_migas15/fnspid_0.5_complement_csvs` or `./data/migas_1_5_suite/icml_suite_migas15/icml_suite_csvs` respectively.
+
 ### With Migas-1.5 (requires LLM server or pre-computed summaries)
 
 ```bash
 uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+  --datasets_dir ./data/subset/subset_migas15/subset_csvs \
   --output_dir   ./results \
   --seq_len 384 --pred_len 16 --batch_size 64 \
   --eval_migas15 --eval_chronos2 --eval_timesfm
@@ -63,8 +82,8 @@ uv run python -m migaseval.evaluation \
 
 ```bash
 uv run python -m migaseval.evaluation \
-  --datasets_dir  ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
-  --summaries_dir ./data/fnspid_prepared/fnspid_0.5_complement \
+  --datasets_dir  ./data/subset/subset_migas15/subset_csvs \
+  --summaries_dir ./data/subset/subset_migas15/subset \
   --output_dir    ./results \
   --seq_len 384 --pred_len 16 --batch_size 64 \
   --eval_migas15 --checkpoint Synthefy/migas-1.5
@@ -75,7 +94,7 @@ uv run python -m migaseval.evaluation \
 ```bash
 # Step 1 — cache summaries (requires LLM server)
 uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/fnspid_prepared/fnspid_0.5_complement_csvs \
+  --datasets_dir ./data/subset/subset_migas15/subset_csvs \
   --output_dir   ./results \
   --seq_len 384 --pred_len 16 --batch_size 64 \
   --cache_summaries
@@ -181,10 +200,12 @@ The CLI gets `--eval_<name>` automatically. Baselines depending on another basel
 
 ## FNSPID dataset
 
-[FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) (Dong et al., 2024) contains 10M+ financial news articles linked to stock symbols. Prepared assets are at [Synthefy/fnspid](https://huggingface.co/datasets/Synthefy/fnspid):
+[FNSPID](https://huggingface.co/datasets/Zihan1004/FNSPID) (Dong et al., 2024) contains 10M+ financial news articles linked to stock symbols. Prepared assets are in [Synthefy/multimodal_datasets](https://huggingface.co/datasets/Synthefy/multimodal_datasets) under the `fnspid_migas15/` folder:
 
-- `fnspid_0.5_complement_csvs/` — `t`, `y_t`, `text` CSVs ready for eval
-- `fnspid_0.5_complement/` — cached LLM summaries (skip LLM server during eval)
+- `fnspid_migas15/fnspid_0.5_complement_csvs/` — `t`, `y_t`, `text` CSVs ready for eval
+- `fnspid_migas15/fnspid_0.5_complement/` — cached LLM summaries (skip LLM server during eval)
+
+Download with: `uv run python scripts/download_data.py --dataset fnspid --all`. The **subset** option (2 time series) is smaller and suited to notebooks: `--dataset subset --all`.
 
 <details>
 <summary>Building FNSPID from raw data (advanced)</summary>

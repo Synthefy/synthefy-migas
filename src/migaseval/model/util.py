@@ -84,7 +84,9 @@ def set_text_embedder(
         from transformers import AutoModel, AutoTokenizer
 
         model_name = "ProsusAI/finbert"
-        device = text_embedder_device or ("cuda" if torch.cuda.is_available() else "cpu")
+        device = text_embedder_device or (
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModel.from_pretrained(model_name).to(device)
         model.eval()

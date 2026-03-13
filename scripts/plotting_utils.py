@@ -63,74 +63,74 @@ def apply_migas_style() -> None:
         return
     _STYLE_APPLIED = True
 
-    plt.rcParams.update({
-        # --- typography ---
-        "font.family": "sans-serif",
-        "font.sans-serif": [
-            "Inter", "Helvetica Neue", "Helvetica", "Arial",
-            "DejaVu Sans", "Liberation Sans", "sans-serif",
-        ],
-        "font.size": 11,
-        "axes.titlesize": 12,
-        "axes.titleweight": 600,
-        "axes.labelsize": 11,
-        "axes.labelweight": 500,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "legend.fontsize": 9,
-        "legend.title_fontsize": 10,
-
-        # --- figure ---
-        "figure.dpi": 140,
-        "figure.facecolor": "white",
-        "figure.edgecolor": "none",
-        "savefig.dpi": 300,
-        "savefig.bbox": "tight",
-        "savefig.pad_inches": 0.12,
-        "savefig.facecolor": "white",
-
-        # --- axes ---
-        "axes.facecolor": "#FAFBFC",
-        "axes.edgecolor": "#D5D8DC",
-        "axes.linewidth": 0.7,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "axes.grid": True,
-        "axes.axisbelow": True,
-
-        # --- grid ---
-        "grid.color": "#E5E8E8",
-        "grid.linewidth": 0.5,
-        "grid.alpha": 0.8,
-        "grid.linestyle": "-",
-
-        # --- ticks ---
-        "xtick.major.size": 0,
-        "ytick.major.size": 0,
-        "xtick.minor.size": 0,
-        "ytick.minor.size": 0,
-        "xtick.major.pad": 6,
-        "ytick.major.pad": 6,
-        "xtick.color": "#566573",
-        "ytick.color": "#566573",
-
-        # --- lines ---
-        "lines.linewidth": 2.0,
-        "lines.markersize": 5,
-        "lines.antialiased": True,
-
-        # --- legend ---
-        "legend.frameon": True,
-        "legend.framealpha": 0.92,
-        "legend.edgecolor": "#D5D8DC",
-        "legend.fancybox": True,
-        "legend.borderpad": 0.5,
-        "legend.columnspacing": 1.2,
-        "legend.handlelength": 1.8,
-
-        # --- layout ---
-        "figure.constrained_layout.use": False,
-    })
+    plt.rcParams.update(
+        {
+            # --- typography ---
+            "font.family": "sans-serif",
+            "font.sans-serif": [
+                "Inter",
+                "Helvetica Neue",
+                "Helvetica",
+                "Arial",
+                "DejaVu Sans",
+                "Liberation Sans",
+                "sans-serif",
+            ],
+            "font.size": 11,
+            "axes.titlesize": 12,
+            "axes.titleweight": 600,
+            "axes.labelsize": 11,
+            "axes.labelweight": 500,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "legend.fontsize": 9,
+            "legend.title_fontsize": 10,
+            # --- figure ---
+            "figure.dpi": 140,
+            "figure.facecolor": "white",
+            "figure.edgecolor": "none",
+            "savefig.dpi": 300,
+            "savefig.bbox": "tight",
+            "savefig.pad_inches": 0.12,
+            "savefig.facecolor": "white",
+            # --- axes ---
+            "axes.facecolor": "#FAFBFC",
+            "axes.edgecolor": "#D5D8DC",
+            "axes.linewidth": 0.7,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.grid": True,
+            "axes.axisbelow": True,
+            # --- grid ---
+            "grid.color": "#E5E8E8",
+            "grid.linewidth": 0.5,
+            "grid.alpha": 0.8,
+            "grid.linestyle": "-",
+            # --- ticks ---
+            "xtick.major.size": 0,
+            "ytick.major.size": 0,
+            "xtick.minor.size": 0,
+            "ytick.minor.size": 0,
+            "xtick.major.pad": 6,
+            "ytick.major.pad": 6,
+            "xtick.color": "#566573",
+            "ytick.color": "#566573",
+            # --- lines ---
+            "lines.linewidth": 2.0,
+            "lines.markersize": 5,
+            "lines.antialiased": True,
+            # --- legend ---
+            "legend.frameon": True,
+            "legend.framealpha": 0.92,
+            "legend.edgecolor": "#D5D8DC",
+            "legend.fancybox": True,
+            "legend.borderpad": 0.5,
+            "legend.columnspacing": 1.2,
+            "legend.handlelength": 1.8,
+            # --- layout ---
+            "figure.constrained_layout.use": False,
+        }
+    )
 
 
 apply_migas_style()
@@ -139,6 +139,7 @@ apply_migas_style()
 # ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
+
 
 def compute_mape(gt: np.ndarray, pred: np.ndarray, eps: float = 1e-8) -> float:
     """Mean absolute percentage error (0-100 scale). gt and pred same shape, 1d or 2d."""
@@ -153,7 +154,9 @@ def compute_mae(gt: np.ndarray, pred: np.ndarray) -> float:
     return float(np.mean(np.abs(np.asarray(pred) - np.asarray(gt))))
 
 
-def _mape_mae_1d(gt_1d: np.ndarray, pred_1d: np.ndarray, eps: float = 1e-8) -> tuple[float, float]:
+def _mape_mae_1d(
+    gt_1d: np.ndarray, pred_1d: np.ndarray, eps: float = 1e-8
+) -> tuple[float, float]:
     """MAPE (%) and MAE for one sample (1d arrays of length pred_len)."""
     mape = float(np.mean(np.abs(pred_1d - gt_1d) / (np.abs(gt_1d) + eps)) * 100.0)
     mae = float(np.mean(np.abs(pred_1d - gt_1d)))
@@ -163,6 +166,7 @@ def _mape_mae_1d(gt_1d: np.ndarray, pred_1d: np.ndarray, eps: float = 1e-8) -> t
 # ---------------------------------------------------------------------------
 # Drawing helpers
 # ---------------------------------------------------------------------------
+
 
 def _draw_forecast_region(
     ax: Any,
@@ -199,6 +203,7 @@ def _format_metric_badge(model_name: str, mape: float, mae: float) -> str:
 # ---------------------------------------------------------------------------
 # Core single-axes plot
 # ---------------------------------------------------------------------------
+
 
 def plot_one_forecast(
     ax: Any,
@@ -251,7 +256,10 @@ def plot_one_forecast(
         hist = hist * sigma + mu
         if has_gt:
             gt_arr = gt_arr * sigma + mu
-        preds = {k: np.asarray(v, dtype=np.float64).ravel() * sigma + mu for k, v in preds.items()}
+        preds = {
+            k: np.asarray(v, dtype=np.float64).ravel() * sigma + mu
+            for k, v in preds.items()
+        }
     else:
         preds = {k: np.asarray(v, dtype=np.float64).ravel() for k, v in preds.items()}
 
@@ -261,11 +269,16 @@ def plot_one_forecast(
     use_dates = timestamps is not None and len(timestamps) == context_len + pred_len
     if use_dates:
         import pandas as pd
+
         ts = pd.to_datetime(list(timestamps))
         t_input = ts[:context_len]
-        t_pred_extended = pd.DatetimeIndex([ts[context_len - 1]] + list(ts[context_len:]))
+        t_pred_extended = pd.DatetimeIndex(
+            [ts[context_len - 1]] + list(ts[context_len:])
+        )
         _draw_forecast_region(
-            ax, context_len, pred_len,
+            ax,
+            context_len,
+            pred_len,
             boundary=ts[context_len - 1],
             boundary_end=ts[-1],
         )
@@ -276,7 +289,8 @@ def plot_one_forecast(
 
     # Historical context
     ax.plot(
-        t_input, hist,
+        t_input,
+        hist,
         color=COLORS["historical"],
         linewidth=2.0,
         label="Historical",
@@ -288,7 +302,8 @@ def plot_one_forecast(
     if has_gt:
         gt_extended = np.concatenate([[last_input], gt_arr])
         ax.plot(
-            t_pred_extended, gt_extended,
+            t_pred_extended,
+            gt_extended,
             color=COLORS["ground_truth"],
             linewidth=2.2,
             label="Ground Truth",
@@ -316,7 +331,9 @@ def plot_one_forecast(
 
     # ---- x-axis formatting ----
     if use_dates:
-        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+        ax.xaxis.set_major_formatter(
+            mdates.ConciseDateFormatter(ax.xaxis.get_major_locator())
+        )
         for lbl in ax.get_xticklabels():
             lbl.set_rotation(35)
             lbl.set_ha("right")
@@ -367,6 +384,7 @@ def plot_one_forecast(
 # Convenience wrappers
 # ---------------------------------------------------------------------------
 
+
 def _format_summary_text(text: str, width: int) -> str:
     """Format summary text with styled section headers and wrapped body text.
 
@@ -387,7 +405,11 @@ def _format_summary_text(text: str, width: int) -> str:
         first_line = first_line.strip()
         if first_line.endswith(":") and len(first_line) < 60:
             header = first_line.rstrip(":")
-            body = " ".join(rest.split()).strip() if rest.strip() else " ".join(para.split()[len(first_line.split()):]).strip()
+            body = (
+                " ".join(rest.split()).strip()
+                if rest.strip()
+                else " ".join(para.split()[len(first_line.split()) :]).strip()
+            )
             rule = _RULE_CHAR * min(width, 52)
             header_block = f"• {header}\n{rule}"
             if body:
@@ -434,9 +456,16 @@ def plot_forecast_single(
     if text_summary is None:
         fig, ax = plt.subplots(figsize=figsize)
         plot_one_forecast(
-            ax, history, gt, preds, context_len, pred_len,
-            history_mean=history_mean, history_std=history_std,
-            show_metrics=show_metrics, title=title,
+            ax,
+            history,
+            gt,
+            preds,
+            context_len,
+            pred_len,
+            history_mean=history_mean,
+            history_std=history_std,
+            show_metrics=show_metrics,
+            title=title,
             timestamps=timestamps,
         )
         fig.tight_layout(pad=1.2)
@@ -447,12 +476,15 @@ def plot_forecast_single(
     wrap_width = max(60, int(figsize[0] * 11))
     wrapped = _format_summary_text(text_summary, width=wrap_width)
     n_lines = wrapped.count("\n") + 1
-    pts_per_line = summary_fontsize * 1.55          # leading
-    text_height_in = n_lines * pts_per_line / 72 + 0.55   # + padding
+    pts_per_line = summary_fontsize * 1.55  # leading
+    text_height_in = n_lines * pts_per_line / 72 + 0.55  # + padding
 
-    fig = plt.figure(figsize=(figsize[0], figsize[1] + text_height_in), layout="constrained")
+    fig = plt.figure(
+        figsize=(figsize[0], figsize[1] + text_height_in), layout="constrained"
+    )
     gs = fig.add_gridspec(
-        2, 1,
+        2,
+        1,
         height_ratios=[figsize[1], text_height_in],
         hspace=0.35,
     )
@@ -460,17 +492,26 @@ def plot_forecast_single(
     text_ax = fig.add_subplot(gs[1])
 
     plot_one_forecast(
-        ax, history, gt, preds, context_len, pred_len,
-        history_mean=history_mean, history_std=history_std,
-        show_metrics=show_metrics, title=title,
+        ax,
+        history,
+        gt,
+        preds,
+        context_len,
+        pred_len,
+        history_mean=history_mean,
+        history_std=history_std,
+        show_metrics=show_metrics,
+        title=title,
         timestamps=timestamps,
     )
 
     text_ax.axis("off")
     text_ax.text(
-        0.5, 1.0,
+        0.5,
+        1.0,
         wrapped,
-        ha="center", va="top",
+        ha="center",
+        va="top",
         fontsize=summary_fontsize,
         color="#2C3E50",
         transform=text_ax.transAxes,
@@ -528,7 +569,8 @@ def plot_forecast_grid(
     n_rows = (n_plots + n_cols - 1) // n_cols
 
     fig, axes = plt.subplots(
-        n_rows, n_cols,
+        n_rows,
+        n_cols,
         figsize=(figsize_per_subplot[0] * n_cols, figsize_per_subplot[1] * n_rows),
         squeeze=False,
     )
@@ -544,14 +586,23 @@ def plot_forecast_grid(
         mu = float(history_means[sample_idx]) if history_means is not None else None
         sigma = float(history_stds[sample_idx]) if history_stds is not None else None
 
-        subplot_title = (titles[idx] if titles and idx < len(titles) else None) or f"Sample {sample_idx}"
+        subplot_title = (
+            titles[idx] if titles and idx < len(titles) else None
+        ) or f"Sample {sample_idx}"
 
         ts = timestamps_2d[idx] if timestamps_2d is not None else None
 
         plot_one_forecast(
-            ax, hist, gt, preds_one, context_len, pred_len,
-            history_mean=mu, history_std=sigma,
-            show_metrics=show_metrics, title=subplot_title,
+            ax,
+            hist,
+            gt,
+            preds_one,
+            context_len,
+            pred_len,
+            history_mean=mu,
+            history_std=sigma,
+            show_metrics=show_metrics,
+            title=subplot_title,
             timestamps=ts,
         )
 

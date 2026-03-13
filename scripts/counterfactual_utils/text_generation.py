@@ -37,6 +37,7 @@ SYSTEM_MSG = (
 # Summary splicing
 # ---------------------------------------------------------------------------
 
+
 def extract_factual(summary: str) -> str:
     """Return the FACTUAL SUMMARY portion of a Migas-1.5 summary string."""
     if "FACTUAL SUMMARY:" not in summary:
@@ -65,6 +66,7 @@ def splice_summary(original_summary: str, new_predictive: str) -> str:
 # ---------------------------------------------------------------------------
 # Price-history formatting
 # ---------------------------------------------------------------------------
+
 
 def format_price_history(
     values: np.ndarray,
@@ -123,9 +125,9 @@ def build_scenario_prompt(
         f"write a short PREDICTIVE SIGNALS section (2-3 sentences) that "
         f"describes a {phrases[0]} scenario for this asset.\n\n"
         f"IMPORTANT: Frame the narrative as if the trend has ALREADY BEGUN and "
-        f"is ACCELERATING — use present/past tense (\"{phrases[2]}\", "
-        f"\"{phrases[3]}\") rather than hypothetical language "
-        f"(\"may rise\" / \"could fall\").\n\n"
+        f'is ACCELERATING — use present/past tense ("{phrases[2]}", '
+        f'"{phrases[3]}") rather than hypothetical language '
+        f'("may rise" / "could fall").\n\n'
         f"HISTORICAL PRICE DATA (most recent {min(tail, len(context_values))} "
         f"timesteps):\n{ts_context}\n\n"
         f"The scenario context (treat as established fact, not hypothesis):\n"
@@ -140,6 +142,7 @@ def build_scenario_prompt(
 # ---------------------------------------------------------------------------
 # Async LLM generation
 # ---------------------------------------------------------------------------
+
 
 async def _generate_one(
     client: AsyncOpenAI,
@@ -206,6 +209,7 @@ def _run_async(coro):
 
     if loop is not None and loop.is_running():
         import nest_asyncio  # noqa: F811
+
         nest_asyncio.apply(loop)
         return loop.run_until_complete(coro)
     return asyncio.run(coro)

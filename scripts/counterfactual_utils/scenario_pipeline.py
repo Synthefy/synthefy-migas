@@ -28,6 +28,7 @@ from .trend_metrics import (
 # Result containers
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ScenarioResult:
     """Result of a single counterfactual scenario run on one window."""
@@ -98,6 +99,7 @@ def results_to_dataframe(results: list[ScenarioResult]) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Pipeline runners
 # ---------------------------------------------------------------------------
+
 
 def _forecast_batch(
     pipeline,  # MigasPipeline

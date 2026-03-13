@@ -143,7 +143,9 @@ def evaluate_toto_precomputed(
         bs = xb.shape[0]
 
         mu = torch.tensor(means[s:e], dtype=torch.float32, device=device).unsqueeze(-1)
-        sigma = torch.tensor(stds[s:e], dtype=torch.float32, device=device).unsqueeze(-1)
+        sigma = torch.tensor(stds[s:e], dtype=torch.float32, device=device).unsqueeze(
+            -1
+        )
         sigma = torch.clamp(sigma, min=1e-8)
         xb_unscaled = xb * sigma + mu
 
@@ -319,7 +321,9 @@ def evaluate_prophet_precomputed(
         date_range = pd.date_range(
             start="2020-01-01", periods=seq_len + pred_len, freq=freq
         )
-        pred = _forecast_with_prophet(history, date_range[:seq_len], date_range[seq_len:])
+        pred = _forecast_with_prophet(
+            history, date_range[:seq_len], date_range[seq_len:]
+        )
         if has_stats:
             pred = (pred - mu) / sigma
 
@@ -332,9 +336,7 @@ def evaluate_prophet_precomputed(
     return {"predictions": np.stack(all_preds), "gt": np.stack(all_gts)}
 
 
-def evaluate_sarima_precomputed(
-    historic: list, forecast: list, pred_len: int
-) -> dict:
+def evaluate_sarima_precomputed(historic: list, forecast: list, pred_len: int) -> dict:
     """Run auto-ARIMA (seasonal) on precomputed (scaled) data."""
     from pmdarima import auto_arima
 
@@ -601,9 +603,14 @@ def main():
                     return preds
                 preds = run_fn()
                 _save_preds(
-                    ctx_dir, ds_name, model_key,
-                    history=hist_arr, predictions=preds, gt=gt_arr,
-                    history_means=means_arr, history_stds=stds_arr,
+                    ctx_dir,
+                    ds_name,
+                    model_key,
+                    history=hist_arr,
+                    predictions=preds,
+                    gt=gt_arr,
+                    history_means=means_arr,
+                    history_stds=stds_arr,
                 )
                 return preds
 
@@ -629,9 +636,8 @@ def main():
                     res["gt"].numpy(),
                 )
 
-            if (
-                _has_preds(ctx_dir, ds_name, "migas15")
-                and _has_preds(ctx_dir, ds_name, "chronos")
+            if _has_preds(ctx_dir, ds_name, "migas15") and _has_preds(
+                ctx_dir, ds_name, "chronos"
             ):
                 _migas15_c = _load_preds(ctx_dir, ds_name, "migas15")
                 _chro_c = _load_preds(ctx_dir, ds_name, "chronos")
@@ -639,12 +645,24 @@ def main():
                     print(f"  {ds_name}: cache corrupt, recomputing")
                     migas15_preds, chronos_preds, gt = _run_core()
                     _save_preds(
-                        ctx_dir, ds_name, "migas15",
-                        hist_arr, migas15_preds, gt, means_arr, stds_arr,
+                        ctx_dir,
+                        ds_name,
+                        "migas15",
+                        hist_arr,
+                        migas15_preds,
+                        gt,
+                        means_arr,
+                        stds_arr,
                     )
                     _save_preds(
-                        ctx_dir, ds_name, "chronos",
-                        hist_arr, chronos_preds, gt, means_arr, stds_arr,
+                        ctx_dir,
+                        ds_name,
+                        "chronos",
+                        hist_arr,
+                        chronos_preds,
+                        gt,
+                        means_arr,
+                        stds_arr,
                     )
                 else:
                     migas15_preds, chronos_preds, gt = (
@@ -656,12 +674,24 @@ def main():
             else:
                 migas15_preds, chronos_preds, gt = _run_core()
                 _save_preds(
-                    ctx_dir, ds_name, "migas15",
-                    hist_arr, migas15_preds, gt, means_arr, stds_arr,
+                    ctx_dir,
+                    ds_name,
+                    "migas15",
+                    hist_arr,
+                    migas15_preds,
+                    gt,
+                    means_arr,
+                    stds_arr,
                 )
                 _save_preds(
-                    ctx_dir, ds_name, "chronos",
-                    hist_arr, chronos_preds, gt, means_arr, stds_arr,
+                    ctx_dir,
+                    ds_name,
+                    "chronos",
+                    hist_arr,
+                    chronos_preds,
+                    gt,
+                    means_arr,
+                    stds_arr,
                 )
 
             n_samples = gt.shape[0]
@@ -707,8 +737,11 @@ def main():
 
                 def _run_timesfm():
                     r = evaluate_timesfm_precomputed(
-                        hist_eval, fcast_eval, args.pred_len,
-                        means=ctx_means, stds=ctx_stds,
+                        hist_eval,
+                        fcast_eval,
+                        args.pred_len,
+                        means=ctx_means,
+                        stds=ctx_stds,
                         batch_size=args.batch_size,
                     )
                     return r["predictions"]
@@ -733,8 +766,11 @@ def main():
 
                 def _run_toto():
                     r = evaluate_toto_precomputed(
-                        hist_eval, fcast_eval, args.pred_len,
-                        means=ctx_means, stds=ctx_stds,
+                        hist_eval,
+                        fcast_eval,
+                        args.pred_len,
+                        means=ctx_means,
+                        stds=ctx_stds,
                         batch_size=args.batch_size,
                     )
                     return r["predictions"]
@@ -759,9 +795,12 @@ def main():
 
                 def _run_tabpfn():
                     r = evaluate_tabpfn_precomputed(
-                        hist_eval, fcast_eval, args.pred_len,
+                        hist_eval,
+                        fcast_eval,
+                        args.pred_len,
                         batch_size=args.batch_size,
-                        means=ctx_means, stds=ctx_stds,
+                        means=ctx_means,
+                        stds=ctx_stds,
                     )
                     return r["predictions"]
 
@@ -785,8 +824,11 @@ def main():
 
                 def _run_prophet():
                     r = evaluate_prophet_precomputed(
-                        hist_eval, fcast_eval, args.pred_len,
-                        means=ctx_means, stds=ctx_stds,
+                        hist_eval,
+                        fcast_eval,
+                        args.pred_len,
+                        means=ctx_means,
+                        stds=ctx_stds,
                     )
                     return r["predictions"]
 
@@ -905,8 +947,12 @@ def main():
                     normal_mean = float(np.mean(vals))
                     weighted_mean = float(np.sum(vals * weights))
                     table_rows.append(
-                        [model_label, metric_labels[metric],
-                         f"{normal_mean:.6f}", f"{weighted_mean:.6f}"]
+                        [
+                            model_label,
+                            metric_labels[metric],
+                            f"{normal_mean:.6f}",
+                            f"{weighted_mean:.6f}",
+                        ]
                     )
 
             headers = ["Model", "Metric", "Mean", "Weighted Mean"]
@@ -923,7 +969,7 @@ def main():
             total_tied = sum(r["windows_tied"] for r in rows)
             avg_pct = np.mean([r["pct_windows_migas15_better"] for r in rows])
 
-            print(f"\nPer-window stats -- Migas-1.5 vs Chronos (across all datasets):")
+            print("\nPer-window stats -- Migas-1.5 vs Chronos (across all datasets):")
             print(f"  Total windows:       {total_windows}")
             print(
                 f"  Migas-1.5 better:         {total_migas15_better}/{total_windows} "
@@ -946,10 +992,10 @@ def main():
                 _mae_key = f"{_pfx}_mean_mae"
                 if _flag and all(_impr_key in r for r in rows):
                     _impr_vals = [r[_impr_key] for r in rows]
-                    print(f"  Migas-1.5 vs {_lbl} improvement: {np.mean(_impr_vals):+.2f}%")
-                    _beats = sum(
-                        1 for r in rows if r["migas15_mean_mae"] < r[_mae_key]
+                    print(
+                        f"  Migas-1.5 vs {_lbl} improvement: {np.mean(_impr_vals):+.2f}%"
                     )
+                    _beats = sum(1 for r in rows if r["migas15_mean_mae"] < r[_mae_key])
                     print(f"  Migas-1.5 beats {_lbl}: {_beats}/{n_datasets}")
 
         # ── Save CSV ─────────────────────────────────────────────────

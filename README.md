@@ -1,6 +1,6 @@
 # Migas-1.5
 
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Model-Synthefy/migas--1.5-FFD21E)](https://huggingface.co/Synthefy/migas-1.5/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Data-Synthefy/fnspid-FFD21E)](https://huggingface.co/datasets/Synthefy/fnspid) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Model-Synthefy/migas--1.5-FFD21E)](https://huggingface.co/Synthefy/migas-1.5/tree/main) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Data-Synthefy/multimodal__datasets-FFD21E)](https://huggingface.co/datasets/Synthefy/multimodal_datasets) [![Paper](https://img.shields.io/badge/Paper-coming%20soon-1a1a2e)](https://arxiv.org/abs/)
 
 **Text-and-time-series fusion forecasting.** Migas-1.5 reads per-step text alongside historical values and fuses both into a single forecast. Rewrite the narrative — watch the forecast shift.
 
@@ -115,8 +115,9 @@ forecast = pipeline.predict_from_dataframe(
 | Resource | Link |
 |----------|------|
 | Model weights | [Synthefy/migas-1.5](https://huggingface.co/Synthefy/migas-1.5) |
-| FNSPID (prepared) | [Synthefy/fnspid](https://huggingface.co/datasets/Synthefy/fnspid) |
-| Migas-1.5 suite | [Synthefy/migas-1.5-suite](https://huggingface.co/datasets/Synthefy/migas-1.5-suite) |
+| Evaluation data (FNSPID, ICML suite, subset) | [Synthefy/multimodal_datasets](https://huggingface.co/datasets/Synthefy/multimodal_datasets) |
+
+Download with: `uv run python scripts/download_data.py --dataset subset --all` (small, 2 series) or `--dataset fnspid` / `--dataset suite` / `--dataset all`. See [Evaluation](docs/evaluation.md#downloading-evaluation-data).
 
 ---
 

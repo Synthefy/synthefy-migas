@@ -150,9 +150,7 @@ def trend_shift(
     Positive = shifted in the desired *direction*.
     """
     sign = 1.0 if direction == "up" else -1.0
-    return float(
-        (linear_slope(y_counterfactual) - linear_slope(y_original)) * sign
-    )
+    return float((linear_slope(y_counterfactual) - linear_slope(y_original)) * sign)
 
 
 def percent_above_original(

@@ -132,7 +132,9 @@ def download(
                 last_error = e
                 if attempt < 2:
                     wait = 60 * (attempt + 1)
-                    print(f"\nRate limited (429). Waiting {wait}s before retry {attempt + 2}/3 ...")
+                    print(
+                        f"\nRate limited (429). Waiting {wait}s before retry {attempt + 2}/3 ..."
+                    )
                     time.sleep(wait)
                     continue
             raise
@@ -155,7 +157,9 @@ def download(
                 n = sum(1 for f in os.listdir(full) if f.endswith(".csv"))
                 print(f"  [{key}] CSVs:      {full}  ({n} files)")
             else:
-                dirs = [d for d in os.listdir(full) if os.path.isdir(os.path.join(full, d))]
+                dirs = [
+                    d for d in os.listdir(full) if os.path.isdir(os.path.join(full, d))
+                ]
                 print(f"  [{key}] Summaries: {full}  ({len(dirs)} datasets)")
 
 
@@ -219,8 +223,8 @@ def main() -> None:
             print(f"    dir:    {preset['local_dir']}")
             print(f"    {preset['description']}")
             print()
-        print(f"  all")
-        print(f"    Download all of the above")
+        print("  all")
+        print("    Download all of the above")
         return
 
     csvs = args.csvs or args.all

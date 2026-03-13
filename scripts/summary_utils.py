@@ -19,6 +19,7 @@ import pandas as pd
 # LLM call
 # ---------------------------------------------------------------------------
 
+
 def call_llm(
     prompt: str,
     *,
@@ -53,14 +54,13 @@ def call_llm(
         )
         return resp.content[0].text.strip()
     else:
-        raise ValueError(
-            f"Unknown provider {provider!r}. Use 'openai' or 'anthropic'."
-        )
+        raise ValueError(f"Unknown provider {provider!r}. Use 'openai' or 'anthropic'.")
 
 
 # ---------------------------------------------------------------------------
 # Web search (Anthropic native)
 # ---------------------------------------------------------------------------
+
 
 def _parse_web_search_output(text: str) -> tuple[str, str]:
     """Split the three-section output into (summary, news_digest).
@@ -141,7 +141,10 @@ targets. Plain prose only.]"""
 
     for _ in range(max_iterations):
         resp = client.messages.create(
-            model=model, max_tokens=4096, tools=tools, messages=messages,
+            model=model,
+            max_tokens=4096,
+            tools=tools,
+            messages=messages,
         )
         if resp.stop_reason == "end_turn":
             raw = "\n".join(b.text for b in resp.content if hasattr(b, "text")).strip()
@@ -154,12 +157,15 @@ targets. Plain prose only.]"""
                 return _parse_web_search_output(text)
             raise RuntimeError(f"Unexpected stop_reason={resp.stop_reason!r}")
 
-    raise RuntimeError(f"Web search loop hit max_iterations={max_iterations} for {ticker!r}")
+    raise RuntimeError(
+        f"Web search loop hit max_iterations={max_iterations} for {ticker!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Prompt builder
 # ---------------------------------------------------------------------------
+
 
 def build_context_summarizer_prompt(
     ticker: str,
@@ -214,6 +220,7 @@ PREDICTIVE SIGNALS:
 # High-level orchestrator
 # ---------------------------------------------------------------------------
 
+
 def generate_summary(
     ticker: str,
     series: "pd.DataFrame",
@@ -254,13 +261,19 @@ def generate_summary(
         model = llm_model or "claude-sonnet-4-6"
         print(f"Using Claude web search for {ticker} ({dates[0]} → {dates[-1]}) …")
         summary, news_digest = _fetch_news_via_web_search(
-            ticker=ticker, dates=dates, prices=prices,
-            pred_period=pred_period, api_key=llm_api_key, model=model,
+            ticker=ticker,
+            dates=dates,
+            prices=prices,
+            pred_period=pred_period,
+            api_key=llm_api_key,
+            model=model,
         )
     else:
         # OpenAI / vLLM: price-data-only summary (no web search available)
         per_day_texts = [""] * len(dates)
-        prompt = build_context_summarizer_prompt(ticker, dates, prices, per_day_texts, pred_period)
+        prompt = build_context_summarizer_prompt(
+            ticker, dates, prices, per_day_texts, pred_period
+        )
         print(f"Calling {llm_provider} to generate summary (price data only) …")
         summary = call_llm(
             prompt,
