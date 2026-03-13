@@ -10,6 +10,10 @@
 # uv run python scripts/download_data.py --dataset fnspid --all
 # ```
 
+# %% [markdown]
+# > **Reproducing our benchmark results?** See the [Evaluation Guide](../docs/evaluation.md) for
+# > the full CLI reference, baseline flags, output layout, and post-eval report scripts.
+
 # %%
 %matplotlib inline
 import warnings

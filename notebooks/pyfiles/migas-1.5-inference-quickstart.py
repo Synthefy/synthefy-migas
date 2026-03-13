@@ -1,6 +1,6 @@
 # %% [markdown]
-# # Bring Your Own Data
-# 
+# # Inference Quick Start
+#
 # This notebook shows how to run Migas-1.5 on **your own data** end-to-end:
 # 
 # 1. **Fetch time series data** — download daily price history from Yahoo Finance.
@@ -10,7 +10,7 @@
 # 
 # **Requirements:** Install the package from the repo root (`uv sync`). Section 3 (LLM summary generation) optionally requires an OpenAI or Anthropic API key.
 # 
-# **See also:** [Migas-1.5 Inference Quick Start](migas-1.5-inference-quickstart.ipynb) · [Counterfactual Scenarios](migas-1.5-counterfactual-scenarios.ipynb)
+# **See also:** [Counterfactual Scenarios](migas-1.5-counterfactual-scenarios.ipynb) · [Batch Inference](migas-1.5-batch-inference.ipynb) · [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 
 # %%
 import warnings
