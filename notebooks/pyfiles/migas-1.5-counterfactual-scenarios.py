@@ -358,6 +358,30 @@ display(metrics_df.style.set_caption("Trend metrics across scenarios"))
 # A single LLM generation might not produce the most impactful scenario text. **Best-of-N selection** generates multiple candidate narratives, runs each through Migas-1.5, and keeps the one that produces the strongest trend shift.
 #
 # This section **does require a local vLLM server** because the candidate narratives are generated on the fly. It is a model-in-the-loop approach: we don't just pick text that *sounds* bullish — we pick text that actually *steers the forecast*. The selection criterion is the composite trend score.
+#
+# ### Why score forecasts rather than text?
+#
+# Most prompt-selection approaches rank candidates by fluency, coherence, or how "bullish" the words sound to a classifier. That is useful but indirect: text that *reads* as bullish doesn't always *forecast* as bullish once it passes through the model's fusion layer. Best-of-N sidesteps the proxy problem entirely — it uses the forecast itself as the scoring signal.
+#
+# The selection works in three steps:
+#
+# 1. **Generate** — `generate_scenario_texts` calls the local vLLM server to produce `N` diverse `PREDICTIVE SIGNALS` paragraphs at `temperature=0.7`. Higher temperature broadens the candidate set; lower temperature tightens it.
+# 2. **Score** — each candidate is spliced into the original summary, passed to Migas-1.5, and scored by `composite_trend_score`. A higher (more positive) score means the forecast is more strongly aligned with the target direction.
+# 3. **Select** — the candidate with the highest composite trend score wins. All others are discarded.
+#
+# ### Why composite trend score?
+#
+# A single metric can be fooled. For example, linear slope alone would reward a forecast that spikes once and collapses. The composite trend score combines four complementary signals — slope, endpoint change, monotonicity, and breakout ratio — which makes it much harder for a noisy one-step spike to beat a genuinely sustained move. See the *Understanding the trend metrics* section above for the full breakdown.
+#
+# ### Choosing N
+#
+# | N | Tradeoff |
+# |---|---------|
+# | 3–5 | Fast; good for iteration |
+# | 10–20 | More diversity; higher chance of a strong outlier |
+# | 50+ | Diminishing returns; useful for rigorous benchmarking |
+#
+# In practice, N = 5–10 is a good starting point. The gain from going beyond N = 20 is usually small unless you are searching for an extreme scenario.
 
 # %%
 n_candidates = 5
@@ -392,6 +416,18 @@ for i, text in enumerate(candidates[0]):
 
 best_idx = int(np.argmax(candidate_scores))
 print(f"\nWinner: candidate {best_idx + 1} (score {candidate_scores[best_idx]:+.3f})")
+
+# %% [markdown]
+# ### Reading the scores
+#
+# Each row above shows the composite trend score and linear slope for one candidate. Here is how to interpret them:
+#
+# - **Trend score > 0** — the forecast is directionally aligned with the target (upward, in this case).
+# - **Trend score >> 0** — the forecast is strongly aligned: sustained rise, extended beyond the historical range, few reversals.
+# - **Trend score ≈ 0** — the text barely moved the forecast relative to the original.
+# - **Trend score < 0** — the text steered the forecast *against* the intended direction (this can happen with a bad generation).
+#
+# The winner is the candidate with the highest score — not simply the steepest slope or the largest endpoint change, but the best *combination* of all four directional metrics. The plot below highlights the winning candidate in red so you can see visually how much it separates from the pack.
 
 # %%
 BEST_COLOR = "#C0392B"
