@@ -10,7 +10,7 @@ Color scheme:
   - Historical context = slate gray
   - Ground truth = near-black charcoal
   - Migas-1.5 = vibrant teal (hero color)
-  - Chronos / Chronos-2 = warm coral
+  - Chronos / Chronos-2 = steel blue
   - Forecast region = subtle warm wash
 
 Examples:
@@ -42,8 +42,8 @@ COLORS = {
     "ground_truth": "#1B2631",
     "historical": "#5D6D7E",
     "Migas-1.5": "#F28C28",
-    "Chronos": "#E07A5F",
-    "Chronos-2": "#E07A5F",
+    "Chronos": "#4A90D9",
+    "Chronos-2": "#4A90D9",
     "TimesFM": "#7B68EE",
     "forecast_region": "#FDF6EC",
     "forecast_vline": "#ABB2B9",
