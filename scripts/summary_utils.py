@@ -2,19 +2,17 @@
 Utilities for generating FACTUAL SUMMARY / PREDICTIVE SIGNALS text for Migas-1.5.
 
 High-level entry point:
-    summary = generate_summary(ticker, series, pred_len, llm_api_key, av_api_key)
+    summary = generate_summary(ticker, series, pred_len, llm_provider=..., llm_api_key=...)
 
-If ``av_api_key`` is None or empty, the summary is still generated from price data alone
-(per-day news is omitted and each timestep shows "No text").  Providing an Alpha Vantage
-key enriches the prompt with real headlines, which generally improves summary quality.
+When ``llm_provider="anthropic"``, Claude's built-in web search tool is used to
+fetch relevant news for the context window and generate the summary in a single
+agentic call.  When ``llm_provider="openai"``, a price-data-only summary is
+generated (no external news source).
 """
 
 from __future__ import annotations
 
-from collections import defaultdict
-
 import pandas as pd
-import requests
 
 
 # ---------------------------------------------------------------------------
@@ -61,74 +59,102 @@ def call_llm(
 
 
 # ---------------------------------------------------------------------------
-# Alpha Vantage news helpers
+# Web search (Anthropic native)
 # ---------------------------------------------------------------------------
 
-def _to_av_ticker(ticker: str) -> str | None:
-    """Convert a yfinance ticker to Alpha Vantage News Sentiment format.
+def _parse_web_search_output(text: str) -> tuple[str, str]:
+    """Split the three-section output into (summary, news_digest).
 
-    - Crypto  : BTC-USD  → CRYPTO:BTC
-    - Stocks  : AAPL     → AAPL  (unchanged)
-    - Futures : CL=F     → None  (not supported; falls back to topic search)
+    Expected format:
+        NEWS DIGEST:
+        ...
+
+        FACTUAL SUMMARY:
+        ...
+
+        PREDICTIVE SIGNALS:
+        ...
+
+    Returns (summary, news_digest) where summary = FACTUAL SUMMARY + PREDICTIVE SIGNALS.
+    If the expected sections are not found, returns (text, "") as a fallback.
     """
-    if "-USD" in ticker or "-USDT" in ticker:
-        return f"CRYPTO:{ticker.split('-')[0]}"
-    if ticker.endswith("=F"):
-        return None
-    return ticker
+    import re
+
+    news_match = re.search(r"NEWS DIGEST:\s*(.*?)(?=FACTUAL SUMMARY:)", text, re.DOTALL)
+    summary_match = re.search(r"(FACTUAL SUMMARY:.*)", text, re.DOTALL)
+
+    if news_match and summary_match:
+        news_digest = news_match.group(1).strip()
+        summary = summary_match.group(1).strip()
+        return summary, news_digest
+
+    # Fallback: no recognisable structure — treat whole response as summary
+    return text, ""
 
 
-def fetch_av_news(
+def _fetch_news_via_web_search(
     ticker: str,
-    start_date: pd.Timestamp,
-    end_date: pd.Timestamp,
+    dates: list[str],
+    prices: list[float],
+    pred_period: str,
     api_key: str,
-    limit: int = 200,
-) -> list[dict]:
-    """Fetch news articles from Alpha Vantage News Sentiment API.
+    model: str,
+    max_iterations: int = 10,
+) -> tuple[str, str]:
+    """Use Claude web search to gather news and generate the summary in one agentic call.
 
-    Returns a list of article dicts sorted by publication time.
-    Each dict has at minimum: time_published (str YYYYMMDDTHHMMSS), title, summary.
+    Returns (summary, news_digest).
     """
-    av_ticker = _to_av_ticker(ticker)
-    params = {
-        "function": "NEWS_SENTIMENT",
-        "time_from": start_date.strftime("%Y%m%dT0000"),
-        "time_to":   end_date.strftime("%Y%m%dT2359"),
-        "limit":     limit,
-        "apikey":    api_key,
-    }
-    if av_ticker:
-        params["tickers"] = av_ticker
-    else:
-        params["topics"] = "energy_transportation"
+    import anthropic
 
-    resp = requests.get("https://www.alphavantage.co/query", params=params, timeout=30)
-    data = resp.json()
-    if "Information" in data:
-        raise RuntimeError(f"Alpha Vantage API error: {data['Information']}")
-    return data.get("feed", [])
+    price_lines = "\n".join(f"[{d}] (value: {p:.4f})" for d, p in zip(dates, prices))
+    prompt = f"""\
+You are analyzing {ticker} for time series forecasting.
 
+HISTORICAL PRICE DATA:
+{price_lines}
 
-def align_news_to_dates(articles: list[dict], dates: list[str]) -> list[str]:
-    """Group articles by calendar date and return one text string per date.
+PREDICTION PERIOD: {pred_period}
 
-    Articles on the same day are concatenated as 'Title. Summary.' pairs,
-    separated by ' | '.  Days with no coverage get an empty string.
-    """
-    by_date: dict[str, list[str]] = defaultdict(list)
-    for art in articles:
-        pub = art.get("time_published", "")
-        if len(pub) < 8:
-            continue
-        date_key = f"{pub[:4]}-{pub[4:6]}-{pub[6:8]}"
-        title = art.get("title", "").strip()
-        summary = art.get("summary", "").strip()
-        text = f"{title}. {summary}" if summary else title
-        if text:
-            by_date[date_key].append(text)
+Use web search to find news, analyst commentary, and market events for {ticker} \
+from {dates[0]} through {dates[-1]}. Run multiple targeted searches to gather \
+comprehensive coverage.
 
-    return [" | ".join(by_date.get(d, [])) for d in dates]
+After searching, output ONLY the three sections below in this exact format — \
+no preamble, no markdown headers, nothing before "NEWS DIGEST:".
+
+NEWS DIGEST:
+[Key news and events found, organized chronologically by date. Each entry on its \
+own line as: YYYY-MM-DD: headline or brief description. Plain text only.]
+
+FACTUAL SUMMARY:
+[2-3 sentences: observed price action, key events, macro drivers. Plain prose only.]
+
+PREDICTIVE SIGNALS:
+[2-3 sentences: forward-looking signals for {pred_period}. Relative terms only \
+— e.g. "likely to continue higher", "risk of 5-10% pullback". No absolute price \
+targets. Plain prose only.]"""
+
+    client = anthropic.Anthropic(api_key=api_key)
+    tools = [{"type": "web_search_20250305", "name": "web_search"}]
+    messages = [{"role": "user", "content": prompt}]
+
+    for _ in range(max_iterations):
+        resp = client.messages.create(
+            model=model, max_tokens=4096, tools=tools, messages=messages,
+        )
+        if resp.stop_reason == "end_turn":
+            raw = "\n".join(b.text for b in resp.content if hasattr(b, "text")).strip()
+            return _parse_web_search_output(raw)
+        elif resp.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": resp.content})
+        else:
+            text = "\n".join(b.text for b in resp.content if hasattr(b, "text")).strip()
+            if text:
+                return _parse_web_search_output(text)
+            raise RuntimeError(f"Unexpected stop_reason={resp.stop_reason!r}")
+
+    raise RuntimeError(f"Web search loop hit max_iterations={max_iterations} for {ticker!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -195,10 +221,10 @@ def generate_summary(
     *,
     llm_provider: str,
     llm_api_key: str,
-    av_api_key: str | None = None,
     llm_base_url: str | None = None,
     llm_model: str | None = None,
-) -> str:
+    return_news: bool = False,
+) -> "str | tuple[str, str]":
     """Generate a FACTUAL SUMMARY / PREDICTIVE SIGNALS text for *series*.
 
     Args:
@@ -207,40 +233,44 @@ def generate_summary(
         pred_len:     Forecast horizon length (days), used only for the prompt text.
         llm_provider: ``"openai"`` or ``"anthropic"``.
         llm_api_key:  API key for the chosen LLM provider.
-        av_api_key:   Alpha Vantage API key.  When *None* or empty the summary is
-                      generated from price data only (no per-day news headlines).
         llm_base_url: Optional base URL override (e.g. for local vLLM).
         llm_model:    Optional model name override.
+        return_news:  When True, return ``(summary, news_digest)`` instead of just
+                      the summary string.  Only meaningful with ``llm_provider="anthropic"``
+                      (OpenAI path always returns an empty news digest).
 
     Returns:
-        Summary string in FACTUAL SUMMARY / PREDICTIVE SIGNALS format.
+        Summary string, or ``(summary, news_digest)`` tuple when ``return_news=True``.
+
+    When ``llm_provider="anthropic"``, Claude's built-in web search is used to
+    find relevant news for the date range before summarizing.  When
+    ``llm_provider="openai"``, a price-data-only summary is generated.
     """
     dates = series["t"].tolist()
     prices = series["y_t"].tolist()
-    start_dt = pd.Timestamp(dates[0])
-    end_dt = pd.Timestamp(dates[-1])
     pred_period = f"the {pred_len} days after {dates[-1]}"
 
-    if av_api_key:
-        print(f"Fetching Alpha Vantage news for {ticker} ({start_dt.date()} → {end_dt.date()}) …")
-        articles = fetch_av_news(ticker, start_dt, end_dt, av_api_key)
-        print(f"  Retrieved {len(articles)} articles")
-        per_day_texts = align_news_to_dates(articles, dates)
-        days_with_news = sum(1 for t in per_day_texts if t)
-        print(f"  Days with at least one article: {days_with_news} / {len(dates)}")
+    if llm_provider == "anthropic":
+        model = llm_model or "claude-sonnet-4-6"
+        print(f"Using Claude web search for {ticker} ({dates[0]} → {dates[-1]}) …")
+        summary, news_digest = _fetch_news_via_web_search(
+            ticker=ticker, dates=dates, prices=prices,
+            pred_period=pred_period, api_key=llm_api_key, model=model,
+        )
     else:
-        print("No Alpha Vantage key — generating summary from price data only.")
+        # OpenAI / vLLM: price-data-only summary (no web search available)
         per_day_texts = [""] * len(dates)
+        prompt = build_context_summarizer_prompt(ticker, dates, prices, per_day_texts, pred_period)
+        print(f"Calling {llm_provider} to generate summary (price data only) …")
+        summary = call_llm(
+            prompt,
+            provider=llm_provider,
+            api_key=llm_api_key,
+            base_url=llm_base_url,
+            model=llm_model,
+        )
+        news_digest = ""
 
-    prompt = build_context_summarizer_prompt(ticker, dates, prices, per_day_texts, pred_period)
-    print(f"Calling {llm_provider} to generate summary …")
-    summary = call_llm(
-        prompt,
-        provider=llm_provider,
-        api_key=llm_api_key,
-        base_url=llm_base_url,
-        model=llm_model,
-    )
     print("\nGenerated summary:\n")
     print(summary)
-    return summary
+    return (summary, news_digest) if return_news else summary

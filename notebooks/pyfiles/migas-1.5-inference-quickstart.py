@@ -1,15 +1,15 @@
 # %% [markdown]
 # # Bring Your Own Data
-#
+# 
 # This notebook shows how to run Migas-1.5 on **your own data** end-to-end:
-#
-# 1. **Fetch time series data** — download daily price history from Yahoo Finance (no API key needed).
+# 
+# 1. **Fetch time series data** — download daily price history from Yahoo Finance.
 # 2. **Prepare a text summary** — learn the two-part `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS` format the model expects. A sample summary is provided so the notebook runs out of the box; an optional section shows how to auto-generate one with an LLM.
 # 3. **Forecast** — compare Chronos-2 (text-free baseline) against Migas-1.5 (text-conditioned).
-# 4. **Counterfactual exploration** — rewrite the predictive signals and watch the forecast shift, demonstrating the model's core novelty: text-conditioned time series forecasting.
-#
-# **Requirements:** Install the package from the repo root (`uv sync`). Sections 1–4 and the counterfactuals in Section 5 run **without any API keys**. Section 3 (LLM summary generation) optionally requires an OpenAI or Anthropic API key.
-#
+# 4. **Counterfactual exploration** — rewrite the predictive signals and watch the forecast shift, demonstrating the text-conditioned time series forecasting.
+# 
+# **Requirements:** Install the package from the repo root (`uv sync`). Section 3 (LLM summary generation) optionally requires an OpenAI or Anthropic API key.
+# 
 # **See also:** [Migas-1.5 Inference Quick Start](migas-1.5-inference-quickstart.ipynb) · [Counterfactual Scenarios](migas-1.5-counterfactual-scenarios.ipynb)
 
 # %%
@@ -21,6 +21,7 @@ import os
 import sys
 from textwrap import dedent
 
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -48,12 +49,12 @@ print(f"Using device: {device}")
 
 # %% [markdown]
 # ## 1. Get Time Series Data
-#
-# Below we fetch two years of daily closing prices for Gold (GLD) from Yahoo Finance — no API key required — and keep the last `SEQ_LEN + PRED_LEN` trading days. The first `SEQ_LEN` days form the **context window** fed to the model; the remaining `PRED_LEN` days are held out as **ground truth** so we can measure forecast accuracy.
-#
+# 
+# Below we fetch daily closing prices for Gold (GLD) from Yahoo Finance and keep the last `SEQ_LEN + PRED_LEN` trading days. The first `SEQ_LEN` days form the **context window** fed to the model; the remaining `PRED_LEN` days are held out as **ground truth** so we can measure forecast accuracy.
+# 
 # **Why GLD?** Gold responds cleanly to macro text (Fed policy, inflation, risk-off flows), making the text-conditioning effect easy to demonstrate.
-#
-# You can swap `TICKER` for any Yahoo Finance symbol: stocks (`AAPL`, `MSFT`), ETFs (`SPY`, `GLD`), or futures (`CL=F` for crude oil). **Avoid high-volatility crypto** — the median forecast will look flat regardless of text input.
+# 
+# You can swap `TICKER` for any Yahoo Finance symbol: stocks (`AAPL`, `MSFT`), ETFs (`SPY`, `GLD`), or futures (`CL=F` for crude oil).
 
 # %%
 
@@ -87,35 +88,27 @@ series.tail()
 
 # %% [markdown]
 # ## 2. Understanding the Summary Format
-#
-# Migas-1.5 accepts an optional **text summary** alongside the time series. The summary must follow a two-part structure:
-#
+# 
+# Migas-1.5 accepts **text summary** alongside the time series. The summary must follow a two-part structure:
+# 
 # | Section | Purpose |
 # |---------|---------|
 # | `FACTUAL SUMMARY` | What already happened — price action, key events, macro drivers |
 # | `PREDICTIVE SIGNALS` | Forward-looking interpretation — analyst outlook, catalysts, risks |
-#
+# 
 # This is the format produced by Migas-1.5's internal `ContextSummarizer` (which calls an LLM over per-timestep news text). The model was trained to condition on this structure, so deviating significantly from it will reduce text impact.
-#
-# Below is a sample GLD summary. It runs without any API calls. **To generate a fresh one from real headlines, see Section 3.**
+# 
+# Below is a sample GLD summary. **To generate a fresh one from real headlines, see Section 3.**
 
 # %%
 # Pre-computed sample summary — illustrates the required format.
 # Replace this or regenerate it in Section 3 to match your actual data window.
 summary = """\
 FACTUAL SUMMARY:
-Over the past 32 trading days gold (GLD) advanced steadily from around $230 to $245,
-supported by a weakening U.S. dollar, rising geopolitical uncertainty, and persistent
-inflation above the Fed's 2% target. Central bank buying — particularly from emerging-
-market central banks — provided a durable bid, while real yields dipped as rate-cut
-expectations were pulled forward following softer-than-expected jobs data.
+GLD has experienced a strong uptrend from November 2025 through January 2026, surging from ~372 to nearly 495 before a sharp pullback to ~445 on January 30, 2026, followed by consolidation in the 427-468 range through mid-February. Key drivers include billionaire hedge fund accumulation (Ken Griffin, Israel Englander), safe-haven demand amid geopolitical tensions and Trump administration policy uncertainty, weakening USD, and central bank buying. Technical support remains in place despite recent volatility, with institutional inflows offsetting prior outflows and multiple analysts citing bullish gold fundamentals for 2026.
 
 PREDICTIVE SIGNALS:
-Analysts broadly expect gold to remain well-bid near current levels, with upside risk
-if the Fed signals an earlier pivot or geopolitical tensions escalate further. ETF
-inflows have turned positive after months of outflows, suggesting renewed institutional
-interest. The primary downside risk is a sharp re-pricing of U.S. rate expectations
-higher, which could push real yields up and weigh on non-yielding assets like gold.\
+GLD exhibits a bullish medium-term bias supported by ongoing safe-haven demand and institutional conviction, though the sharp January peak followed by consolidation suggests potential for further sideways to higher trading before the next directional move. Near-term momentum appears tentatively positive with recent recovery from lows, but elevated volatility and risk of a deeper pullback remain given the magnitude of the January advance and consolidation pattern, with key risks from USD strength or policy shifts.
 """
 
 print(summary)
@@ -124,54 +117,55 @@ print(summary)
 # ## 3. (Optional) Generate a Summary with an LLM
 #
 # A good summary requires **per-day news aligned to the context window**, not just a handful
-# of recent headlines. This section uses the **Alpha Vantage News Sentiment API** to fetch
-# articles for the exact date range of the context window, groups them by day, and builds a
-# structured prompt that mirrors the format Migas-1.5's internal `ContextSummarizer` uses
-# (timestamped entries with price values alongside the text). The LLM then distills this into
-# `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS`.
+# of recent headlines. This section generates a `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS` using
+# an LLM:
+#
+# - **Anthropic (recommended)** — Claude uses its built-in web search tool to autonomously
+#   find news and market events for the exact date range, then summarizes them. No extra API
+#   key required beyond your Anthropic key.
+# - **OpenAI / vLLM** — generates a summary from price data only (no web search available).
 #
 # **Required environment variables:**
-# - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` — required to call the LLM.
-# - `ALPHA_VANTAGE_API_KEY` — *optional* (free at alphavantage.co, 25 req/day).
-#   When provided, the prompt is enriched with per-day news headlines for the
-#   context window, which generally improves summary quality.  Without it, the
-#   LLM still generates a summary from the price series alone.
+# - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` — required to call the LLM.
 #
 # If no LLM key is found the section is skipped and the pre-computed summary is kept.
 
 # %%
-
-LLM_PROVIDER = "anthropic"  # "openai" | "anthropic"
-LLM_API_KEY   = os.getenv({"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}[LLM_PROVIDER])
-LLM_BASE_URL  = os.getenv("VLLM_BASE_URL")   # None → use provider default
-LLM_MODEL     = os.getenv("VLLM_MODEL")       # None → use provider default
-ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")  # optional — enriches prompt with news
+LLM_PROVIDER = "anthropic"  # "anthropic" | "openai"
+LLM_API_KEY  = os.getenv({"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}[LLM_PROVIDER])
+LLM_BASE_URL = os.getenv("VLLM_BASE_URL")   # None → use provider default
+LLM_MODEL    = os.getenv("VLLM_MODEL")       # None → use provider default
 
 # %%
 if not LLM_API_KEY:
     print("Skipping LLM summary generation — no LLM API key found.")
     print("Using the pre-computed summary.")
 else:
-    summary = generate_summary(
+    summary, news_digest = generate_summary(
         TICKER, series, PRED_LEN,
         llm_provider=LLM_PROVIDER,
         llm_api_key=LLM_API_KEY,
-        av_api_key=ALPHA_VANTAGE_KEY,   # omit or set to None to skip news fetching
         llm_base_url=LLM_BASE_URL,
         llm_model=LLM_MODEL,
+        return_news=True,
     )
+    if news_digest:
+        print("\n" + "=" * 60)
+        print("NEWS DIGEST (raw web search findings)")
+        print("=" * 60)
+        print(news_digest)
 
 # %% [markdown]
 # ## 4. Forecast: Chronos-2 Baseline vs. Migas-1.5
-#
+# 
 # We run two forecasts on the same numerical context:
-#
+# 
 # - **Chronos-2** — Migas's own internal Chronos backbone, before text fusion.
 # - **Migas-1.5** — same Chronos base, fused with the text summary above.
-#
+# 
 # Both share the **exact same normalization path and Chronos call** — so the gap
 # between the two lines is the pure text conditioning effect.
-#
+# 
 # **If the pre-written summary doesn't match your actual data window**, text can
 # steer the forecast in the wrong direction (Migas MAPE > Chronos MAPE). Run
 # Section 3 to generate a window-aligned summary and close that gap.
@@ -226,8 +220,8 @@ print(
 print("Note: Chronos-2 line is Migas's own internal baseline. Gap = text conditioning effect.")
 
 # %%
-t_ctx  = np.arange(SEQ_LEN)
-t_pred = np.arange(SEQ_LEN - 1, SEQ_LEN + PRED_LEN)
+t_ctx  = pd.to_datetime(full["t"].values[:SEQ_LEN])
+t_pred = pd.to_datetime(list(full["t"].values[SEQ_LEN - 1:]))
 last_val = float(context_vals[-1])
 
 fig, ax = plot_forecast_single(
@@ -240,6 +234,7 @@ fig, ax = plot_forecast_single(
     figsize=(11, 4),
     show_metrics=True,
     text_summary=summary,
+    timestamps=full["t"].values,
 )
 # Add Chronos-2 uncertainty band (10th–90th percentile)
 ax.fill_between(
@@ -261,10 +256,10 @@ print(f"Slope difference : {linear_slope(migas_fc) - linear_slope(chronos_fc):+.
 
 # %% [markdown]
 # ## 5. Counterfactual — Rewrite the Narrative
-#
+# 
 # Here is the core idea behind Migas-1.5: **the numerical input is identical across all
 # runs below — only the text changes.**
-#
+# 
 # We keep the **factual section** unchanged (what already happened doesn't change) and
 # replace only the **predictive signals** with a bullish or bearish outlook.
 # If the model truly integrates text with time series, the forecast should shift
@@ -320,12 +315,12 @@ bearish_fc = (
 BULLISH_COLOR = "#2EAD6D"
 BEARISH_COLOR = "#C0392B"
 
-t_ctx = np.arange(SEQ_LEN)
-t_pred = np.arange(SEQ_LEN - 1, SEQ_LEN + PRED_LEN)
+t_ctx  = pd.to_datetime(full["t"].values[:SEQ_LEN])
+t_pred = pd.to_datetime(list(full["t"].values[SEQ_LEN - 1:]))
 last_val = float(context_vals[-1])
 
 fig, ax = plt.subplots(figsize=(11, 5))
-_draw_forecast_region(ax, SEQ_LEN, PRED_LEN)
+_draw_forecast_region(ax, SEQ_LEN, PRED_LEN, boundary=t_pred[0], boundary_end=t_pred[-1])
 
 ax.plot(
     t_ctx,
@@ -378,7 +373,11 @@ ax.fill_between(
     label="Scenario range",
 )
 
-ax.set_xlabel("Time Step", color="#566573")
+ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+for lbl in ax.get_xticklabels():
+    lbl.set_rotation(35)
+    lbl.set_ha("right")
+ax.set_xlabel("Date", color="#566573")
 ax.set_ylabel(f"{TICKER} Price (USD)", color="#566573")
 ax.set_title(
     f"Migas-1.5 scenario fan — {TICKER}: the same numbers, three different stories",
@@ -426,9 +425,9 @@ print(pd.DataFrame(rows).to_string(index=False))
 # The table confirms what the plot shows: the bullish narrative steers the slope positive,
 # the bearish narrative pulls it negative — all with the same 64 days of price history.
 # Compare the Chronos-2 row (no text) with Migas-1.5 to see the baseline text effect.
-#
+# 
 # ## What's next
-#
+# 
 # - **Try your own asset** — change `TICKER` and `SEQ_LEN` at the top of Section 1.
 # - **Generate a fresh summary** — set your API key and re-run Section 3 for a summary
 #   grounded in real recent headlines.
@@ -436,3 +435,6 @@ print(pd.DataFrame(rows).to_string(index=False))
 #   for rolling-window evaluation with ground truth.
 
 # %%
+
+
+
