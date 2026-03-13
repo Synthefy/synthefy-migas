@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Inference Quick Start
-#
+# 
 # This notebook shows how to run Migas-1.5 on **your own data** end-to-end:
 # 
 # 1. **Fetch time series data** — download daily price history from Yahoo Finance.
@@ -12,12 +12,42 @@
 # 
 # **See also:** [Counterfactual Scenarios](migas-1.5-counterfactual-scenarios.ipynb) · [Batch Inference](migas-1.5-batch-inference.ipynb) · [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 
+# %% [markdown]
+# ## User Configuration
+# 
+# **Edit the cell below before running anything else.** All parameters you are likely to
+# want to change are collected here — you should not need to touch anything else in the
+# notebook for a basic run.
+# 
+# | Parameter | What it controls | Typical values |
+# |-----------|-----------------|----------------|
+# | `TICKER` | Asset to forecast | Any Yahoo Finance symbol: `"AAPL"`, `"SPY"`, `"CL=F"` |
+# | `SEQ_LEN` | Days of price history fed to the model (context window) | shorter = clearer local trends |
+# | `PRED_LEN` | Number of trading days to forecast | `8` – `64` |
+# | `LLM_PROVIDER` | LLM used to auto-generate the text summary in Section 3 | `"anthropic"` (recommended) or `"openai"` |
+# 
+# **Also check:**
+# - **Section 2** — replace the pre-written `summary` with one that matches your asset and date window.
+# - **Section 5** — edit `bullish_predictive` / `bearish_predictive` to craft your own counterfactual narratives.
+
+# %%
+import os
+
+# ── USER CONFIGURATION — edit here, then run the notebook top-to-bottom ──────
+
+TICKER       = "GLD"         # <-- CHANGE ME: any Yahoo Finance symbol (e.g. "AAPL", "SPY", "CL=F")
+SEQ_LEN      = 64            # <-- CHANGE ME: context window in days
+PRED_LEN     = 16            # <-- CHANGE ME: forecast horizon in days
+LLM_PROVIDER = "anthropic"   # <-- CHANGE ME: "anthropic" (recommended) | "openai"
+LLM_API_KEY  = os.getenv({"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}[LLM_PROVIDER])
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 # %%
 import warnings
 
 warnings.filterwarnings("ignore", message="IProgress not found")
 
-import os
 import sys
 from textwrap import dedent
 
@@ -57,11 +87,6 @@ print(f"Using device: {device}")
 # You can swap `TICKER` for any Yahoo Finance symbol: stocks (`AAPL`, `MSFT`), ETFs (`SPY`, `GLD`), or futures (`CL=F` for crude oil).
 
 # %%
-
-TICKER = "GLD"   # Gold ETF — moderate vol, clean macro narrative; swap freely (see note above)
-SEQ_LEN = 64    # context length in days (32–384; shorter windows show clearer local trends)
-PRED_LEN = 16   # forecast horizon in days
-
 raw = yf.download(TICKER, period="2y", auto_adjust=True, progress=False)["Close"]
 raw = raw.dropna().squeeze()
 
@@ -126,7 +151,8 @@ plt.show()
 
 # %%
 # Pre-computed sample summary — illustrates the required format.
-# Replace this or regenerate it in Section 3 to match your actual data window.
+# Replace the text below with a summary that matches your asset and date window,  # <-- CHANGE ME
+# or let Section 3 generate one automatically with an LLM.
 summary = """\
 FACTUAL SUMMARY:
 GLD has experienced a strong uptrend from November 2025 through January 2026, surging from ~372 to nearly 495 before a sharp pullback to ~445 on January 30, 2026, followed by consolidation in the 427-468 range through mid-February. Key drivers include billionaire hedge fund accumulation (Ken Griffin, Israel Englander), safe-haven demand amid geopolitical tensions and Trump administration policy uncertainty, weakening USD, and central bank buying. Technical support remains in place despite recent volatility, with institutional inflows offsetting prior outflows and multiple analysts citing bullish gold fundamentals for 2026.
@@ -139,24 +165,23 @@ print(summary)
 
 # %% [markdown]
 # ## 3. (Optional) Generate a Summary with an LLM
-#
+# 
 # A good summary requires **per-day news aligned to the context window**, not just a handful
 # of recent headlines. This section generates a `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS` using
 # an LLM:
-#
+# 
 # - **Anthropic (recommended)** — Claude uses its built-in web search tool to autonomously
 #   find news and market events for the exact date range, then summarizes them. No extra API
 #   key required beyond your Anthropic key.
 # - **OpenAI / vLLM** — generates a summary from price data only (no web search available).
-#
+# 
 # **Required environment variables:**
 # - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` — required to call the LLM.
-#
+# 
 # If no LLM key is found the section is skipped and the pre-computed summary is kept.
 
 # %%
-LLM_PROVIDER = "anthropic"  # "anthropic" | "openai"
-LLM_API_KEY  = os.getenv({"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}[LLM_PROVIDER])
+# LLM_PROVIDER is set in the User Configuration cell at the top of the notebook.
 LLM_BASE_URL = os.getenv("VLLM_BASE_URL")   # None → use provider default
 LLM_MODEL    = os.getenv("VLLM_MODEL")       # None → use provider default
 
@@ -280,7 +305,7 @@ print("\nOriginal predictive section:\n")
 print(extract_predictive(summary))
 
 # %%
-bullish_predictive = dedent("""
+bullish_predictive = dedent("""  # <-- CHANGE ME: rewrite with your own bullish narrative
     PREDICTIVE SIGNALS:
     Gold is entering an extreme upside regime: the Fed has unexpectedly pivoted to an
     aggressive rate-cut path following a sharp deterioration in labor-market data, real
@@ -291,7 +316,7 @@ bullish_predictive = dedent("""
     any meaningful pullback over the forecast window.
 """).strip()
 
-bearish_predictive = dedent("""
+bearish_predictive = dedent("""  # <-- CHANGE ME: rewrite with your own bearish narrative
     PREDICTIVE SIGNALS:
     Gold is entering an extreme downside regime after a sudden hawkish pivot: the Fed has
     signaled rates will stay higher for longer following a stronger-than-expected CPI print,
@@ -430,11 +455,15 @@ print(pd.DataFrame(rows).to_string(index=False))
 # 
 # ## What's next
 # 
-# - **Try your own asset** — change `TICKER` and `SEQ_LEN` at the top of Section 1.
+# - **Try your own asset** — change `TICKER` and `SEQ_LEN` in the **User Configuration** cell at the top.
 # - **Generate a fresh summary** — set your API key and re-run Section 3 for a summary
 #   grounded in real recent headlines.
 # - **Batch evaluation** — see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 #   for rolling-window evaluation with ground truth.
+
+# %%
+
+
 
 # %%
 
