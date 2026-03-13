@@ -86,6 +86,30 @@ print(
 print(f"Context price range : ${series['y_t'].min():.2f} – ${series['y_t'].max():.2f}")
 series.tail()
 
+# %%
+# Quick look at the context window before running the model
+fig, ax = plt.subplots(figsize=(11, 3.5))
+ax.plot(
+    pd.to_datetime(series["t"].values),
+    series["y_t"].values,
+    color=COLORS["historical"],
+    lw=2.0,
+    solid_capstyle="round",
+    label="Historical",
+)
+ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+for lbl in ax.get_xticklabels():
+    lbl.set_rotation(35)
+    lbl.set_ha("right")
+ax.set_xlabel("Date", color="#566573")
+ax.set_ylabel(f"{TICKER} Price (USD)", color="#566573")
+ax.set_title(
+    f"{TICKER} — context window"
+)
+ax.legend(fontsize=8, handlelength=1.6)
+fig.tight_layout(pad=1.2)
+plt.show()
+
 # %% [markdown]
 # ## 2. Understanding the Summary Format
 # 
