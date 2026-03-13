@@ -23,6 +23,7 @@ dependencies = [
     "polars>=1.38.1",
     "yfinance>=0.2",
     "anthropic>=0.84.0",
+    "ipykernel>=7.2.0",
 ]
 
 [tool.uv.sources]
