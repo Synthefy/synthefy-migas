@@ -5,9 +5,13 @@
 # 
 # **Requirements:** Install the package (`uv sync`). For live summarization a vLLM server must be running; to skip it, use pre-computed summaries (see the offline section at the end of this notebook). See [LLM server setup](../README.md#optional-llm-server) in the README.
 # 
-# **Data:** Download prepared FNSPID assets:
+# **Data:** Download the **subset**:
 # ```bash
-# uv run python scripts/download_data.py --dataset fnspid --all
+# uv run python scripts/download_data.py --dataset subset --csvs
+# ```
+# for running the notebook using pre-computed summaries, you need to download the summaries:
+# ```bash
+# uv run python scripts/download_data.py --dataset subset --summaries
 # ```
 
 # %% [markdown]
@@ -41,7 +45,7 @@ print(f"Using device: {device}")
 # ## Configure the backtest
 
 # %%
-csv_path = "../data/fnspid_prepared/fnspid_0.5_complement_csvs/jpm_with_text.csv"
+csv_path = "../data/subset/subset_migas15/subset_csvs/jpm_with_text.csv"  # one of 2 subset datasets
 df = pd.read_csv(csv_path)
 print(f"Dataset: {os.path.basename(csv_path)}  —  {len(df)} rows")
 
@@ -149,11 +153,11 @@ plt.show()
 # %% [markdown]
 # ## Offline backtest with pre-computed summaries
 # 
-# Pre-computed summaries from the FNSPID dataset use **stride=1** (one summary per rolling position). To match indices correctly, set `stride=1` above and pass the corresponding summary for each window. Below is a quick example loading the first few summaries.
+# Pre-computed summaries from the subset use **stride=1** (one summary per rolling position). To match indices correctly, set `stride=1` above and pass the corresponding summary for each window. Below is a quick example loading the first few summaries.
 
 # %%
 dataset_name = os.path.splitext(os.path.basename(csv_path))[0]
-summaries_dir = f"../data/fnspid_prepared/fnspid_0.5_complement/{dataset_name}"
+summaries_dir = f"../data/subset/subset_migas15/subset/{dataset_name}"
 
 offline_migas = []
 offline_chronos = []
@@ -198,7 +202,7 @@ if offline_migas:
     m_chron = compute_backtest_metrics(offline_chronos, offline_gts, offline_last_ctx)
     print(pd.DataFrame({"Migas-1.5 (offline)": m_migas15, "Chronos-2": m_chron}).to_string())
 else:
-    print("No summaries found — download them first: uv run python scripts/download_data.py --dataset fnspid --summaries")
+    print("No summaries found — download them first: uv run python scripts/download_data.py --dataset subset --summaries")
 
 # %%
 

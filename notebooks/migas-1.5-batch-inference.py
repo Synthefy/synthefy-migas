@@ -5,9 +5,13 @@
 # 
 # **Requirements:** Install the package (`uv sync`). For live summarization a vLLM server must be running; to skip it, pass `summaries=` (pre-computed summaries are used in the second half of this notebook). See [LLM server setup](../README.md#optional-llm-server) in the README.
 # 
-# **Data:** Download prepared FNSPID CSVs and summaries:
+# **Data:** Download the **subset**:
 # ```bash
-# uv run python scripts/download_data.py --dataset fnspid --all
+# uv run python scripts/download_data.py --dataset subset --csvs
+# ```
+# for running the last part of the notebook using pre-computed summaries, you need to download the summaries:
+# ```bash
+# uv run python scripts/download_data.py --dataset subset --summaries
 # ```
 
 # %% [markdown]
@@ -41,8 +45,8 @@ print(f"Using device: {device}")
 # `predict()` accepts a batch dimension: `context` has shape `(B, T)` and `text` is a list of B lists. This is more efficient than calling `predict()` in a loop.
 
 # %%
-csv_dir = "../data/fnspid_prepared/fnspid_0.5_complement_csvs"
-csv_files = list_data_files(csv_dir)[:4]  # first 4 datasets
+csv_dir = "../data/subset/subset_migas15/subset_csvs"
+csv_files = list_data_files(csv_dir)  # subset has 2 datasets
 print(f"Using {len(csv_files)} datasets: {[os.path.basename(f) for f in csv_files]}")
 
 seq_len = 384
@@ -82,12 +86,12 @@ plt.show()
 # For large-scale runs you'll typically loop over files and collect results. Using pre-computed summaries avoids the LLM bottleneck.
 
 # %%
-csv_dir = "../data/fnspid_prepared/fnspid_0.5_complement_csvs"
-summaries_root = "../data/fnspid_prepared/fnspid_0.5_complement"
+csv_dir = "../data/subset/subset_migas15/subset_csvs"
+summaries_root = "../data/subset/subset_migas15/subset"
 
 results = []
 
-for csv_path in list_data_files(csv_dir)[:8]:
+for csv_path in list_data_files(csv_dir):  # subset has 2 datasets
     name = os.path.splitext(os.path.basename(csv_path))[0]
     summary_path = os.path.join(summaries_root, name, "summary_0.json")
 
