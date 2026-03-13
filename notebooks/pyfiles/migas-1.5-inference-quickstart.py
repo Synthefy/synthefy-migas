@@ -196,23 +196,8 @@ else:
 
 # %%
 context_vals = series["y_t"].values.astype(np.float32)
-
-# Chronos-2 runs in float16 (max representable: 65,504).
-# Assets like BTC (~$85k-$109k) overflow during denormalization → NaN.
-# We pre-scale to a safe range and invert after forecasting.
-_pmax = float(context_vals.max())
-PRICE_SCALE = float(10 ** np.floor(np.log10(_pmax) - 1)) if _pmax > 1000 else 1.0
-if PRICE_SCALE > 1.0:
-    print(
-        f"Auto-scaling prices ÷{PRICE_SCALE:.0f} for float16 safety "
-        f"(max price {_pmax:.0f} > float16 limit 65,504)"
-    )
-
-series_scaled = series.copy()
-series_scaled["y_t"] = series_scaled["y_t"] / PRICE_SCALE
-gt_scaled = gt_vals / PRICE_SCALE  # scaled ground truth (used internally, kept for reference)
 context_tensor = (
-    torch.tensor(series_scaled["y_t"].values, dtype=torch.float32)
+    torch.tensor(context_vals, dtype=torch.float32)
     .unsqueeze(0)
     .unsqueeze(-1)
     .to(device)  # (1, SEQ_LEN, 1)
@@ -220,19 +205,18 @@ context_tensor = (
 
 # Migas-1.5 + its internal Chronos-2 baseline — same normalization path, one call
 migas_fc, chronos_fc_raw = pipeline.predict_from_dataframe(
-    series_scaled, pred_len=PRED_LEN, seq_len=SEQ_LEN,
+    series, pred_len=PRED_LEN, seq_len=SEQ_LEN,
     summaries=[summary], return_univariate=True,
 )
-migas_fc   = migas_fc * PRICE_SCALE    # back to original units
-chronos_fc = chronos_fc_raw * PRICE_SCALE  # the exact base Migas used before text fusion
+chronos_fc = chronos_fc_raw
 
 # Chronos-2 uncertainty band (10th / 90th percentile) — standalone call for shading only
 chronos_q = evaluate_chronos_quantiles(
     context_tensor, PRED_LEN, device=device, chronos_device=device,
     quantile_levels=[0.1, 0.9],
 )
-chronos_lo = chronos_q["0.1"][0] * PRICE_SCALE
-chronos_hi = chronos_q["0.9"][0] * PRICE_SCALE
+chronos_lo = chronos_q["0.1"][0]
+chronos_hi = chronos_q["0.9"][0]
 
 print(
     f"Chronos-2 forecast : {chronos_fc.shape}  range [{chronos_fc.min():.0f}, {chronos_fc.max():.0f}]"
@@ -322,17 +306,11 @@ bullish_summary = splice_summary(summary, bullish_predictive)
 bearish_summary = splice_summary(summary, bearish_predictive)
 
 # %%
-bullish_fc = (
-    pipeline.predict_from_dataframe(
-        series_scaled, pred_len=PRED_LEN, seq_len=SEQ_LEN, summaries=[bullish_summary]
-    )
-    * PRICE_SCALE
+bullish_fc = pipeline.predict_from_dataframe(
+    series, pred_len=PRED_LEN, seq_len=SEQ_LEN, summaries=[bullish_summary]
 )
-bearish_fc = (
-    pipeline.predict_from_dataframe(
-        series_scaled, pred_len=PRED_LEN, seq_len=SEQ_LEN, summaries=[bearish_summary]
-    )
-    * PRICE_SCALE
+bearish_fc = pipeline.predict_from_dataframe(
+    series, pred_len=PRED_LEN, seq_len=SEQ_LEN, summaries=[bearish_summary]
 )
 
 # %%
