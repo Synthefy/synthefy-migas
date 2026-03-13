@@ -103,8 +103,7 @@ forecast = pipeline.predict_from_dataframe(
 
 | Notebook | LLM needed? | Description |
 |----------|-------------|-------------|
-| [Inference Quick Start](notebooks/migas-1.5-inference-quickstart.ipynb) | No | Fetch live market data from Yahoo Finance, provide a pre-written summary, and run a forecast. Zero setup beyond `uv sync`. |
-| [Bring Your Own Data](notebooks/migas-1.5-bring-your-own-data.ipynb) | Optional | End-to-end on any Yahoo Finance ticker: fetch data, write or auto-generate a summary, compare Chronos-2 vs Migas-1.5, and explore counterfactual scenarios. LLM only needed for auto-generating window-aligned summaries (Section 3). |
+| [Inference Quick Start](notebooks/migas-1.5-inference-quickstart.ipynb) | Optional | End-to-end on any Yahoo Finance ticker: fetch data, write or auto-generate a summary, compare Chronos-2 vs Migas-1.5, and explore counterfactual scenarios. A pre-written summary is included so the notebook runs out of the box — an LLM is only needed to auto-generate a window-aligned summary (Section 3). |
 | [Counterfactual Scenarios](notebooks/migas-1.5-counterfactual-scenarios.ipynb) | Optional | Swap bullish/bearish predictive signals and watch the forecast shift. Hand-written scenarios run without an LLM. Best-of-N candidate selection requires a vLLM server. |
 | [Batch Inference](notebooks/migas-1.5-batch-inference.ipynb) | Optional | Run Migas-1.5 on multiple time series in one `predict()` call and iterate over a directory of CSVs. Pre-computed summaries skip the LLM entirely. |
 | [Backtest and Metrics](notebooks/migas-1.5-backtest-and-metrics.ipynb) | Optional | Rolling-window backtest comparing Migas-1.5 and Chronos-2 with MAE, MSE, MAPE, and directional accuracy. Offline mode uses pre-computed summaries. |
