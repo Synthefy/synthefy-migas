@@ -23,9 +23,11 @@ warnings.filterwarnings("ignore", message="IProgress not found")
 
 import sys
 from textwrap import dedent
+import matplotlib.dates as mdates
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import torch
 from IPython.display import HTML, display
 from IPython import get_ipython
 
@@ -33,9 +35,9 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.run_line_magic("matplotlib", "inline")
 
-from migaseval import MigasPipeline
 
 sys.path.insert(0, "..")
+from migaseval import MigasPipeline
 from scripts.plotting_utils import COLORS, apply_migas_style
 from scripts.counterfactual_utils import (
     splice_summary,
@@ -50,8 +52,9 @@ from scripts.counterfactual_utils import (
 
 apply_migas_style()
 
-pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device="cuda")
-print("Pipeline loaded.")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device=device)
+print(f"Pipeline loaded. Using device: {device}")
 
 # %% [markdown]
 # ## Load a sample window
@@ -73,6 +76,7 @@ gt_df = df[df["split"] == "ground_truth"].reset_index(drop=True)
 context_unscaled = ctx_df["y_t"].values.astype(np.float32)
 ground_truth = gt_df["y_t"].values.astype(np.float32)
 seq_len = len(context_unscaled)
+all_timestamps = df["t"].values  # shape (seq_len + pred_len,) — used for date x-axes
 
 with open("../data/oil_scenario_sim_summary.txt") as f:
     original_summary = f.read().strip()
@@ -110,6 +114,7 @@ fig, ax = plot_forecast_single(
     seq_len,
     pred_len,
     title=f"Baseline forecast — crude oil (context={seq_len})",
+    timestamps=all_timestamps,
 )
 ax.set_ylabel("Price ($/barrel)")
 plt.show()
@@ -168,6 +173,7 @@ fig, ax = plot_scenario_comparison(
     ground_truth=ground_truth,
     direction="up",
     title="Bullish counterfactual vs. original forecast",
+    timestamps=all_timestamps,
 )
 ax.set_ylabel("Price ($/barrel)")
 plt.show()
@@ -213,6 +219,7 @@ fig, ax = plot_scenario_comparison(
     ground_truth=ground_truth,
     direction="down",
     title="Bearish counterfactual vs. original forecast",
+    timestamps=all_timestamps,
 )
 ax.set_ylabel("Price ($/barrel)")
 plt.show()
@@ -234,11 +241,10 @@ BULLISH_COLOR = "#2EAD6D"
 BEARISH_COLOR = "#C0392B"
 
 fig, ax = plt.subplots(figsize=(10, 5))
-_draw_forecast_region(ax, seq_len, pred_len)
-
-t_ctx = np.arange(seq_len)
-t_pred = np.arange(seq_len - 1, seq_len + pred_len)
+t_ctx  = pd.to_datetime(all_timestamps[:seq_len])
+t_pred = pd.to_datetime(list(all_timestamps[seq_len - 1:]))
 last_val = float(context_unscaled[-1])
+_draw_forecast_region(ax, seq_len, pred_len, boundary=t_pred[0], boundary_end=t_pred[-1])
 
 ax.plot(
     t_ctx,
@@ -292,7 +298,11 @@ ax.fill_between(
     label="Scenario range",
 )
 
-ax.set_xlabel("Time Step", color="#566573")
+ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+for lbl in ax.get_xticklabels():
+    lbl.set_rotation(35)
+    lbl.set_ha("right")
+ax.set_xlabel("Date", color="#566573")
 ax.set_ylabel("Price ($/barrel)", color="#566573")
 ax.set_title(
     "Migas-1.5 scenario fan: the same numbers, three different stories",
@@ -388,7 +398,7 @@ BEST_COLOR = "#C0392B"
 REST_COLOR = "#8E9BB0"
 
 fig, ax = plt.subplots(figsize=(10, 5))
-_draw_forecast_region(ax, seq_len, pred_len)
+_draw_forecast_region(ax, seq_len, pred_len, boundary=t_pred[0], boundary_end=t_pred[-1])
 
 ax.plot(
     t_ctx,
@@ -421,8 +431,12 @@ for i, fc in enumerate(candidate_forecasts):
         solid_capstyle="round",
     )
 
-ax.set_xlabel("Time Step", color="#566573")
-ax.set_ylabel("Value", color="#566573")
+ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+for lbl in ax.get_xticklabels():
+    lbl.set_rotation(35)
+    lbl.set_ha("right")
+ax.set_xlabel("Date", color="#566573")
+ax.set_ylabel("Price ($/barrel)", color="#566573")
 ax.set_title(
     f"Best-of-{n_candidates}: candidate forecasts (winner highlighted)",
     fontsize=11,

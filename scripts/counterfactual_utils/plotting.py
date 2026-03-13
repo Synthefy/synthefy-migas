@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -23,11 +24,11 @@ except ImportError:
         "forecast_vline": "#ABB2B9",
     }
 
-    def _draw_forecast_region(ax: Any, context_len: int, pred_len: int) -> None:
-        ax.axvspan(context_len - 0.5, context_len + pred_len - 0.5,
-                   alpha=0.45, color="#FDF6EC", zorder=0)
-        ax.axvline(x=context_len - 0.5, color="#ABB2B9", linestyle="--",
-                   linewidth=0.9, alpha=0.6, zorder=1)
+    def _draw_forecast_region(ax: Any, context_len: int, pred_len: int, **kwargs) -> None:
+        left = kwargs.get("boundary", context_len - 0.5)
+        right = kwargs.get("boundary_end", context_len + pred_len - 0.5)
+        ax.axvspan(left, right, alpha=0.45, color="#FDF6EC", zorder=0)
+        ax.axvline(x=left, color="#ABB2B9", linestyle="--", linewidth=0.9, alpha=0.6, zorder=1)
 
     def apply_migas_style() -> None:
         pass
@@ -48,8 +49,11 @@ def plot_scenario_comparison(
     trend_delta: float | None = None,
     figsize: tuple[float, float] = (9, 4.5),
     ax: Any | None = None,
+    timestamps=None,
 ) -> tuple[plt.Figure | None, Any]:
     """Overlay original and counterfactual forecasts on a single axes."""
+    import pandas as pd
+
     context = np.asarray(context).ravel()
     original_forecast = np.asarray(original_forecast).ravel()
     counterfactual_forecast = np.asarray(counterfactual_forecast).ravel()
@@ -61,10 +65,17 @@ def plot_scenario_comparison(
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    _draw_forecast_region(ax, ctx_len, pred_len)
+    use_dates = timestamps is not None and len(timestamps) == ctx_len + pred_len
+    if use_dates:
+        ts = pd.to_datetime(list(timestamps))
+        t_ctx = ts[:ctx_len]
+        t_pred = pd.DatetimeIndex([ts[ctx_len - 1]] + list(ts[ctx_len:]))
+        _draw_forecast_region(ax, ctx_len, pred_len, boundary=t_pred[0], boundary_end=t_pred[-1])
+    else:
+        t_ctx = np.arange(ctx_len)
+        t_pred = np.arange(ctx_len - 1, ctx_len + pred_len)
+        _draw_forecast_region(ax, ctx_len, pred_len)
 
-    t_ctx = np.arange(ctx_len)
-    t_pred = np.arange(ctx_len - 1, ctx_len + pred_len)
     last_val = float(context[-1])
 
     ax.plot(
@@ -107,8 +118,15 @@ def plot_scenario_comparison(
         color=CF_COLOR_FILL, alpha=0.35, zorder=2,
     )
 
-    ax.set_xlim(-0.5, ctx_len + pred_len - 0.5)
-    ax.set_xlabel("Time Step", color="#566573")
+    if use_dates:
+        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+        for lbl in ax.get_xticklabels():
+            lbl.set_rotation(35)
+            lbl.set_ha("right")
+        ax.set_xlabel("Date", color="#566573")
+    else:
+        ax.set_xlim(-0.5, ctx_len + pred_len - 0.5)
+        ax.set_xlabel("Time Step", color="#566573")
     ax.set_ylabel("Value", color="#566573")
     ax.legend(
         loc="best", fontsize=8,
