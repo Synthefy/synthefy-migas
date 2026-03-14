@@ -1,0 +1,7 @@
+**FACTUAL SUMMARY:**  
+- From timesteps 1‑19 the series showed modest fluctuations around –0.3 to –0.2, reflecting a market still anchored by U.S. production strength, seasonal demand, and intermittent geopolitical shocks.  
+- Beginning with timestep 20 the values accelerated downward, reaching –1.60 by timestep 32 as the COVID‑19 pandemic, an oil‑price war, and record U.S. output created a severe supply‑demand imbalance, driving gasoline prices to historic lows.  
+
+**PREDICTIVE SIGNALS:**  
+- The narrative repeatedly cites “inventory draw‑downs,” “economic reopening,” and “refinery utilization recovery” as the primary near‑term catalysts, suggesting prices will likely stabilize or modestly rebound once demand resurfaces and excess stock is absorbed.  
+- Longer‑term signals point to a structural transition—rising alternative‑fuel adoption, continued U.S. export capacity, and persistent low‑demand scenarios—that will keep price volatility elevated and may establish a lower price floor even after short‑term recovery.
