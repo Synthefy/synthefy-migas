@@ -93,7 +93,7 @@ def _parse_web_search_output(text: str) -> tuple[str, str]:
 
 
 def _fetch_news_via_web_search(
-    ticker: str,
+    series_name: str,
     dates: list[str],
     prices: list[float],
     pred_period: str,
@@ -109,14 +109,14 @@ def _fetch_news_via_web_search(
 
     price_lines = "\n".join(f"[{d}] (value: {p:.4f})" for d, p in zip(dates, prices))
     prompt = f"""\
-You are analyzing {ticker} for time series forecasting.
+You are analyzing {series_name} for time series forecasting.
 
-HISTORICAL PRICE DATA:
+HISTORICAL DATA:
 {price_lines}
 
 PREDICTION PERIOD: {pred_period}
 
-Use web search to find news, analyst commentary, and market events for {ticker} \
+Use web search to find news, analyst commentary, and market events for {series_name} \
 from {dates[0]} through {dates[-1]}. Run multiple targeted searches to gather \
 comprehensive coverage.
 
@@ -128,7 +128,7 @@ NEWS DIGEST:
 own line as: YYYY-MM-DD: headline or brief description. Plain text only.]
 
 FACTUAL SUMMARY:
-[2-3 sentences: observed price action, key events, macro drivers. Plain prose only.]
+[2-3 sentences: observed trends, key events, macro drivers. Plain prose only.]
 
 PREDICTIVE SIGNALS:
 [2-3 sentences: forward-looking signals for {pred_period}. Relative terms only \
@@ -168,7 +168,7 @@ targets. Plain prose only.]"""
 
 
 def build_context_summarizer_prompt(
-    ticker: str,
+    series_name: str,
     dates: list[str],
     prices: list[float],
     per_day_texts: list[str],
@@ -187,7 +187,7 @@ def build_context_summarizer_prompt(
 
     return f"""\
 You are analyzing a time series with text annotations. \
-Extract information to help forecast future values for {ticker}.
+Extract information to help forecast future values for {series_name}.
 
 HISTORICAL DATA:
 {combined}
@@ -205,8 +205,7 @@ the forecast window. Express momentum and risk in RELATIVE terms only — for
 example: "likely to continue higher", "risk of 5-10% pullback", "bullish bias
 with upside momentum". Do NOT include absolute price levels, specific support/
 resistance numbers, or external analyst price targets — these often refer to a
-different instrument or unit (e.g. gold spot $/oz vs. ETF price) and will
-mislead the model. (2-3 sentences)
+different instrument or unit and will mislead the model. (2-3 sentences)
 
 Format:
 FACTUAL SUMMARY:
@@ -222,7 +221,7 @@ PREDICTIVE SIGNALS:
 
 
 def generate_summary(
-    ticker: str,
+    series_name: str,
     series: "pd.DataFrame",
     pred_len: int,
     *,
@@ -235,9 +234,10 @@ def generate_summary(
     """Generate a FACTUAL SUMMARY / PREDICTIVE SIGNALS text for *series*.
 
     Args:
-        ticker:       yfinance-style ticker symbol.
-        series:       DataFrame with columns ``t`` (date str) and ``y_t`` (price).
-        pred_len:     Forecast horizon length (days), used only for the prompt text.
+        series_name:  Human-readable name or description of the series (e.g. ``"GLD"``,
+                      ``"US Natural Gas (Henry Hub)"``, ``"S&P 500"``).
+        series:       DataFrame with columns ``t`` (date str) and ``y_t`` (value).
+        pred_len:     Forecast horizon length (steps), used only for the prompt text.
         llm_provider: ``"openai"`` or ``"anthropic"``.
         llm_api_key:  API key for the chosen LLM provider.
         llm_base_url: Optional base URL override (e.g. for local vLLM).
@@ -255,13 +255,13 @@ def generate_summary(
     """
     dates = series["t"].tolist()
     prices = series["y_t"].tolist()
-    pred_period = f"the {pred_len} days after {dates[-1]}"
+    pred_period = f"the {pred_len} steps after {dates[-1]}"
 
     if llm_provider == "anthropic":
         model = llm_model or "claude-sonnet-4-6"
-        print(f"Using Claude web search for {ticker} ({dates[0]} → {dates[-1]}) …")
+        print(f"Using Claude web search for {series_name} ({dates[0]} → {dates[-1]}) …")
         summary, news_digest = _fetch_news_via_web_search(
-            ticker=ticker,
+            series_name=series_name,
             dates=dates,
             prices=prices,
             pred_period=pred_period,
@@ -272,7 +272,7 @@ def generate_summary(
         # OpenAI / vLLM: price-data-only summary (no web search available)
         per_day_texts = [""] * len(dates)
         prompt = build_context_summarizer_prompt(
-            ticker, dates, prices, per_day_texts, pred_period
+            series_name, dates, prices, per_day_texts, pred_period
         )
         print(f"Calling {llm_provider} to generate summary (price data only) …")
         summary = call_llm(

@@ -70,6 +70,39 @@ class Migas15(nn.Module):
     Combines a configurable univariate forecaster (Chronos/TimesFM/Prophet/ensemble)
     with LLM-generated factual/predictive summaries and gated cross-attention fusion
     to produce a final forecast.
+
+    Text summary format
+    -------------------
+    The model was trained to condition on a two-section plain-text summary passed
+    via the ``summaries`` argument of :meth:`forward` (or
+    ``MigasPipeline.predict_from_dataframe``).  Each summary must contain both
+    sections; deviating significantly from this structure reduces text impact.
+
+    Expected format::
+
+        FACTUAL SUMMARY:
+        What already happened — observed trends, price action, key events, and
+        macro drivers over the context window.  (2-3 sentences, plain prose.)
+
+        PREDICTIVE SIGNALS:
+        Forward-looking interpretation for the forecast horizon — analyst
+        outlook, catalysts, risks.  Use relative directional terms only
+        (e.g. "likely to continue higher", "risk of 5-10% pullback") and
+        avoid absolute price targets.  (2-3 sentences, plain prose.)
+
+    To auto-generate a well-formatted summary from price data (and optionally
+    real headlines via Claude web search), use
+    ``scripts.summary_utils.generate_summary``::
+
+        from scripts.summary_utils import generate_summary
+
+        summary = generate_summary(
+            series_name="GLD",          # human-readable name or description
+            series=df,                  # DataFrame with columns t, y_t
+            pred_len=16,
+            llm_provider="anthropic",   # or "openai"
+            llm_api_key=api_key,
+        )
     """
 
     SUPPORTED_UNIVARIATE_MODELS = ["chronos", "timesfm", "prophet", "ensemble"]
