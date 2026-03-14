@@ -126,8 +126,8 @@ series.tail()
 # Quick look at the context window before running the model
 fig, ax = plt.subplots(figsize=(11, 3.5))
 ax.plot(
-    pd.to_datetime(series["t"].values),
-    series["y_t"].values,
+    pd.to_datetime(full["t"].values),
+    full["y_t"].values,
     color=COLORS["historical"],
     lw=2.0,
     solid_capstyle="round",
