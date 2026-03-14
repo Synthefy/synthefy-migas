@@ -54,7 +54,6 @@ import warnings
 
 warnings.filterwarnings("ignore", message="IProgress not found")
 
-import sys
 from textwrap import dedent
 
 import matplotlib.dates as mdates
@@ -65,15 +64,12 @@ import torch
 
 from migaseval import MigasPipeline
 from migaseval.model.inference_utils import evaluate_chronos_quantiles
-
-sys.path.insert(0, "..")
-from scripts.counterfactual_utils import (composite_trend_score,
-                                          extract_factual, extract_predictive,
-                                          linear_slope, splice_summary)
-from scripts.summary_utils import call_llm
-from scripts.plotting_utils import (COLORS, _draw_forecast_region,
-                                    apply_migas_style, plot_forecast_single)
-from scripts.summary_utils import generate_summary
+from migaseval.counterfactual_utils import (composite_trend_score, extract_factual,
+                                            extract_predictive, linear_slope,
+                                            splice_summary)
+from migaseval.summary_utils import call_llm, generate_summary
+from migaseval.plotting_utils import (COLORS, _draw_forecast_region,
+                                      apply_migas_style, plot_forecast_single)
 
 apply_migas_style()
 

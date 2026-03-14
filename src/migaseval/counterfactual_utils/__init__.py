@@ -3,7 +3,7 @@
 Public API — import from the notebook with::
 
     import sys; sys.path.insert(0, "..")
-    from scripts.counterfactual_utils import (
+    from migaseval.counterfactual_utils import (
         run_baseline, run_best_of_n, results_to_dataframe,
         plot_scenario_comparison, plot_scenario_grid, plot_trend_summary,
         display_text_comparison,

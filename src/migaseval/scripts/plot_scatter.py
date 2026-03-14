@@ -3,16 +3,11 @@
 Script to create scatter plots comparing Migas-1.5 MAE vs other model MAE at sample level.
 """
 
-import sys
-from pathlib import Path
 from typing import Tuple
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
-_src = Path(__file__).resolve().parent.parent / "src"
-if _src.exists() and str(_src) not in sys.path:
-    sys.path.insert(0, str(_src))
 
 from migaseval.baselines.registry import MODEL_DISPLAY_NAMES
 

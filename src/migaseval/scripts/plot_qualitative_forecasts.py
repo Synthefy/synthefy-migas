@@ -12,7 +12,6 @@ Usage:
 """
 
 import argparse
-import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -20,15 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
-# Add repo root and src so migaseval is importable (synthefy-migaseval repo)
-_repo_root = Path(__file__).resolve().parent.parent
-_src = _repo_root / "src"
-if _src.exists():
-    sys.path.insert(0, str(_src))
-sys.path.insert(0, str(_repo_root))
-
-
-from plotting_utils import apply_migas_style, COLORS as _SHARED_COLORS
+from migaseval.plotting_utils import apply_migas_style, COLORS as _SHARED_COLORS
 
 apply_migas_style()
 

@@ -14,9 +14,9 @@ Typical two-step workflow:
     python -m migaseval.evaluation --cache_summaries --datasets_dir ./data/test
 
     # Step 2: Evaluate from cached summaries (no LLM needed)
-    python scripts/eval_simple.py --summaries_dir ./results/test/context_64 \\
+    python -m migaseval.scripts.eval_simple --summaries_dir ./results/test/context_64 \\
         --checkpoint Synthefy/migas-1.5
-    python scripts/eval_simple.py --summaries_dir ./results/test/context_64 \\
+    python -m migaseval.scripts.eval_simple --summaries_dir ./results/test/context_64 \\
         --checkpoint Synthefy/migas-1.5 --context_lengths 32 64 128 256 384 \\
         --eval_timesfm --eval_prophet
 

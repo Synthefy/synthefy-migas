@@ -21,7 +21,6 @@ import warnings
 
 warnings.filterwarnings("ignore", message="IProgress not found")
 
-import sys
 from textwrap import dedent
 import matplotlib.dates as mdates
 import numpy as np
@@ -36,10 +35,8 @@ if ipython is not None:
     ipython.run_line_magic("matplotlib", "inline")
 
 
-sys.path.insert(0, "..")
 from migaseval import MigasPipeline
-from scripts.plotting_utils import COLORS, apply_migas_style
-from scripts.counterfactual_utils import (
+from migaseval.counterfactual_utils import (
     splice_summary,
     extract_factual,
     extract_predictive,
@@ -49,6 +46,7 @@ from scripts.counterfactual_utils import (
     composite_trend_score,
     linear_slope,
 )
+from migaseval.plotting_utils import COLORS, apply_migas_style
 
 apply_migas_style()
 
@@ -105,7 +103,7 @@ original_forecast = pipeline.predict_from_dataframe(
     summaries=[original_summary],
 )
 
-from scripts.plotting_utils import plot_forecast_single
+from migaseval.plotting_utils import plot_forecast_single
 
 fig, ax = plot_forecast_single(
     context_unscaled,
@@ -235,7 +233,7 @@ print(f"Slope shift:          {bear_slope - orig_slope:+.5f}")
 # Let's overlay the original, bullish, and bearish forecasts on a single plot to visualize the full range of text-driven scenario steering.
 
 # %%
-from scripts.plotting_utils import _draw_forecast_region, COLORS
+from migaseval.plotting_utils import COLORS, _draw_forecast_region
 
 BULLISH_COLOR = "#2EAD6D"
 BEARISH_COLOR = "#C0392B"
@@ -330,7 +328,7 @@ plt.show()
 # Let's compare our three forecasts:
 
 # %%
-from scripts.counterfactual_utils import endpoint_change, monotonicity, breakout_ratio
+from migaseval.counterfactual_utils import breakout_ratio, endpoint_change, monotonicity
 
 rows = []
 for label, fc, direction in [
@@ -490,7 +488,7 @@ plt.show()
 # - **Try your own data** — see [Bring Your Own Data](migas-1.5-bring-your-own-data.ipynb) to run counterfactual scenarios on any time series with text.
 # - **Batch evaluation** — see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb) for running full rolling-window evaluations with ground truth.
 #
-# The counterfactual utilities used in this notebook live in `scripts/counterfactual_utils/` — feel free to use them in your own experiments.
+# The counterfactual utilities used in this notebook are available via `migaseval.counterfactual_utils`.
 
 # %% [markdown]
 #

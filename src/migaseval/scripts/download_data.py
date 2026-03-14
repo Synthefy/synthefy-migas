@@ -7,22 +7,22 @@ to pick asset types within each folder.
 
 Usage:
     # Download FNSPID CSVs only
-    uv run python scripts/download_data.py --dataset fnspid --csvs
+    uv run python -m migaseval.scripts.download_data --dataset fnspid --csvs
 
     # Download ICML suite summaries only
-    uv run python scripts/download_data.py --dataset suite --summaries
+    uv run python -m migaseval.scripts.download_data --dataset suite --summaries
 
     # Download the smaller subset (both CSVs and summaries)
-    uv run python scripts/download_data.py --dataset subset --all
+    uv run python -m migaseval.scripts.download_data --dataset subset --all
 
     # Download everything (all 3 folders, CSVs + summaries)
-    uv run python scripts/download_data.py --dataset all --all
+    uv run python -m migaseval.scripts.download_data --dataset all --all
 
     # List available datasets
-    uv run python scripts/download_data.py --list
+    uv run python -m migaseval.scripts.download_data --list
 
     # Reduce concurrency to avoid HF rate limits (429)
-    uv run python scripts/download_data.py --dataset all --all --max-workers 1
+    uv run python -m migaseval.scripts.download_data --dataset all --all --max-workers 1
 """
 
 from __future__ import annotations

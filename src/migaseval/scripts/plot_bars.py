@@ -11,23 +11,18 @@ Produces:
   - Single-dataset model comparison (all models for one chosen dataset or average)
 
 Usage:
-  python scripts/plot_bars.py --results_dir ./results/suite/context_64
-  python scripts/plot_bars.py --results_dir ./results/suite/context_64 --metric mean_mae --out_dir ./results/suite/context_64/report
+  python -m migaseval.scripts.plot_bars --results_dir ./results/suite/context_64
+  python -m migaseval.scripts.plot_bars --results_dir ./results/suite/context_64 --metric mean_mae --out_dir ./results/suite/context_64/report
 """
 
 from __future__ import annotations
 
 import argparse
 import re
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
-_src = Path(__file__).resolve().parent.parent / "src"
-if _src.exists() and str(_src) not in sys.path:
-    sys.path.insert(0, str(_src))
 
 from migaseval.baselines.registry import MODEL_DISPLAY_NAMES
 

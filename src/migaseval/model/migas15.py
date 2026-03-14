@@ -89,9 +89,9 @@ class Migas15(nn.Module):
 
     To auto-generate a well-formatted summary from price data (and optionally
     real headlines via Claude web search), use
-    ``scripts.summary_utils.generate_summary``::
+    ``migaseval.summary_utils.generate_summary``::
 
-        from scripts.summary_utils import generate_summary
+        from migaseval.summary_utils import generate_summary
 
         summary = generate_summary(
             series_name="GLD",          # human-readable name or description

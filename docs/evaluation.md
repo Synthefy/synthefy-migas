@@ -31,19 +31,19 @@ All evaluation data lives in a single Hugging Face repo: **Synthefy/multimodal_d
 
 ```bash
 # Subset — 2 datasets, good for notebooks and quick tests
-uv run python scripts/download_data.py --dataset subset --csvs
-uv run python scripts/download_data.py --dataset subset --all
+uv run python -m migaseval.scripts.download_data --dataset subset --csvs
+uv run python -m migaseval.scripts.download_data --dataset subset --all
 
 # FNSPID — prepared financial-news evaluation assets
-uv run python scripts/download_data.py --dataset fnspid --csvs
-uv run python scripts/download_data.py --dataset fnspid --all
+uv run python -m migaseval.scripts.download_data --dataset fnspid --csvs
+uv run python -m migaseval.scripts.download_data --dataset fnspid --all
 
 # Migas-1.5 ICML suite
-uv run python scripts/download_data.py --dataset suite --csvs
-uv run python scripts/download_data.py --dataset suite --all
+uv run python -m migaseval.scripts.download_data --dataset suite --csvs
+uv run python -m migaseval.scripts.download_data --dataset suite --all
 
 # Everything
-uv run python scripts/download_data.py --dataset all --all
+uv run python -m migaseval.scripts.download_data --dataset all --all
 ```
 
 - Specify what to download: `--csvs`, `--summaries`, or `--all`. List presets: `--list`.
@@ -100,7 +100,7 @@ uv run python -m migaseval.evaluation \
   --cache_summaries
 
 # Step 2 — evaluate from cache (no LLM)
-uv run python scripts/eval_simple.py \
+uv run python -m migaseval.scripts.eval_simple \
   --summaries_dir ./results/output/context_384 \
   --checkpoint    Synthefy/migas-1.5 \
   --context_lengths 32 64 128 256 384 \
@@ -149,19 +149,19 @@ Re-runs skip datasets that already have all requested model outputs. Delete `out
 
 ```bash
 # Bar plots + report.md (single entry point)
-uv run python scripts/post_eval.py --results_dir ./results/suite/context_64
+uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64
 
 # Add scatter plots
-uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --scatter
+uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --scatter
 
 # Add qualitative forecast plots
-uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --qualitative
+uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --qualitative
 
 # Everything
-uv run python scripts/post_eval.py --results_dir ./results/suite/context_64 --all
+uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --all
 ```
 
-Individual scripts for more control: `scripts/plot_bars.py`, `scripts/plot_scatter.py`, `scripts/plot_qualitative_forecasts.py`. Use `--help` for options.
+Individual script modules for more control: `python -m migaseval.scripts.plot_bars`, `python -m migaseval.scripts.plot_scatter`, `python -m migaseval.scripts.plot_qualitative_forecasts`. Use `--help` for options.
 
 ---
 
@@ -205,7 +205,7 @@ The CLI gets `--eval_<name>` automatically. Baselines depending on another basel
 - `fnspid_migas15/fnspid_0.5_complement_csvs/` — `t`, `y_t`, `text` CSVs ready for eval
 - `fnspid_migas15/fnspid_0.5_complement/` — cached LLM summaries (skip LLM server during eval)
 
-Download with: `uv run python scripts/download_data.py --dataset fnspid --all`. The **subset** option (2 time series) is smaller and suited to notebooks: `--dataset subset --all`.
+Download with: `uv run python -m migaseval.scripts.download_data --dataset fnspid --all`. The **subset** option (2 time series) is smaller and suited to notebooks: `--dataset subset --all`.
 
 <details>
 <summary>Building FNSPID from raw data (advanced)</summary>

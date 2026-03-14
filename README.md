@@ -58,7 +58,7 @@ print(forecast.round(2))
 ```python
 import sys
 sys.path.insert(0, ".")  # repo root
-from scripts.plotting_utils import plot_forecast_single, apply_migas_style
+from migaseval.plotting_utils import plot_forecast_single, apply_migas_style
 
 apply_migas_style()
 
@@ -117,7 +117,7 @@ forecast = pipeline.predict_from_dataframe(
 | Model weights | [Synthefy/migas-1.5](https://huggingface.co/Synthefy/migas-1.5) |
 | Evaluation data (FNSPID, ICML suite, subset) | [Synthefy/multimodal_datasets](https://huggingface.co/datasets/Synthefy/multimodal_datasets) |
 
-Download with: `uv run python scripts/download_data.py --dataset subset --all` (small, 2 series) or `--dataset fnspid` / `--dataset suite` / `--dataset all`. See [Evaluation](docs/evaluation.md#downloading-evaluation-data).
+Download with: `uv run python -m migaseval.scripts.download_data --dataset subset --all` (small, 2 series) or `--dataset fnspid` / `--dataset suite` / `--dataset all`. See [Evaluation](docs/evaluation.md#downloading-evaluation-data).
 
 ---
 

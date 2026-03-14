@@ -7,11 +7,11 @@
 # 
 # **Data:** Download the **subset**:
 # ```bash
-# uv run python scripts/download_data.py --dataset subset --csvs
+# uv run python -m migaseval.scripts.download_data --dataset subset --csvs
 # ```
 # for running the last part of the notebook using pre-computed summaries, you need to download the summaries:
 # ```bash
-# uv run python scripts/download_data.py --dataset subset --summaries
+# uv run python -m migaseval.scripts.download_data --dataset subset --summaries
 # ```
 
 # %% [markdown]
@@ -23,15 +23,14 @@
 import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 
-import json, os, sys
+import json, os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
-from migaseval import MigasPipeline, list_data_files
 
-sys.path.insert(0, "..")
-from scripts.plotting_utils import plot_forecast_grid, apply_migas_style
+from migaseval import MigasPipeline, list_data_files
+from migaseval.plotting_utils import apply_migas_style, plot_forecast_grid
 
 apply_migas_style()
 

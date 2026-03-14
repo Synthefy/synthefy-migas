@@ -804,36 +804,6 @@ def evaluate_single_dataset(
                 precomputed_forecast=cached_forecast,
                 batch_size=args.batch_size,
             )
-        elif baseline_name == "migas15_timesfm":
-            model = models.get("model_timesfm")
-            result = config.eval_func(
-                model,
-                dataloader,
-                args.device,
-                args.pred_len,
-                model_type="migas15",
-                prediction_key="migas15_timesfm",
-                use_timestamps=args.use_timestamps,
-                precomputed_summaries=cached_summaries,
-                precomputed_historic=cached_historic,
-                precomputed_forecast=cached_forecast,
-                batch_size=args.batch_size,
-            )
-        elif baseline_name == "migas15_prophet":
-            model = models.get("model")
-            result = config.eval_func(
-                model,
-                dataloader,
-                args.device,
-                args.pred_len,
-                model_type="migas15",
-                prediction_key="migas15_prophet",
-                use_timestamps=args.use_timestamps,
-                precomputed_summaries=cached_summaries,
-                precomputed_historic=cached_historic,
-                precomputed_forecast=cached_forecast,
-                batch_size=args.batch_size,
-            )
         elif baseline_name == "chronos2":
             result = config.eval_func(
                 dataloader, args.device, args.pred_len, eval_multivar=False

@@ -15,7 +15,7 @@ Color scheme:
 
 Examples:
   # Single window, Migas-1.5 only
-  from scripts.plotting_utils import plot_forecast_single, COLORS
+  from migaseval.plotting_utils import plot_forecast_single, COLORS
   fig, ax = plot_forecast_single(history, gt, {"Migas-1.5": migas_pred}, context_len, pred_len)
 
   # Single window, Migas-1.5 and Chronos

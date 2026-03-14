@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 try:
-    from scripts.plotting_utils import COLORS, _draw_forecast_region, apply_migas_style
+    from migaseval.plotting_utils import COLORS, _draw_forecast_region, apply_migas_style
 
     apply_migas_style()
 except ImportError:

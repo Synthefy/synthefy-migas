@@ -31,7 +31,6 @@ BASELINE_REGISTRY: Dict[str, BaselineConfig] = {}
 
 MODEL_DISPLAY_NAMES: Dict[str, str] = {
     "migas15": "Migas-1.5",
-    "migas15_timesfm": "Migas-1.5-TimesFM",
     "timeseries": "TS-Only",
     "chronos_univar": "Chronos2",
     "chronos_multivar": "Chronos2-MV",

@@ -7,11 +7,11 @@
 # 
 # **Data:** Download the **subset**:
 # ```bash
-# uv run python scripts/download_data.py --dataset subset --csvs
+# uv run python -m migaseval.scripts.download_data --dataset subset --csvs
 # ```
 # for running the notebook using pre-computed summaries, you need to download the summaries:
 # ```bash
-# uv run python scripts/download_data.py --dataset subset --summaries
+# uv run python -m migaseval.scripts.download_data --dataset subset --summaries
 # ```
 
 # %% [markdown]
@@ -24,16 +24,15 @@ import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-import json, os, sys
+import json, os
 import numpy as np
 import pandas as pd
 import torch
 import matplotlib.pyplot as plt
+
 from migaseval import MigasPipeline
 from migaseval.model.inference_utils import evaluate_chronos
-
-sys.path.insert(0, "..")
-from scripts.plotting_utils import plot_forecast_grid, apply_migas_style
+from migaseval.plotting_utils import apply_migas_style, plot_forecast_grid
 
 apply_migas_style()
 
@@ -202,7 +201,7 @@ if offline_migas:
     m_chron = compute_backtest_metrics(offline_chronos, offline_gts, offline_last_ctx)
     print(pd.DataFrame({"Migas-1.5 (offline)": m_migas15, "Chronos-2": m_chron}).to_string())
 else:
-    print("No summaries found — download them first: uv run python scripts/download_data.py --dataset subset --summaries")
+    print("No summaries found — download them first: uv run python -m migaseval.scripts.download_data --dataset subset --summaries")
 
 # %%
 
