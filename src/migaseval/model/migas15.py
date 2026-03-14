@@ -14,10 +14,8 @@ from .util import (
     set_text_embedder,
 )
 from .inference_utils import (
-    UnivariateModel,
-    evaluate_univariate,
+    evaluate_chronos,
     init_chronos,
-    init_timesfm,
 )
 
 CONTEXT_SUMMARIZER: Optional[ContextSummarizer] = None
@@ -65,11 +63,10 @@ class GatedAttentionFusion(nn.Module):
 
 
 class Migas15(nn.Module):
-    """Migas-1.5 Late Fusion model: univariate forecaster + LLM summaries + gated attention fusion.
+    """Migas-1.5 Late Fusion model: Chronos-2 forecaster + LLM summaries + gated attention fusion.
 
-    Combines a configurable univariate forecaster (Chronos/TimesFM/Prophet/ensemble)
-    with LLM-generated factual/predictive summaries and gated cross-attention fusion
-    to produce a final forecast.
+    Combines the Chronos-2 univariate forecaster with LLM-generated factual/predictive
+    summaries and gated cross-attention fusion to produce a final forecast.
 
     Text summary format
     -------------------
@@ -105,7 +102,7 @@ class Migas15(nn.Module):
         )
     """
 
-    SUPPORTED_UNIVARIATE_MODELS = ["chronos", "timesfm", "prophet", "ensemble"]
+    SUPPORTED_UNIVARIATE_MODELS = ["chronos"]
 
     def __init__(
         self,
@@ -135,8 +132,7 @@ class Migas15(nn.Module):
         self.use_convex_combination = use_convex_combination
 
         init_chronos(chronos_device)
-        init_timesfm()
-        print("Initialized univariate models: chronos, timesfm (prophet on-demand)")
+        print("Initialized univariate model: chronos")
 
         set_text_embedder(text_embedder_name, text_embedder_device)
         self.text_embedding_size = get_text_embedding_size(text_embedder_name)
@@ -200,8 +196,8 @@ class Migas15(nn.Module):
         timestamps: Optional[List[List[str]]] = None,
         summaries: Optional[List[str]] = None,
         training: bool = True,
-        univariate_model: UnivariateModel = "chronos",
         trim_text: bool = True,
+        **kwargs,
     ) -> tuple:
         """Run one forward pass: univariate forecast + text fusion -> Migas-1.5 forecast.
 
@@ -215,9 +211,9 @@ class Migas15(nn.Module):
             history_std: Optional per-sample history std (B,) for unscaling.
             timestamps: Optional per-sample timestamps for summarization.
             summaries: Pre-computed LLM summaries (skips context summarizer if set).
-            training: If True and univariate is ensemble, sample model at random.
-            univariate_model: "chronos", "timesfm", "prophet", or "ensemble".
+            training: Unused (kept for API compatibility).
             trim_text: Whether to trim context to last 64 steps for summarization.
+            **kwargs: Ignored (absorbs legacy univariate_model, etc.).
 
         Returns:
             (forecast, timeseries_forecast, unimodal_forecast) where forecast is
@@ -236,23 +232,19 @@ class Migas15(nn.Module):
             sigma = history_std.to(self.device).float().view(B, 1, 1)
             sigma = torch.clamp(sigma, min=1e-8)
             ts_unscaled = ts * sigma + mu
-            timeseries_forecast = evaluate_univariate(
+            timeseries_forecast = evaluate_chronos(
                 x=ts_unscaled,
                 pred_len=self.pred_len,
                 device=self.device,
-                model=univariate_model,
                 chronos_device=self.chronos_device,
-                training=training,
             ).to(self.device)
             timeseries_forecast = (timeseries_forecast - mu) / sigma
         else:
-            timeseries_forecast = evaluate_univariate(
+            timeseries_forecast = evaluate_chronos(
                 x=ts,
                 pred_len=self.pred_len,
                 device=self.device,
-                model=univariate_model,
                 chronos_device=self.chronos_device,
-                training=training,
             )
             timeseries_forecast = timeseries_forecast.to(self.device)
 

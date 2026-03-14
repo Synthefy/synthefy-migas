@@ -19,6 +19,8 @@ Typical two-step workflow:
     python scripts/eval_simple.py --summaries_dir ./results/test/context_64 \\
         --checkpoint Synthefy/migas-1.5 --context_lengths 32 64 128 256 384 \\
         --eval_timesfm --eval_prophet
+
+Note: Migas-1.5 always uses Chronos as its univariate backbone.
 """
 
 import csv as csv_mod
@@ -39,7 +41,6 @@ PRED_LEN = 16
 BATCH_SIZE = 128
 DEVICE = "cuda"
 TEXT_EMBEDDER = "finbert"
-UNIVARIATE_MODEL = "chronos"
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────────
@@ -622,7 +623,6 @@ def main():
                     device=args.device,
                     pred_len=args.pred_len,
                     prediction_key="migas15",
-                    univariate_model=UNIVARIATE_MODEL,
                     precomputed_summaries=summaries,
                     precomputed_historic=hist_eval,
                     precomputed_forecast=fcast_eval,

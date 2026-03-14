@@ -255,7 +255,6 @@ def parse_args():
     )
     p.add_argument("--checkpoint_timesfm", type=str, default="")
 
-    p.add_argument("--univariate_model", type=str, default="chronos")
     p.add_argument("--text_embedder", type=str, default="finbert")
     p.add_argument("--use_timestamps", action="store_true")
     p.add_argument(
@@ -773,14 +772,6 @@ def evaluate_single_dataset(
 
     baselines_to_eval = sorted(baselines_to_eval, key=_run_after_deps)
 
-    univariate_model = "chronos"
-    if getattr(args, "univariate_model", None):
-        name = str(args.univariate_model).lower()
-        if "timesfm" in name:
-            univariate_model = "timesfm"
-        elif "prophet" in name:
-            univariate_model = "prophet"
-
     dataset_name = extract_dataset_name(data_path)
     cached_summaries = None
     cached_historic = None
@@ -808,7 +799,6 @@ def evaluate_single_dataset(
                 model_type="migas15",
                 prediction_key="migas15",
                 use_timestamps=args.use_timestamps,
-                univariate_model=univariate_model,
                 precomputed_summaries=cached_summaries,
                 precomputed_historic=cached_historic,
                 precomputed_forecast=cached_forecast,
@@ -824,7 +814,6 @@ def evaluate_single_dataset(
                 model_type="migas15",
                 prediction_key="migas15_timesfm",
                 use_timestamps=args.use_timestamps,
-                univariate_model="timesfm",
                 precomputed_summaries=cached_summaries,
                 precomputed_historic=cached_historic,
                 precomputed_forecast=cached_forecast,
@@ -840,7 +829,6 @@ def evaluate_single_dataset(
                 model_type="migas15",
                 prediction_key="migas15_prophet",
                 use_timestamps=args.use_timestamps,
-                univariate_model="prophet",
                 precomputed_summaries=cached_summaries,
                 precomputed_historic=cached_historic,
                 precomputed_forecast=cached_forecast,

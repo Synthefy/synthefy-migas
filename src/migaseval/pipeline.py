@@ -111,10 +111,10 @@ class MigasPipeline:
         context: Union[np.ndarray, torch.Tensor],
         text: Optional[List[List[str]]] = None,
         pred_len: int = 16,
-        univariate_model: str = "chronos",
         timestamps: Optional[List[List[str]]] = None,
         summaries: Optional[List[str]] = None,
         return_univariate: bool = False,
+        **kwargs,
     ) -> Union[torch.Tensor, tuple]:
         """Run Migas-1.5 forward and return the forecast for the requested horizon.
 
@@ -129,12 +129,12 @@ class MigasPipeline:
                 Required when ``summaries`` is not provided (used for LLM
                 summarization). Can be omitted when ``summaries`` is given.
             pred_len: Forecast horizon (up to pred_len used at training, default 16).
-            univariate_model: Univariate backbone: "chronos", "timesfm", "prophet", or "ensemble".
             timestamps: Optional per-sample timestamps for summarization.
             summaries: Pre-computed LLM summaries; if set, the pipeline does not call the LLM.
             return_univariate: If True, also return the univariate (Chronos) forecast
                 that Migas used internally as a baseline, in the same scale as the main
                 forecast. Returns a tuple (forecast, univariate_forecast).
+            **kwargs: Ignored (absorbs legacy univariate_model, etc.).
 
         Returns:
             When return_univariate=False: forecast tensor of shape (B, pred_len, 1).
@@ -177,7 +177,6 @@ class MigasPipeline:
                 timestamps=timestamps,
                 summaries=summaries,
                 training=False,
-                univariate_model=univariate_model,
             )
 
         # Model output is in normalized space; unscale back to original range
@@ -202,9 +201,9 @@ class MigasPipeline:
         df: pd.DataFrame,
         pred_len: int = 16,
         seq_len: Optional[int] = None,
-        univariate_model: str = "chronos",
         summaries: Optional[List[str]] = None,
         return_univariate: bool = False,
+        **kwargs,
     ) -> Union[np.ndarray, tuple]:
         """Convenience method: forecast from a single DataFrame.
 
@@ -216,12 +215,12 @@ class MigasPipeline:
             pred_len: Forecast horizon. Defaults to 16.
             seq_len: Use only the last *seq_len* rows as context. If ``None``,
                 all rows are used.
-            univariate_model: Univariate backbone. Defaults to ``"chronos"``.
             summaries: Pre-computed summary string(s). When provided the LLM
                 summarizer is skipped and ``text`` is unused.
             return_univariate: If True, return a tuple (forecast, univariate_forecast)
                 where both are numpy arrays of shape ``(pred_len,)``. The univariate
                 forecast is the internal Chronos output that Migas used as its baseline.
+            **kwargs: Ignored (absorbs legacy univariate_model, etc.).
 
         Returns:
             When return_univariate=False: numpy array of shape ``(pred_len,)``.
@@ -242,7 +241,6 @@ class MigasPipeline:
             context,
             text,
             pred_len=pred_len,
-            univariate_model=univariate_model,
             timestamps=timestamps,
             summaries=summaries,
             return_univariate=return_univariate,

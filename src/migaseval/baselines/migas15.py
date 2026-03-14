@@ -13,13 +13,13 @@ def eval_migas15(
     model_type: str = "migas15",
     prediction_key: str = "migas15",
     use_timestamps: bool = False,
-    univariate_model: str = "chronos",
     precomputed_summaries: list = None,
     precomputed_historic: list = None,
     precomputed_forecast: list = None,
     precomputed_means: list = None,
     precomputed_stds: list = None,
     batch_size: int = 64,
+    **kwargs,
 ) -> dict:
     """Evaluate Migas-1.5 (late fusion) model on a data loader or precomputed data.
 
@@ -36,13 +36,13 @@ def eval_migas15(
         model_type: Model variant. Defaults to "migas15".
         prediction_key: Key under which to store Migas-1.5 predictions. Defaults to "migas15".
         use_timestamps: Whether to pass timestamps into the model. Defaults to False.
-        univariate_model: Univariate backend ("chronos", "timesfm", "prophet"). Defaults to "chronos".
         precomputed_summaries: Pre-generated LLM summaries (one per sample).
         precomputed_historic: Historic value arrays (one list per sample).
         precomputed_forecast: Forecast value arrays (one list per sample).
         precomputed_means: Per-sample history mean for unscaling.
         precomputed_stds: Per-sample history std for unscaling.
         batch_size: Batch size when using precomputed data. Defaults to 64.
+        **kwargs: Ignored (absorbs legacy univariate_model, etc.).
 
     Returns:
         Dict with "input", "gt", "predictions" (prediction_key and "timeseries").
@@ -101,7 +101,6 @@ def eval_migas15(
                     history_mean=batch_means,
                     history_std=batch_stds,
                     training=False,
-                    univariate_model=univariate_model,
                     summaries=batch_summaries,
                 )
             except TypeError:
@@ -180,27 +179,16 @@ def eval_migas15(
                     trim_text=True,
                     timestamps=timestamps,
                     training=False,
-                    univariate_model=univariate_model,
                     summaries=batch_summaries,
                 )
             except TypeError:
-                try:
-                    model_output = model(
-                        xb,
-                        text_inputs,
-                        pred_len=model_pred_len,
-                        timestamps=timestamps,
-                        univariate_model=univariate_model,
-                        summaries=batch_summaries,
-                    )
-                except TypeError:
-                    model_output = model(
-                        xb,
-                        text_inputs,
-                        pred_len=model_pred_len,
-                        timestamps=timestamps,
-                        summaries=batch_summaries,
-                    )
+                model_output = model(
+                    xb,
+                    text_inputs,
+                    pred_len=model_pred_len,
+                    timestamps=timestamps,
+                    summaries=batch_summaries,
+                )
 
             if isinstance(model_output, tuple) and len(model_output) == 4:
                 (
