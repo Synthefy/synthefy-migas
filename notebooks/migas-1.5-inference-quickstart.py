@@ -96,7 +96,14 @@ print(f"Using device: {device}")
 # You can swap `DATA_PATH` for any CSV that follows this format.
 
 # %%
-raw = pd.read_csv(DATA_PATH)
+try:
+    raw = pd.read_csv(DATA_PATH)
+except FileNotFoundError as exc:
+    raise FileNotFoundError(
+        f"Could not find data file: {DATA_PATH}\n"
+        "Run this script from the notebooks/ directory, or update DATA_PATH "
+        "to an absolute/correct relative path."
+    ) from exc
 raw["t"] = pd.to_datetime(raw["t"]).dt.strftime("%Y-%m-%d")
 
 # Take the last SEQ_LEN + PRED_LEN rows so the window is always exactly the right size

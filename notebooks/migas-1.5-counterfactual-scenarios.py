@@ -67,7 +67,13 @@ print(f"Pipeline loaded. Using device: {device}")
 # %%
 pred_len = 16
 
-df = pd.read_csv("../data/oil_scenario_sim.csv")
+try:
+    df = pd.read_csv("../data/oil_scenario_sim.csv")
+except FileNotFoundError as exc:
+    raise FileNotFoundError(
+        f"Could not find data file: ../data/oil_scenario_sim.csv\n"
+        "Run this script from the notebooks/ directory, or update the path to the data file."
+    ) from exc
 ctx_df = df[df["split"] == "context"].reset_index(drop=True)
 gt_df = df[df["split"] == "ground_truth"].reset_index(drop=True)
 
