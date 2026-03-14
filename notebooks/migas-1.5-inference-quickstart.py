@@ -40,7 +40,7 @@ import os
 
 DATA_PATH    = "../data/nflx_sample.csv"           # <-- CHANGE ME: CSV with columns t, y_t, split
 SUMMARY_PATH = "../data/nflx_sample_summary.txt"   # <-- CHANGE ME: pre-computed summary text file
-SERIES_NAME  = "US Natural Gas (Henry Hub)"                  # <-- CHANGE ME: human-readable name for the series
+SERIES_NAME  = "Netflix"                  # <-- CHANGE ME: human-readable name for the series
 SEQ_LEN      = 64                                            # <-- CHANGE ME: context window in steps
 PRED_LEN     = 16                                            # <-- CHANGE ME: forecast horizon in steps
 LLM_PROVIDER = "anthropic"                                   # <-- CHANGE ME: "anthropic" (recommended) | "openai"
