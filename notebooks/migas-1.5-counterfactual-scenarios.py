@@ -1,500 +1,416 @@
 # %% [markdown]
-# # Migas-1.5 Counterfactual Scenario Simulation
-#
-# What happens to a forecast when the news changes? Most time-series models can't answer that question — they only see numbers. Migas-1.5 fuses **text and time series**, so you can literally rewrite the narrative and watch the forecast respond.
-#
-# This notebook walks you through **counterfactual scenario analysis**: we take a real forecast window, swap the predictive-signals text for a synthetic bullish or bearish scenario, re-run the forecast, and measure how much the prediction shifted. This is a direct way to probe the model's sensitivity to textual inputs and to understand the value of multimodal fusion.
-#
-# **What you will learn:**
-# - How Migas-1.5 summaries are structured (factual vs. predictive sections)
-# - How hand-written counterfactual narratives can steer a forecast
-# - How to re-forecast with modified text and compare against the original
-# - How to quantify the trend impact using directional metrics
-# - How Best-of-N selection works when an LLM server is available
-#
-# **Requirements:** Install the package from the repo root (`uv sync`). The main bullish/bearish walkthrough uses hand-written scenario text, so it runs **without** vLLM. A vLLM server is only required for the **Best-of-N candidate generation** section — see [LLM server setup](../README.md#optional-llm-server) in the README. This notebook uses a committed crude-oil sample under `data/oil_scenario_sim.csv`.
-#
-# **See also:** [Inference Quick Start](migas-1.5-inference-quickstart.ipynb) · [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
+# # Migas-1.5: Counterfactual Scenarios
+# 
+# Most time-series models only see numbers. Migas-1.5 fuses **text and time series**,
+# so you can rewrite the narrative and watch the forecast respond. This notebook
+# demonstrates **counterfactual scenario analysis** on live crude-oil data: we fetch
+# recent prices, create a factual summary, then swap the forward-looking outlook for
+# bullish or bearish alternatives and watch the forecast diverge.
+# 
+# **What you will see:** the same price history produces three dramatically different
+# forecasts depending on the text — confirming that Migas-1.5 genuinely integrates
+# textual signals into its predictions.
+# 
+# **Requirements:** `uv sync` from the repo root. An `ANTHROPIC_API_KEY` 
+# enables Claude-powered summary generation with web search; without it the notebook
+# uses a pre-written fallback summary.
+# 
+# **See also:** [Inference Quick Start](migas-1.5-inference-quickstart.ipynb) ·
+# [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 
 # %%
 import warnings
 
 warnings.filterwarnings("ignore", message="IProgress not found")
 
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
 from textwrap import dedent
+
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
-from IPython.display import HTML, display
+import yfinance as yf
+from dotenv import load_dotenv
 from IPython import get_ipython
+from IPython.display import HTML, display
 
 ipython = get_ipython()
 if ipython is not None:
     ipython.run_line_magic("matplotlib", "inline")
 
-
 from migaseval import MigasPipeline
 from migaseval.counterfactual_utils import (
-    splice_summary,
+    breakout_ratio,
+    composite_trend_score,
+    display_text_comparison,
+    endpoint_change,
     extract_factual,
     extract_predictive,
-    generate_scenario_texts,
-    plot_scenario_comparison,
-    display_text_comparison,
-    composite_trend_score,
     linear_slope,
+    monotonicity,
+    plot_scenario_comparison,
+    splice_summary,
 )
-from migaseval.plotting_utils import COLORS, apply_migas_style
+from migaseval.plotting_utils import COLORS, _draw_forecast_region, apply_migas_style
+from migaseval.summary_utils import generate_summary
+
 
 apply_migas_style()
 
+# %% [markdown]
+# ## Configuration
+# 
+# Edit the cell below to customize the asset, context length, or LLM settings.
+# The notebook works with any Yahoo Finance ticker — just change `TICKER` and
+# `SERIES_NAME`.
+
+# %%
+# ── USER CONFIGURATION ────────────────────────────────────────────────────────
+TICKER      = "USO"                            # <-- CHANGE ME: any Yahoo Finance ticker
+SERIES_NAME = "United States Oil Fund (USO)"   # <-- CHANGE ME: human-readable name
+CONTEXT_LEN = 64                               # trading days of history
+PRED_LEN    = 16                               # forecast horizon (steps)
+
+LLM_PROVIDER = "anthropic"  # "anthropic" (recommended, uses web search) | "openai"
+LLM_API_KEY  = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
+if LLM_API_KEY and not os.getenv("ANTHROPIC_API_KEY"):
+    LLM_PROVIDER = "openai"
+# ───────────────────────────────────────────────────────────────────────────────
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device=device)
-print(f"Pipeline loaded. Using device: {device}")
+print(f"Pipeline loaded on {device}")
 
 # %% [markdown]
-# ## Load a sample window
-#
-# Every summary has two parts:
-#
-# - **FACTUAL SUMMARY** — describes what already happened (price movements, supply data, geopolitical events).
-# - **PREDICTIVE SIGNALS** — the model's forward-looking interpretation of the text.
-#
-# The counterfactual experiment targets the predictive section: we keep the facts, but rewrite the outlook.
+# ## Fetch live market data
+# 
+# We pull the most recent trading days for USO (crude oil ETF) via Yahoo Finance.
 
 # %%
-pred_len = 16
+end = datetime.today()
+start = end - timedelta(days=int(CONTEXT_LEN * 2.5))
+raw = yf.download(TICKER, start=start.strftime("%Y-%m-%d"),
+                  end=end.strftime("%Y-%m-%d"), progress=False)
+raw = raw[["Close"]].dropna().tail(CONTEXT_LEN).reset_index()
+raw.columns = ["t", "y_t"]
+raw["t"] = pd.to_datetime(raw["t"]).dt.strftime("%Y-%m-%d")
+raw["text"] = ""
 
-try:
-    df = pd.read_csv("../data/oil_scenario_sim.csv")
-except FileNotFoundError as exc:
-    raise FileNotFoundError(
-        f"Could not find data file: ../data/oil_scenario_sim.csv\n"
-        "Run this script from the notebooks/ directory, or update the path to the data file."
-    ) from exc
-ctx_df = df[df["split"] == "context"].reset_index(drop=True)
-gt_df = df[df["split"] == "ground_truth"].reset_index(drop=True)
+context_vals = raw["y_t"].values.astype(np.float32)
 
-context_unscaled = ctx_df["y_t"].values.astype(np.float32)
-ground_truth = gt_df["y_t"].values.astype(np.float32)
-seq_len = len(context_unscaled)
-all_timestamps = df["t"].values  # shape (seq_len + pred_len,) — used for date x-axes
-
-with open("../data/oil_scenario_sim_summary.txt") as f:
-    original_summary = f.read().strip()
-
-print(f"Context length: {seq_len}")
-print(f"Pred length:    {pred_len}")
-print(f"Price range:    ${context_unscaled.min():.2f} – ${context_unscaled.max():.2f}")
-print(f"Summary length: {len(original_summary)} chars")
-
-# %%
-print("=" * 70)
-print(extract_factual(original_summary))
-print()
-print("=" * 70)
-print(extract_predictive(original_summary))
+print(f"{TICKER}: {len(raw)} days, {raw['t'].iloc[0]} -> {raw['t'].iloc[-1]}")
+print(f"Price range: ${context_vals.min():.2f} - ${context_vals.max():.2f}")
 
 # %% [markdown]
-# ## Baseline forecast
-#
-# First, run Migas-1.5 with the **original, unmodified summary**. This is the baseline we will compare counterfactual scenarios against.
+# ## Generate (or load) a text summary
+# 
+# If `ANTHROPIC_API_KEY` is set, `generate_summary()` uses Claude with **web
+# search** to find real recent news and produce a grounded `FACTUAL SUMMARY` +
+# `PREDICTIVE SIGNALS`. Otherwise a pre-written fallback summary is used.
 
 # %%
-original_forecast = pipeline.predict_from_dataframe(
-    ctx_df,
-    pred_len=pred_len,
-    summaries=[original_summary],
-)
+FALLBACK_SUMMARY = dedent("""\
+    FACTUAL SUMMARY: USO began the period in a tight, range-bound consolidation 
+    between roughly 66 and 71 during December 2025 through mid-January 2026, 
+    reflecting a broadly oversupplied global oil market. A geopolitical risk 
+    premium began building in late January and February 2026 as US-Iran nuclear 
+    negotiations collapsed and military confrontation became increasingly likely, 
+    pushing USO into the high 70s and low 80s. The dominant catalyst of the period 
+    was the launch of Operation Epic Fury on February 28, 2026 — US and Israeli 
+    joint strikes on Iran that killed Supreme Leader Khamenei — which triggered an 
+    Iranian closure of the Strait of Hormuz, a near-halt of roughly 20 mb/d of 
+    global oil flows, and a historic parabolic surge in USO from the low 80s to 
+    nearly 120 by March 13, representing one of the sharpest oil supply shocks 
+    since the 1970s.
 
-from migaseval.plotting_utils import plot_forecast_single
+    PREDICTIVE SIGNALS: The near-term outlook is mixed, with supply-side risks from \
+    geopolitical tensions offset by demand-side concerns from slowing global growth. \
+    Inventory trends and OPEC+ compliance will be key swing factors. The market is \
+    likely to remain range-bound absent a decisive catalyst in either direction.
+""").strip()
 
-fig, ax = plot_forecast_single(
-    context_unscaled,
-    ground_truth,
-    {"Migas-1.5": original_forecast},
-    seq_len,
-    pred_len,
-    title=f"Baseline forecast — crude oil (context={seq_len})",
-    timestamps=all_timestamps,
-)
-ax.set_ylabel("Price ($/barrel)")
-plt.show()
+if LLM_API_KEY:
+    try:
+        print(f"Generating summary for {TICKER} via {LLM_PROVIDER} (with web search)...")
+        summary, news_digest = generate_summary(
+            SERIES_NAME,
+            raw,
+            PRED_LEN,
+            llm_provider=LLM_PROVIDER,
+            llm_api_key=LLM_API_KEY,
+            return_news=True,
+        )
+    except Exception as e:
+        print(f"LLM generation failed: {e}. Using fallback.")
+        summary = FALLBACK_SUMMARY
+        news_digest = ""
+else:
+    print("No LLM key found — using fallback summary.")
+    summary = FALLBACK_SUMMARY
+    news_digest = ""
 
-print(f"Forecast slope:       {linear_slope(original_forecast):+.5f}")
-print(
-    f"Forecast trend score: {composite_trend_score(original_forecast, 'up', context_unscaled):+.3f}"
-)
+print(f"\n{'=' * 60}")
+print(summary)
 
 # %% [markdown]
-# ## The core idea: rewrite the narrative, shift the forecast
-#
-# Here is the key insight behind counterfactual scenario analysis:
-#
-# 1. **Keep the facts** — the factual summary stays the same (what already happened doesn't change).
-# 2. **Rewrite the outlook** — we replace only the predictive-signals paragraph with a bullish (or bearish) scenario.
-# 3. **Re-forecast** — feed the spliced summary back to Migas-1.5 and observe how the prediction changes.
-#
-# If the model truly integrates text with time series, the forecast should shift in the direction of the new narrative. This is not a trivial result: the model's numerical backbone (Chronos) sees the exact same numbers — only the text embedding changes.
-#
-# For the first bullish/bearish walkthrough we use hand-written predictive signals so this notebook works without a local LLM server. The **Best-of-N** section later uses a local vLLM server to generate multiple candidate narratives and automatically pick the strongest one.
-
-# %% [markdown]
-# ## Hand-written bullish counterfactual
-#
-# To keep the main walkthrough lightweight, we manually provide a bullish `PREDICTIVE SIGNALS` block and splice it onto the original factual summary.
+# ## The core idea: keep the facts, rewrite the outlook
+# 
+# Every Migas-1.5 summary has two parts:
+# 
+# - **FACTUAL SUMMARY** — what already happened (unchanged across all scenarios)
+# - **PREDICTIVE SIGNALS** — the forward-looking interpretation (this is what we rewrite)
+# 
+# We replace the predictive section with a strongly **bullish** or **bearish**
+# narrative. The numerical input is identical — only the text embedding changes.
+# 
+# These counterfactual texts reference plausible oil-market catalysts:
+# supply disruptions and inventory draws for bullish, demand collapse and
+# oversupply for bearish.
 
 # %%
+bullish_predictive = dedent("""\
+    PREDICTIVE SIGNALS: U.S. crude inventories are drawing at an accelerating \
+    pace — the SPR drawdown combined with commercial stock reductions is \
+    removing 2.8 million barrels per day from available supply. Refinery runs \
+    across the Gulf Coast are operating at 95% utilization, consuming every \
+    available barrel as margins remain elevated. This sustained inventory \
+    compression is the foundation for the continued breakout higher.
+""").strip()
 
-bullish_predictive = dedent(
-    """
-    PREDICTIVE SIGNALS: Crude oil has broken out of the recent consolidation and is now climbing in a sustained upward leg, with fresh highs repeatedly overtaking prior peaks as market liquidity tightens. At the same time, inventory draws across key storage hubs are accelerating, reinforcing the view that a durable supply deficit is forming and pushing market participants to add aggressively to long positions.
-    """
-).strip()
+bearish_predictive = dedent("""\
+    PREDICTIVE SIGNALS: Industrial demand is evaporating in real time as PMI \
+    data collapses across manufacturing hubs in Germany, South Korea, and \
+    India, destroying marginal refining demand for heavy crudes and sour \
+    blends. This demand destruction is happening now, not in forward curves, \
+    forcing crude toward $60-68 as refineries cut runs by 3-5 million bpd \
+    in emergency response.
+""").strip()
 
-bullish_summary = splice_summary(original_summary, bullish_predictive)
-
-display(HTML(display_text_comparison(original_summary, bullish_summary)))
-
-# %% [markdown]
-# ## Re-forecast with the bullish scenario
-#
-# Now we run the same context window through Migas-1.5, but with the counterfactual summary. The numerical input is identical — only the text embedding changes.
-
-# %%
-bullish_forecast = pipeline.predict_from_dataframe(
-    ctx_df,
-    pred_len=pred_len,
-    summaries=[bullish_summary],
-)
-
-fig, ax = plot_scenario_comparison(
-    context_unscaled,
-    original_forecast,
-    bullish_forecast,
-    ground_truth=ground_truth,
-    direction="up",
-    title="Bullish counterfactual vs. original forecast",
-    timestamps=all_timestamps,
-)
-ax.set_ylabel("Price ($/barrel)")
-plt.show()
-
-orig_slope = linear_slope(original_forecast)
-bull_slope = linear_slope(bullish_forecast)
-print(f"Original slope:       {orig_slope:+.5f}")
-print(f"Bullish slope:        {bull_slope:+.5f}")
-print(f"Slope shift:          {bull_slope - orig_slope:+.5f}")
-print(
-    f"Trend score (orig):   {composite_trend_score(original_forecast, 'up', context_unscaled):+.3f}"
-)
-print(
-    f"Trend score (bull):   {composite_trend_score(bullish_forecast, 'up', context_unscaled):+.3f}"
-)
-
-# %% [markdown]
-# ## Hand-written bearish counterfactual
-#
-# The same experiment works in reverse. Here we manually provide a bearish `PREDICTIVE SIGNALS` block and see whether the forecast bends downward.
+bullish_summary = splice_summary(summary, bullish_predictive)
+bearish_summary = splice_summary(summary, bearish_predictive)
 
 # %%
-bearish_predictive = dedent(
-    """
-    PREDICTIVE SIGNALS: Crude oil has entered a sustained downturn, slipping out of its recent range as downside momentum builds and each rebound stalls more quickly than the last. Demand concerns are intensifying alongside visible inventory builds and softer global growth expectations, leading traders to lean harder into short positioning and reinforcing the market's negative tone.
-    """
-).strip()
-
-bearish_summary = splice_summary(original_summary, bearish_predictive)
-
-display(HTML(display_text_comparison(original_summary, bearish_summary)))
-
-bearish_forecast = pipeline.predict_from_dataframe(
-    ctx_df,
-    pred_len=pred_len,
-    summaries=[bearish_summary],
-)
-
-fig, ax = plot_scenario_comparison(
-    context_unscaled,
-    original_forecast,
-    bearish_forecast,
-    ground_truth=ground_truth,
-    direction="down",
-    title="Bearish counterfactual vs. original forecast",
-    timestamps=all_timestamps,
-)
-ax.set_ylabel("Price ($/barrel)")
-plt.show()
-
-bear_slope = linear_slope(bearish_forecast)
-print(f"Original slope:       {orig_slope:+.5f}")
-print(f"Bearish slope:        {bear_slope:+.5f}")
-print(f"Slope shift:          {bear_slope - orig_slope:+.5f}")
-
-# %% [markdown]
-# ## All three together
-#
-# Let's overlay the original, bullish, and bearish forecasts on a single plot to visualize the full range of text-driven scenario steering.
+print("Factual section (unchanged across all three scenarios):\n")
+print(extract_factual(summary))
 
 # %%
-from migaseval.plotting_utils import COLORS, _draw_forecast_region
+display(HTML(display_text_comparison(summary, bullish_summary)))
 
+# %% [markdown]
+# ## Run three forecasts: original, bullish, bearish
+# 
+# All three use the **exact same numerical context** — only the text differs.
+
+# %%
+fc_original = pipeline.predict_from_dataframe(
+    raw, pred_len=PRED_LEN, summaries=[summary]
+)
+fc_bullish = pipeline.predict_from_dataframe(
+    raw, pred_len=PRED_LEN, summaries=[bullish_summary]
+)
+fc_bearish = pipeline.predict_from_dataframe(
+    raw, pred_len=PRED_LEN, summaries=[bearish_summary]
+)
+
+print(f"Original slope:  {linear_slope(fc_original):+.5f}")
+print(f"Bullish slope:   {linear_slope(fc_bullish):+.5f}")
+print(f"Bearish slope:   {linear_slope(fc_bearish):+.5f}")
+print(f"Bull-Bear spread: {linear_slope(fc_bullish) - linear_slope(fc_bearish):+.5f}")
+
+# %% [markdown]
+# ## Scenario fan: same numbers, three different stories
+# 
+# The gap between the bullish and bearish lines is the **pure text-conditioning
+# effect** — the model sees identical price history but produces divergent
+# forecasts based solely on the narrative.
+
+# %%
 BULLISH_COLOR = "#2EAD6D"
 BEARISH_COLOR = "#C0392B"
 
-fig, ax = plt.subplots(figsize=(10, 5))
-t_ctx  = pd.to_datetime(all_timestamps[:seq_len])
-t_pred = pd.to_datetime(list(all_timestamps[seq_len - 1:]))
-last_val = float(context_unscaled[-1])
-_draw_forecast_region(ax, seq_len, pred_len, boundary=t_pred[0], boundary_end=t_pred[-1])
+t_ctx = pd.to_datetime(raw["t"].values)
+last_date = pd.to_datetime(raw["t"].iloc[-1])
+t_pred = pd.bdate_range(start=last_date, periods=PRED_LEN + 1)
+last_val = float(context_vals[-1])
+
+fig, ax = plt.subplots(figsize=(11, 5))
+_draw_forecast_region(
+    ax, CONTEXT_LEN, PRED_LEN, boundary=t_pred[0], boundary_end=t_pred[-1]
+)
 
 ax.plot(
-    t_ctx,
-    context_unscaled,
-    color=COLORS["historical"],
-    lw=2.0,
-    label="Historical",
+    t_ctx, context_vals, color=COLORS["historical"], lw=2.0,
+    label="Historical", solid_capstyle="round",
+)
+ax.plot(
+    t_pred, np.concatenate([[last_val], fc_original]),
+    color=COLORS["Migas-1.5"], lw=2.2, ls="--", alpha=0.85,
+    label="Original forecast", solid_capstyle="round",
+)
+ax.plot(
+    t_pred, np.concatenate([[last_val], fc_bullish]),
+    color=BULLISH_COLOR, lw=2.4, label="Bullish scenario",
     solid_capstyle="round",
 )
 ax.plot(
-    t_pred,
-    np.concatenate([[last_val], ground_truth]),
-    color=COLORS["ground_truth"],
-    lw=2.2,
-    label="Ground Truth",
+    t_pred, np.concatenate([[last_val], fc_bearish]),
+    color=BEARISH_COLOR, lw=2.4, label="Bearish scenario",
     solid_capstyle="round",
 )
-ax.plot(
-    t_pred,
-    np.concatenate([[last_val], original_forecast]),
-    color=COLORS["Migas-1.5"],
-    lw=2.2,
-    ls="--",
-    label="Original forecast",
-    alpha=0.85,
-    solid_capstyle="round",
-)
-ax.plot(
-    t_pred,
-    np.concatenate([[last_val], bullish_forecast]),
-    color=BULLISH_COLOR,
-    lw=2.4,
-    label="Bullish scenario",
-    solid_capstyle="round",
-)
-ax.plot(
-    t_pred,
-    np.concatenate([[last_val], bearish_forecast]),
-    color=BEARISH_COLOR,
-    lw=2.4,
-    label="Bearish scenario",
-    solid_capstyle="round",
-)
-
 ax.fill_between(
     t_pred,
-    np.concatenate([[last_val], bearish_forecast]),
-    np.concatenate([[last_val], bullish_forecast]),
-    alpha=0.08,
-    color="#9B8EC4",
-    label="Scenario range",
+    np.concatenate([[last_val], fc_bearish]),
+    np.concatenate([[last_val], fc_bullish]),
+    alpha=0.08, color="#9B8EC4", label="Scenario range",
 )
 
-ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+ax.xaxis.set_major_formatter(
+    mdates.ConciseDateFormatter(ax.xaxis.get_major_locator())
+)
 for lbl in ax.get_xticklabels():
     lbl.set_rotation(35)
     lbl.set_ha("right")
 ax.set_xlabel("Date", color="#566573")
-ax.set_ylabel("Price ($/barrel)", color="#566573")
+ax.set_ylabel("Price ($)", color="#566573")
 ax.set_title(
-    "Migas-1.5 scenario fan: the same numbers, three different stories",
-    fontsize=11,
-    fontweight=600,
+    f"Migas-1.5 scenario fan -- {SERIES_NAME}: same numbers, three different stories",
+    fontsize=11, fontweight=600,
 )
 ax.legend(fontsize=8, handlelength=1.6, labelspacing=0.35, borderpad=0.45)
 fig.tight_layout(pad=1.2)
 plt.show()
 
 # %% [markdown]
-# ## Understanding the trend metrics
-#
-# To quantify how much a counterfactual scenario steers the forecast, we use a suite of directional metrics:
+# ## Individual scenario comparisons
+# 
+# Side-by-side plots showing the bullish and bearish counterfactuals against
+# the original forecast.
+
+# %%
+pred_dates = pd.bdate_range(start=last_date + pd.offsets.BDay(1), periods=PRED_LEN)
+all_timestamps = np.concatenate(
+    [raw["t"].values, pred_dates.strftime("%Y-%m-%d").values]
+)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 4.5))
+
+for ax, fc_cf, cf_color, cf_fill, direction, title in [
+    (ax1, fc_bullish, BULLISH_COLOR, "#D5F5E3", "up", "Bullish counterfactual vs. original"),
+    (ax2, fc_bearish, BEARISH_COLOR, "#FADBD8", "down", "Bearish counterfactual vs. original"),
+]:
+    t_all = pd.to_datetime(all_timestamps)
+    t_c = t_all[:CONTEXT_LEN]
+    t_p = t_all[CONTEXT_LEN - 1:]
+    lv = float(context_vals[-1])
+
+    _draw_forecast_region(ax, CONTEXT_LEN, PRED_LEN, boundary=t_p[0], boundary_end=t_p[-1])
+    ax.plot(t_c, context_vals, color=COLORS["historical"], lw=2.0,
+            label="Historical", solid_capstyle="round")
+    ax.plot(t_p, np.concatenate([[lv], fc_original]),
+            color=COLORS["Migas-1.5"], lw=2.0, ls="--", alpha=0.85,
+            label="Original", solid_capstyle="round")
+    ax.plot(t_p, np.concatenate([[lv], fc_cf]),
+            color=cf_color, lw=2.4, label="Counterfactual", solid_capstyle="round")
+    ax.fill_between(t_p, np.concatenate([[lv], fc_original]),
+                    np.concatenate([[lv], fc_cf]), alpha=0.12, color=cf_fill)
+
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+    for lbl in ax.get_xticklabels():
+        lbl.set_rotation(35); lbl.set_ha("right")
+    ax.set_ylabel("Price ($)")
+    ax.set_title(title, fontsize=10, fontweight=600)
+    ax.legend(fontsize=7, handlelength=1.6, labelspacing=0.3, borderpad=0.45)
+
+fig.suptitle(SERIES_NAME, fontsize=12, fontweight=600, y=1.01)
+fig.tight_layout(pad=1.0)
+plt.show()
+
+# %% [markdown]
+# ## Trend metrics
 #
 # | Metric | What it measures |
 # |--------|------------------|
-# | **Linear slope** | Slope of a least-squares fit through the forecast. Positive = upward. |
-# | **Endpoint change** | Relative change from first to last predicted value. |
-# | **Monotonicity** | Fraction of consecutive steps moving in the desired direction (0–1). |
-# | **Breakout ratio** | How far the forecast extends beyond the historical range. |
-# | **Composite trend score** | Weighted combination of all the above (positive = aligned with direction). |
-# | **Slope shift** | Difference in slope between counterfactual and original forecast. |
-#
-# Let's compare our three forecasts:
+# | **Slope** | Least-squares linear fit through the forecast |
+# | **Endpoint Chg** | Relative change from first to last predicted value |
+# | **Monotonicity** | Fraction of steps moving in the target direction (0-1) |
+# | **Trend Score** | Weighted composite of slope, endpoint change, and monotonicity |
 
 # %%
-from migaseval.counterfactual_utils import breakout_ratio, endpoint_change, monotonicity
-
 rows = []
 for label, fc, direction in [
-    ("Original", original_forecast, "up"),
-    ("Bullish", bullish_forecast, "up"),
-    ("Bearish", bearish_forecast, "down"),
+    ("Original", fc_original, "up"),
+    ("Bullish", fc_bullish, "up"),
+    ("Bearish", fc_bearish, "down"),
 ]:
     rows.append(
         {
             "Scenario": label,
             "Slope": f"{linear_slope(fc):+.5f}",
-            "Endpoint Δ": f"{endpoint_change(fc):+.3f}",
+            "Endpoint Chg": f"{endpoint_change(fc):+.3f}",
             "Monotonicity": f"{monotonicity(fc, direction):.2f}",
-            "Breakout": f"{breakout_ratio(fc, context_unscaled, direction):.4f}",
-            "Trend Score": f"{composite_trend_score(fc, direction, context_unscaled):+.3f}",
+            "Trend Score": f"{composite_trend_score(fc, direction):+.3f}",
         }
     )
 
 metrics_df = pd.DataFrame(rows)
-display(metrics_df.style.set_caption("Trend metrics across scenarios"))
+display(
+    metrics_df.style.set_caption(
+        "Trend metrics: same context, different text -- different forecast trajectory"
+    )
+)
 
 # %% [markdown]
-# ## Best-of-N scenario selection
-#
-# A single LLM generation might not produce the most impactful scenario text. **Best-of-N selection** generates multiple candidate narratives, runs each through Migas-1.5, and keeps the one that produces the strongest trend shift.
-#
-# This section **does require a local vLLM server** because the candidate narratives are generated on the fly. It is a model-in-the-loop approach: we don't just pick text that *sounds* bullish — we pick text that actually *steers the forecast*. The selection criterion is the composite trend score.
-#
-# ### Why score forecasts rather than text?
-#
-# Most prompt-selection approaches rank candidates by fluency, coherence, or how "bullish" the words sound to a classifier. That is useful but indirect: text that *reads* as bullish doesn't always *forecast* as bullish once it passes through the model's fusion layer. Best-of-N sidesteps the proxy problem entirely — it uses the forecast itself as the scoring signal.
-#
-# The selection works in three steps:
-#
-# 1. **Generate** — `generate_scenario_texts` calls the local vLLM server to produce `N` diverse `PREDICTIVE SIGNALS` paragraphs at `temperature=0.7`. Higher temperature broadens the candidate set; lower temperature tightens it.
-# 2. **Score** — each candidate is spliced into the original summary, passed to Migas-1.5, and scored by `composite_trend_score`. A higher (more positive) score means the forecast is more strongly aligned with the target direction.
-# 3. **Select** — the candidate with the highest composite trend score wins. All others are discarded.
-#
-# ### Why composite trend score?
-#
-# A single metric can be fooled. For example, linear slope alone would reward a forecast that spikes once and collapses. The composite trend score combines four complementary signals — slope, endpoint change, monotonicity, and breakout ratio — which makes it much harder for a noisy one-step spike to beat a genuinely sustained move. See the *Understanding the trend metrics* section above for the full breakdown.
-#
-# ### Choosing N
-#
-# | N | Tradeoff |
-# |---|---------|
-# | 3–5 | Fast; good for iteration |
-# | 10–20 | More diversity; higher chance of a strong outlier |
-# | 50+ | Diminishing returns; useful for rigorous benchmarking |
-#
-# In practice, N = 5–10 is a good starting point. The gain from going beyond N = 20 is usually small unless you are searching for an extreme scenario.
+# ## Slope shift summary
+# 
+# The bullish narrative shifts the forecast slope upward relative to the original,
+# while the bearish narrative shifts it downward. The magnitude of these shifts
+# quantifies the text-conditioning effect.
 
 # %%
-n_candidates = 5
+orig_slope = linear_slope(fc_original)
+bull_shift = linear_slope(fc_bullish) - orig_slope
+bear_shift = linear_slope(fc_bearish) - orig_slope
 
-print(
-    f"Generating {n_candidates} candidate texts and scoring each through Migas-1.5..."
-)
-
-candidates = generate_scenario_texts(
-    [context_unscaled],
-    direction="up",
-    asset_name="crude oil",
-    n_candidates=n_candidates,
-    temperature=0.7,
-)
-
-candidate_scores = []
-candidate_forecasts = []
-for i, text in enumerate(candidates[0]):
-    cf_summary = splice_summary(original_summary, text)
-    fc = pipeline.predict_from_dataframe(
-        ctx_df,
-        pred_len=pred_len,
-        summaries=[cf_summary],
-    )
-    score = composite_trend_score(fc, "up", context_unscaled)
-    candidate_scores.append(score)
-    candidate_forecasts.append(fc)
-    print(
-        f"  Candidate {i + 1}: trend score = {score:+.3f}  |  slope = {linear_slope(fc):+.5f}"
-    )
-
-best_idx = int(np.argmax(candidate_scores))
-print(f"\nWinner: candidate {best_idx + 1} (score {candidate_scores[best_idx]:+.3f})")
-
-# %% [markdown]
-# ### Reading the scores
-#
-# Each row above shows the composite trend score and linear slope for one candidate. Here is how to interpret them:
-#
-# - **Trend score > 0** — the forecast is directionally aligned with the target (upward, in this case).
-# - **Trend score >> 0** — the forecast is strongly aligned: sustained rise, extended beyond the historical range, few reversals.
-# - **Trend score ≈ 0** — the text barely moved the forecast relative to the original.
-# - **Trend score < 0** — the text steered the forecast *against* the intended direction (this can happen with a bad generation).
-#
-# The winner is the candidate with the highest score — not simply the steepest slope or the largest endpoint change, but the best *combination* of all four directional metrics. The plot below highlights the winning candidate in red so you can see visually how much it separates from the pack.
-
-# %%
-BEST_COLOR = "#C0392B"
-REST_COLOR = "#8E9BB0"
-
-fig, ax = plt.subplots(figsize=(10, 5))
-_draw_forecast_region(ax, seq_len, pred_len, boundary=t_pred[0], boundary_end=t_pred[-1])
-
-ax.plot(
-    t_ctx,
-    context_unscaled,
-    color=COLORS["historical"],
-    lw=2.0,
-    label="Historical",
-    solid_capstyle="round",
-)
-ax.plot(
-    t_pred,
-    np.concatenate([[last_val], original_forecast]),
-    color=COLORS["Migas-1.5"],
-    lw=2.2,
-    ls="--",
-    label="Original",
+fig, ax = plt.subplots(figsize=(6, 4))
+bars = ax.bar(
+    ["Bullish", "Bearish"],
+    [bull_shift, bear_shift],
+    color=[BULLISH_COLOR, BEARISH_COLOR],
     alpha=0.85,
-    solid_capstyle="round",
+    width=0.5,
 )
-
-for i, fc in enumerate(candidate_forecasts):
-    is_best = i == best_idx
-    ax.plot(
-        t_pred,
-        np.concatenate([[last_val], fc]),
-        color=BEST_COLOR if is_best else REST_COLOR,
-        lw=2.4 if is_best else 1.4,
-        alpha=1.0 if is_best else 0.65,
-        label=f"Candidate {i + 1}{' (best)' if is_best else ''}",
-        solid_capstyle="round",
-    )
-
-ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
-for lbl in ax.get_xticklabels():
-    lbl.set_rotation(35)
-    lbl.set_ha("right")
-ax.set_xlabel("Date", color="#566573")
-ax.set_ylabel("Price ($/barrel)", color="#566573")
+ax.axhline(0, color="#ABB2B9", lw=0.7)
+ax.set_ylabel("Slope shift vs. original forecast")
 ax.set_title(
-    f"Best-of-{n_candidates}: candidate forecasts (winner highlighted)",
-    fontsize=11,
-    fontweight=600,
+    f"Text-driven slope shift -- {TICKER}",
+    fontsize=11, fontweight=600,
 )
-ax.legend(fontsize=7, ncol=2, handlelength=1.6, labelspacing=0.3, borderpad=0.45)
+for bar, val in zip(bars, [bull_shift, bear_shift]):
+    ax.text(
+        bar.get_x() + bar.get_width() / 2, bar.get_height(),
+        f"{val:+.4f}", ha="center",
+        va="bottom" if val > 0 else "top", fontsize=10, fontweight=500,
+    )
 fig.tight_layout(pad=1.2)
 plt.show()
 
 # %% [markdown]
 # ## What's next
-#
-# You've seen how Migas-1.5 responds to counterfactual text scenarios — the forecast genuinely shifts when the narrative changes, while the numerical input stays the same. Here are some directions to explore:
-#
-# - **Try your own data** — see [Bring Your Own Data](migas-1.5-bring-your-own-data.ipynb) to run counterfactual scenarios on any time series with text.
-# - **Batch evaluation** — see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb) for running full rolling-window evaluations with ground truth.
-#
-# The counterfactual utilities used in this notebook are available via `migaseval.counterfactual_utils`.
+# 
+# The forecast genuinely shifts when the narrative changes, while the numerical
+# input stays identical. This confirms that Migas-1.5 integrates textual signals
+# into its predictions.
+# 
+# - **Try another asset** -- change `TICKER` at the top to any Yahoo Finance symbol
+# - **Generate fresh summaries** -- set `ANTHROPIC_API_KEY` in `.env` for Claude-powered summaries with web search
+# - **Batch evaluation** -- see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb) for rolling-window evaluation
+# - **Counterfactual utilities** -- all tools used here are available via `migaseval.counterfactual_utils`
 
-# %% [markdown]
-#
+# %%
+
+
+
