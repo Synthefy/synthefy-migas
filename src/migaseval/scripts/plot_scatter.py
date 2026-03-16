@@ -82,9 +82,9 @@ def load_predictions_from_outputs(
     results_dir: Path, per_dataset_csv: Path, model_names: list
 ) -> Tuple[dict, np.ndarray]:
     """
-    Load predictions from the new per-dataset outputs structure.
+    Load predictions from the per-dataset outputs structure.
 
-    The new structure is:
+    The structure is:
         results_dir/
           outputs/
             {dataset_name}/
@@ -135,6 +135,52 @@ def load_predictions_from_outputs(
     return predictions_concat, gt_concat
 
 
+def load_predictions_from_npz(
+    results_dir: Path, per_dataset_csv: Path, model_names: list
+) -> Tuple[dict, np.ndarray]:
+    """Load predictions from npz files under predictions/<dataset>/<model>.npz.
+
+    Each .npz contains 'predictions', 'gt', 'history', 'history_means',
+    'history_stds'.  Ground truth is taken from the first available model's npz.
+
+    Returns:
+        Tuple of (predictions dict, gt array) with all datasets concatenated.
+    """
+    pred_dir = results_dir / "predictions"
+    df = pd.read_csv(per_dataset_csv)
+
+    predictions: dict[str, list[np.ndarray]] = {name: [] for name in model_names}
+    all_gt: list[np.ndarray] = []
+
+    for _, row in df.iterrows():
+        dataset_name = row["dataset_name"]
+        ds_dir = pred_dir / dataset_name
+        if not ds_dir.is_dir():
+            continue
+
+        # Load gt from the first available model
+        gt_loaded = False
+        for m in model_names:
+            npz_path = ds_dir / f"{m}.npz"
+            if npz_path.is_file():
+                data = np.load(npz_path)
+                if not gt_loaded:
+                    all_gt.append(data["gt"])
+                    gt_loaded = True
+                predictions[m].append(data["predictions"])
+
+    if not all_gt:
+        raise FileNotFoundError(f"No npz files found in {pred_dir}")
+
+    gt_concat = np.concatenate(all_gt, axis=0)
+    predictions_concat = {}
+    for model_name, pred_list in predictions.items():
+        if pred_list:
+            predictions_concat[model_name] = np.concatenate(pred_list, axis=0)
+
+    return predictions_concat, gt_concat
+
+
 def plot_sample_level_scatter(
     results_dir: Path,
     per_dataset_csv: Path,
@@ -156,17 +202,43 @@ def plot_sample_level_scatter(
         )
         return
 
-    # Detect new vs old format
+    # Detect format: npz (predictions/<ds>/<model>.npz), outputs (<ds>/<model>_pred.npy), or legacy (flat .npy)
+    pred_dir = results_dir / "predictions"
     outputs_dir = results_dir / "outputs"
-    use_new_format = outputs_dir.exists() and outputs_dir.is_dir()
+    use_npz = pred_dir.exists() and pred_dir.is_dir()
+    use_outputs = (not use_npz) and outputs_dir.exists() and outputs_dir.is_dir()
 
     # Models we need to load
     models_to_load = ["migas15", compare_model]
     if window_length is not None:
         models_to_load.append("timeseries")
 
-    if use_new_format:
-        print("Detected new per-dataset output format...")
+    if use_npz:
+        print("Detected npz prediction format...")
+        predictions, gt = load_predictions_from_npz(
+            results_dir, per_dataset_csv, models_to_load
+        )
+        n_samples_expected = len(gt)
+
+        if "migas15" not in predictions:
+            print("Error: migas15 predictions not found!")
+            return
+        if compare_model not in predictions:
+            print(f"Error: {compare_model} predictions not found!")
+            print(f"Available models: {list(predictions.keys())}")
+            return
+
+        migas15_pred = predictions["migas15"]
+        compare_pred = predictions[compare_model]
+        ts_pred = predictions.get("timeseries", None)
+
+        if window_length is not None and ts_pred is None:
+            print(
+                "Warning: timeseries predictions not found, cannot apply window filtering!"
+            )
+            window_length = None
+    elif use_outputs:
+        print("Detected per-dataset output format...")
         predictions, gt = load_predictions_from_outputs(
             results_dir, per_dataset_csv, models_to_load
         )
@@ -192,7 +264,12 @@ def plot_sample_level_scatter(
     else:
         # Legacy format - load from single files
         print("Using legacy single-file format...")
-        gt = np.load(results_dir / "gt.npy")
+        gt_path = results_dir / "gt.npy"
+        if not gt_path.exists():
+            print(f"Error: gt.npy not found in {results_dir}")
+            print("Expected either predictions/<dataset>/<model>.npz or gt.npy")
+            return
+        gt = np.load(gt_path)
         n_samples_expected = len(gt)
 
         # Load predictions
