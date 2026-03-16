@@ -420,7 +420,7 @@ def main():
                 except ImportError:
                     print(
                         "  WARNING: toto-ts is not installed, skipping Toto baseline. "
-                        "Install with: uv sync --extra toto"
+                        "Install with: pip install toto-ts (conflicts with vllm)"
                     )
                     args.eval_toto = False
                     toto_preds = None

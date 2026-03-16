@@ -35,8 +35,9 @@ timesfm = { git = "https://github.com/google-research/timesfm.git", rev = "bf88c
 
 [project.optional-dependencies]
 vllm = ["vllm>=0.11.0"]
-# Toto baseline. May conflict with torch/vllm versions.
-toto = ["toto-ts"]
+# Toto baseline. Conflicts with vllm (transformers version mismatch).
+# Install manually: pip install toto-ts
+# toto = ["toto-ts"]
 
 [project.scripts]
 synthefy-migas = "migaseval.evaluation:main"
