@@ -4,7 +4,7 @@
 
 **Text-and-time-series fusion forecasting.** Migas-1.5 reads per-step text alongside historical values and fuses both into a single forecast. Rewrite the narrative — watch the forecast shift.
 
-![Migas-1.5 vs Chronos-2 on crude oil: text steers the forecast downward while the numeric-only baseline trends up](data/oil_scenario.png)
+![Migas-1.5 vs Chronos-2 on crude oil: text steers the forecast downward while the numeric-only baseline trends up](figures/oil_scenario.png)
 
 *When OPEC announces a surprise production cut, Migas-1.5 (orange) incorporates the news and forecasts a price rebound — while the text-free Chronos-2 baseline (blue) continues upward. Same numbers, different story.*
 
