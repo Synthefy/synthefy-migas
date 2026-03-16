@@ -558,6 +558,46 @@ def main():
                         else 0.0
                     )
 
+            # ── Back-fill metrics from cached npz files ─────────────
+            # If previous runs cached predictions for models not requested
+            # this run, load them so the CSV keeps all columns.
+            _optional_model_keys = {
+                "timesfm": args.eval_timesfm,
+                "toto": args.eval_toto,
+                "tabpfn": args.eval_tabpfn,
+                "prophet": args.eval_prophet,
+                "sarima": args.eval_sarima,
+            }
+            for _mk, _already_ran in _optional_model_keys.items():
+                if _already_ran:
+                    continue  # already handled above
+                if not _has_preds(ctx_dir, ds_name, _mk):
+                    continue
+                _cached = _load_preds(ctx_dir, ds_name, _mk)
+                if _cached is None:
+                    continue
+                _preds = _cached["predictions"]
+                if _preds.shape[0] != n_samples:
+                    print(
+                        f"  {ds_name}/{_mk}: cached sample count mismatch "
+                        f"({_preds.shape[0]} vs {n_samples}), skipping"
+                    )
+                    continue
+                _m = compute_metrics(_preds, gt)
+                row[f"{_mk}_mean_mae"] = _m["mean_mae"]
+                row[f"{_mk}_median_mae"] = _m["median_mae"]
+                row[f"{_mk}_mean_mse"] = _m["mean_mse"]
+                row[f"{_mk}_mean_mape"] = _m["mean_mape"]
+                row[f"{_mk}_median_mape"] = _m["median_mape"]
+                row[f"migas15_vs_{_mk}_improvement_pct"] = (
+                    (_m["mean_mae"] - migas_m["mean_mae"])
+                    / _m["mean_mae"]
+                    * 100
+                    if _m["mean_mae"] > 0
+                    else 0.0
+                )
+                print(f"  {ds_name}/{_mk}: back-filled from cache")
+
             rows.append(row)
 
             r_migas = float(row["migas15_mean_mae"])
@@ -577,15 +617,15 @@ def main():
                 f"Migas-1.5={r_migas:.4f}",
                 f"Chronos={r_chro:.4f}",
             ]
-            if args.eval_timesfm and "timesfm_mean_mae" in row:
+            if "timesfm_mean_mae" in row:
                 parts.append(f"TimesFM={float(row['timesfm_mean_mae']):.4f}")
-            if args.eval_toto and "toto_mean_mae" in row:
+            if "toto_mean_mae" in row:
                 parts.append(f"Toto={float(row['toto_mean_mae']):.4f}")
-            if args.eval_tabpfn and "tabpfn_mean_mae" in row:
+            if "tabpfn_mean_mae" in row:
                 parts.append(f"TabPFN={float(row['tabpfn_mean_mae']):.4f}")
-            if args.eval_prophet and "prophet_mean_mae" in row:
+            if "prophet_mean_mae" in row:
                 parts.append(f"Prophet={float(row['prophet_mean_mae']):.4f}")
-            if args.eval_sarima and "sarima_mean_mae" in row:
+            if "sarima_mean_mae" in row:
                 parts.append(f"SARIMA={float(row['sarima_mean_mae']):.4f}")
             parts.append(f"Impr={float(row['mae_improvement_pct']):+.1f}%")
             parts.append(f"[{winner}]")
@@ -623,14 +663,14 @@ def main():
                 ("Chronos", "chronos"),
             ]
             _optional_models = [
-                (args.eval_timesfm, "TimesFM", "timesfm"),
-                (args.eval_toto, "Toto", "toto"),
-                (args.eval_tabpfn, "TabPFN", "tabpfn"),
-                (args.eval_prophet, "Prophet", "prophet"),
-                (args.eval_sarima, "SARIMA", "sarima"),
+                ("TimesFM", "timesfm"),
+                ("Toto", "toto"),
+                ("TabPFN", "tabpfn"),
+                ("Prophet", "prophet"),
+                ("SARIMA", "sarima"),
             ]
-            for _flag, _lbl, _pfx in _optional_models:
-                if _flag and all(f"{_pfx}_mean_mae" in r for r in rows):
+            for _lbl, _pfx in _optional_models:
+                if all(f"{_pfx}_mean_mae" in r for r in rows):
                     models_list.append((_lbl, _pfx))
 
             n_samples_arr = np.array([r["n_samples"] for r in rows])
@@ -701,10 +741,10 @@ def main():
                 f"\n  Migas-1.5 vs Chronos improvement: "
                 f"{np.mean(all_impr):+.2f}%"
             )
-            for _flag, _lbl, _pfx in _optional_models:
+            for _lbl, _pfx in _optional_models:
                 _impr_key = f"migas15_vs_{_pfx}_improvement_pct"
                 _mae_key = f"{_pfx}_mean_mae"
-                if _flag and all(_impr_key in r for r in rows):
+                if all(_impr_key in r for r in rows):
                     _impr_vals = [r[_impr_key] for r in rows]
                     print(
                         f"  Migas-1.5 vs {_lbl} improvement: "
