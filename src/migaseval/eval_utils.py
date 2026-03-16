@@ -21,11 +21,11 @@ MODEL_DISPLAY_NAMES: Dict[str, str] = {
 }
 
 MODEL_COLORS: Dict[str, str] = {
-    "migas15": "#4a8c4a",
-    "chronos": "#c45c5c",
-    "timesfm": "#7a4a9b",
-    "toto": "#4a7c9b",
-    "prophet": "#d4893f",
+    "migas15": "#F28C28",   # orange (brand)
+    "chronos": "#4A90D9",   # blue (brand)
+    "timesfm": "#7B68EE",   # medium slate blue / purple
+    "toto": "#2ECC71",      # emerald green
+    "prophet": "#E74C3C",   # red
 }
 
 OURS_MODELS = {"migas15"}

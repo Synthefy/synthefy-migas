@@ -963,8 +963,8 @@ def _create_forecast_plot(
         "chronos": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
         "timesfm": _MC.get("timesfm", "#7B68EE"),
-        "toto": _MC.get("toto", "#4a7c9b"),
-        "prophet": _MC.get("prophet", "#d4893f"),
+        "toto": _MC.get("toto", "#2ECC71"),
+        "prophet": _MC.get("prophet", "#E74C3C"),
     }
 
     # Check if we have dates
@@ -1277,8 +1277,8 @@ def plot_multi_sample_comparison(
         "chronos": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
         "timesfm": _MC.get("timesfm", "#7B68EE"),
-        "toto": _MC.get("toto", "#4a7c9b"),
-        "prophet": _MC.get("prophet", "#d4893f"),
+        "toto": _MC.get("toto", "#2ECC71"),
+        "prophet": _MC.get("prophet", "#E74C3C"),
     }
 
     for idx, sample in enumerate(samples):
