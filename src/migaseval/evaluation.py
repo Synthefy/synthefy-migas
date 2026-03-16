@@ -2,7 +2,7 @@
 """
 Unified evaluation: Migas-1.5 vs baselines.
 
-Baselines: Chronos (via Migas-1.5), TimesFM, Toto, TabPFN, Prophet, SARIMA.
+Baselines: Chronos (via Migas-1.5), TimesFM, Toto, Prophet.
 
 Two modes:
     # From pre-cached summaries (no LLM needed)
@@ -29,9 +29,7 @@ from migaseval.eval_utils import (
     evaluate_migas_precomputed,
     evaluate_timesfm_precomputed,
     evaluate_toto_precomputed,
-    evaluate_tabpfn_precomputed,
     evaluate_prophet_precomputed,
-    evaluate_sarima_precomputed,
     _crop_and_rescale,
     _load_preds,
     _save_preds,
@@ -99,19 +97,9 @@ def main():
         help="Also evaluate Toto baseline (univariate)",
     )
     parser.add_argument(
-        "--eval_tabpfn",
-        action="store_true",
-        help="Also evaluate TabPFN 2.5 time-series baseline",
-    )
-    parser.add_argument(
         "--eval_prophet",
         action="store_true",
         help="Also evaluate Prophet baseline",
-    )
-    parser.add_argument(
-        "--eval_sarima",
-        action="store_true",
-        help="Also evaluate Seasonal ARIMA (auto_arima) baseline",
     )
     parser.add_argument("--llm_base_url", default="http://localhost:8004/v1")
     parser.add_argument("--llm_model", default="openai/gpt-oss-120b")
@@ -440,62 +428,6 @@ def main():
                         else 0.0
                     )
 
-            # ── TabPFN baseline ──────────────────────────────────────
-            if args.eval_tabpfn:
-
-                def _run_tabpfn():
-                    r = evaluate_tabpfn_precomputed(
-                        hist_eval,
-                        fcast_eval,
-                        args.pred_len,
-                        batch_size=args.batch_size,
-                        means=ctx_means,
-                        stds=ctx_stds,
-                    )
-                    return r["predictions"]
-
-                try:
-                    if _has_preds(ctx_dir, ds_name, "tabpfn"):
-                        tabpfn_preds = _load_preds(ctx_dir, ds_name, "tabpfn")[
-                            "predictions"
-                        ]
-                        assert tabpfn_preds.shape[0] == n_samples, (
-                            f"{ds_name}/tabpfn: cached predictions have "
-                            f"{tabpfn_preds.shape[0]} samples but expected {n_samples}"
-                        )
-                        print(f"  {ds_name}/tabpfn: loaded from cache")
-                    else:
-                        tabpfn_preds = _run_tabpfn()
-                        _save_preds(
-                            ctx_dir,
-                            ds_name,
-                            "tabpfn",
-                            hist_arr,
-                            tabpfn_preds,
-                            gt,
-                            means_arr,
-                            stds_arr,
-                        )
-                except (ImportError, RuntimeError) as e:
-                    print(f"  WARNING: TabPFN skipped: {e}")
-                    args.eval_tabpfn = False
-                    tabpfn_preds = None
-
-                if tabpfn_preds is not None:
-                    tabpfn_m = compute_metrics(tabpfn_preds, gt)
-                    row["tabpfn_mean_mae"] = tabpfn_m["mean_mae"]
-                    row["tabpfn_median_mae"] = tabpfn_m["median_mae"]
-                    row["tabpfn_mean_mse"] = tabpfn_m["mean_mse"]
-                    row["tabpfn_mean_mape"] = tabpfn_m["mean_mape"]
-                    row["tabpfn_median_mape"] = tabpfn_m["median_mape"]
-                    row["migas15_vs_tabpfn_improvement_pct"] = (
-                        (tabpfn_m["mean_mae"] - migas_m["mean_mae"])
-                        / tabpfn_m["mean_mae"]
-                        * 100
-                        if tabpfn_m["mean_mae"] > 0
-                        else 0.0
-                    )
-
             # ── Prophet baseline ─────────────────────────────────────
             if args.eval_prophet:
 
@@ -524,49 +456,13 @@ def main():
                     else 0.0
                 )
 
-            # ── SARIMA baseline ──────────────────────────────────────
-            if args.eval_sarima:
-
-                def _run_sarima():
-                    r = evaluate_sarima_precomputed(
-                        hist_eval, fcast_eval, args.pred_len
-                    )
-                    return r["predictions"]
-
-                try:
-                    sarima_preds = _get_model_preds("sarima", _run_sarima)
-                except ImportError:
-                    print(
-                        "  WARNING: pmdarima is not installed, skipping SARIMA baseline. "
-                        "Install with: pip install pmdarima"
-                    )
-                    args.eval_sarima = False
-                    sarima_preds = None
-
-                if sarima_preds is not None:
-                    sarima_m = compute_metrics(sarima_preds, gt)
-                    row["sarima_mean_mae"] = sarima_m["mean_mae"]
-                    row["sarima_median_mae"] = sarima_m["median_mae"]
-                    row["sarima_mean_mse"] = sarima_m["mean_mse"]
-                    row["sarima_mean_mape"] = sarima_m["mean_mape"]
-                    row["sarima_median_mape"] = sarima_m["median_mape"]
-                    row["migas15_vs_sarima_improvement_pct"] = (
-                        (sarima_m["mean_mae"] - migas_m["mean_mae"])
-                        / sarima_m["mean_mae"]
-                        * 100
-                        if sarima_m["mean_mae"] > 0
-                        else 0.0
-                    )
-
             # ── Back-fill metrics from cached npz files ─────────────
             # If previous runs cached predictions for models not requested
             # this run, load them so the CSV keeps all columns.
             _optional_model_keys = {
                 "timesfm": args.eval_timesfm,
                 "toto": args.eval_toto,
-                "tabpfn": args.eval_tabpfn,
                 "prophet": args.eval_prophet,
-                "sarima": args.eval_sarima,
             }
             for _mk, _already_ran in _optional_model_keys.items():
                 if _already_ran:
@@ -621,12 +517,8 @@ def main():
                 parts.append(f"TimesFM={float(row['timesfm_mean_mae']):.4f}")
             if "toto_mean_mae" in row:
                 parts.append(f"Toto={float(row['toto_mean_mae']):.4f}")
-            if "tabpfn_mean_mae" in row:
-                parts.append(f"TabPFN={float(row['tabpfn_mean_mae']):.4f}")
             if "prophet_mean_mae" in row:
                 parts.append(f"Prophet={float(row['prophet_mean_mae']):.4f}")
-            if "sarima_mean_mae" in row:
-                parts.append(f"SARIMA={float(row['sarima_mean_mae']):.4f}")
             parts.append(f"Impr={float(row['mae_improvement_pct']):+.1f}%")
             parts.append(f"[{winner}]")
             print("  ".join(parts))
@@ -665,9 +557,7 @@ def main():
             _optional_models = [
                 ("TimesFM", "timesfm"),
                 ("Toto", "toto"),
-                ("TabPFN", "tabpfn"),
                 ("Prophet", "prophet"),
-                ("SARIMA", "sarima"),
             ]
             for _lbl, _pfx in _optional_models:
                 if all(f"{_pfx}_mean_mae" in r for r in rows):

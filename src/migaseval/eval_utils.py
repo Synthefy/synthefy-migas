@@ -14,25 +14,10 @@ from tqdm import tqdm
 MODEL_DISPLAY_NAMES: Dict[str, str] = {
     "migas15": "Migas-1.5",
     "timeseries": "TS-Only",
-    "chronos": "Chronos",
-    "chronos_univar": "Chronos2",
-    "chronos_multivar": "Chronos2-MV",
-    "chronos_emb": "Chronos2-MV",
-    "chronos_gpt_cov": "Chronos2-GPT",
-    "chronos_gpt_dir_cov": "Chronos2-GPT-MD",
-    "chronos_naive_cov": "Chronos2-Naive",
-    "timesfm_univar": "TimesFM2.5",
+    "chronos": "Chronos2",
     "timesfm": "TimesFM2.5",
-    "gpt_forecast": "GPT-OSS",
-    "tabpfn_ts": "TabPFN2.5",
-    "tabpfn": "TabPFN2.5",
-    "prophet": "Prophet",
-    "naive": "Naive",
-    "toto_univar": "Toto",
     "toto": "Toto",
-    "toto_emb": "Toto-MV",
-    "sarima": "SARIMA",
-    "migas": "Migas",
+    "prophet": "Prophet",
 }
 
 
@@ -534,104 +519,6 @@ def evaluate_toto_precomputed(
     }
 
 
-# ── TabPFN 2.5 ──────────────────────────────────────────────────────────────
-
-
-def evaluate_tabpfn_precomputed(
-    historic: list,
-    forecast: list,
-    pred_len: int,
-    batch_size: int = 32,
-    means: list = None,
-    stds: list = None,
-) -> dict:
-    """Run TabPFN 2.5 time-series on precomputed data. If means/stds are
-    given, unscales input before fitting and rescales predictions back."""
-    if not os.environ.get("HF_TOKEN"):
-        raise RuntimeError("HF_TOKEN env var required for TabPFN.")
-
-    import pandas as pd
-    from tabpfn_time_series import (
-        TimeSeriesDataFrame,
-        FeatureTransformer,
-        TabPFNTimeSeriesPredictor,
-        TabPFNMode,
-    )
-    from tabpfn_time_series.data_preparation import generate_test_X
-    from tabpfn_time_series.features import (
-        RunningIndexFeature,
-        CalendarFeature,
-        AutoSeasonalFeature,
-    )
-
-    has_stats = means is not None and stds is not None
-
-    print("  Loading TabPFN predictor ...")
-    predictor = TabPFNTimeSeriesPredictor(tabpfn_mode=TabPFNMode.LOCAL)
-
-    base_features = [
-        RunningIndexFeature(),
-        CalendarFeature(),
-        AutoSeasonalFeature(),
-    ]
-    num_samples = len(historic)
-    num_batches = (num_samples + batch_size - 1) // batch_size
-
-    all_preds, all_gts = [], []
-
-    pbar = tqdm(range(num_batches), desc="  TabPFN")
-    for bi in pbar:
-        s, e = bi * batch_size, min((bi + 1) * batch_size, num_samples)
-        xb = np.array(historic[s:e])
-        yb = np.array(forecast[s:e])
-        bs, seq_len = xb.shape
-
-        if has_stats:
-            mu_batch = np.array(means[s:e], dtype=np.float64).reshape(bs, 1)
-            sigma_batch = np.array(stds[s:e], dtype=np.float64).reshape(bs, 1)
-            sigma_batch = np.maximum(sigma_batch, 1e-8)
-            xb = xb * sigma_batch + mu_batch
-
-        context_end = pd.Timestamp.today().normalize()
-        context_range = pd.date_range(
-            end=context_end, periods=seq_len, freq="D"
-        )
-
-        records = []
-        for i in range(bs):
-            item_id = f"b{bi}_s{i}"
-            for t_idx, ts in enumerate(context_range):
-                records.append(
-                    {
-                        "item_id": item_id,
-                        "timestamp": ts,
-                        "target": float(xb[i, t_idx]),
-                    }
-                )
-        train_df = pd.DataFrame(records).set_index(["item_id", "timestamp"])
-        train_tsdf = TimeSeriesDataFrame(train_df)
-        test_tsdf = generate_test_X(train_tsdf, pred_len)
-        ft = FeatureTransformer(base_features)
-        train_t, test_t = ft.transform(train_tsdf, test_tsdf)
-        pred_df = predictor.predict(train_t, test_t)
-
-        preds = np.zeros((bs, pred_len))
-        for i in range(bs):
-            item_id = f"b{bi}_s{i}"
-            preds[i] = pred_df.loc[item_id]["target"].values[:pred_len]
-
-        if has_stats:
-            preds = (preds - mu_batch) / sigma_batch
-
-        all_preds.append(preds)
-        all_gts.append(yb if not has_stats else np.array(forecast[s:e]))
-
-    return {
-        "predictions": np.concatenate(all_preds, axis=0),
-        "gt": np.concatenate(all_gts, axis=0),
-    }
-
-
 # ── Prophet ──────────────────────────────────────────────────────────────────
 
 
@@ -699,45 +586,6 @@ def evaluate_prophet_precomputed(
         "predictions": np.stack(all_preds),
         "gt": np.stack(all_gts),
     }
-
-
-# ── SARIMA ───────────────────────────────────────────────────────────────────
-
-
-def evaluate_sarima_precomputed(
-    historic: list, forecast: list, pred_len: int
-) -> dict:
-    """Run auto-ARIMA (seasonal) on precomputed (scaled) data."""
-    from pmdarima import auto_arima
-
-    num_samples = len(historic)
-    all_preds, all_gts = [], []
-
-    pbar = tqdm(range(num_samples), desc="  SARIMA")
-    for idx in pbar:
-        history = np.array(historic[idx])
-        try:
-            model = auto_arima(
-                history,
-                seasonal=True,
-                m=5,
-                stepwise=True,
-                suppress_warnings=True,
-                error_action="ignore",
-                max_order=10,
-            )
-            pred = model.predict(n_periods=pred_len)
-        except Exception:
-            pred = np.full(pred_len, history[-1])
-        all_preds.append(pred)
-        all_gts.append(np.array(forecast[idx]))
-        if (idx + 1) % 50 == 0 or idx == num_samples - 1:
-            p, g = np.stack(all_preds), np.stack(all_gts)
-            pbar.set_postfix(
-                {"SARIMA_MAE": f"{float(np.mean(np.abs(p - g))):.4f}"}
-            )
-
-    return {"predictions": np.stack(all_preds), "gt": np.stack(all_gts)}
 
 
 # ── Summary generation ───────────────────────────────────────────────────────

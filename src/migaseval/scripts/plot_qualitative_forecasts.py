@@ -309,7 +309,6 @@ def load_predictions_from_outputs(
         "chronos_gpt_dir_cov",
         "gpt_forecast",
         "timesfm_univar",
-        "tabpfn_ts",
         "prophet",
         "naive",
         "migas15_timesfm",
@@ -383,7 +382,6 @@ def load_predictions(results_dir: Path) -> Dict[str, np.ndarray]:
         "chronos_gpt_dir_cov": "chronos_gpt_dir_cov_pred.npy",
         "gpt_forecast": "gpt_forecast_pred.npy",
         "timesfm_univar": "timesfm_univar_pred.npy",
-        "tabpfn_ts": "tabpfn_ts_pred.npy",
     }
 
     for model_name, filename in pred_files.items():

@@ -90,7 +90,7 @@ uv run python -m migaseval.evaluation \
   --summaries_dir ./data/subset/subset_migas15/subset \
   --output_dir    ./results \
   --context_lengths 32 64 128 256 384 \
-  --eval_timesfm --eval_toto --eval_prophet
+  --eval_timesfm --eval_toto
 ```
 
 ---
@@ -103,9 +103,7 @@ Migas-1.5 (with Chronos backbone) always runs. Additional baselines are enabled 
 |------|-------------|
 | `--eval_timesfm` | TimesFM 2.5 univariate |
 | `--eval_prophet` | Prophet |
-| `--eval_tabpfn` | TabPFN 2.5 (requires `HF_TOKEN`) |
 | `--eval_toto` | Toto (optional: `pip install -e ".[toto]"`) |
-| `--eval_sarima` | Seasonal ARIMA (auto_arima) |
 
 ---
 
@@ -150,7 +148,7 @@ Individual script modules for more control: `python -m migaseval.scripts.plot_ba
 |----------|---------|---------|
 | `MIGAS_EVAL_DATASETS_DIR` | `./data/test` | Default `--datasets_dir` |
 | `MIGAS_EVAL_OUTPUT_DIR` | — | Default `--output_dir` |
-| `HF_TOKEN` | — | Hugging Face token (only needed for TabPFN) |
+| `HF_TOKEN` | — | Hugging Face token (for gated models) |
 | `VLLM_BASE_URL` | `http://localhost:8004/v1` | LLM server URL for summarization |
 | `VLLM_MODEL` | `openai/gpt-oss-120b` | Model name |
 | `VLLM_TENSOR_PARALLEL_SIZE` | # GPUs in `CUDA_VISIBLE_DEVICES` | Tensor parallelism |
