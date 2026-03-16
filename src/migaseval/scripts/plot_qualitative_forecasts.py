@@ -957,13 +957,14 @@ def _create_forecast_plot(
     last_input = input_data[-1]
     gt_extended = np.concatenate([[last_input], gt_data])
 
+    from migaseval.eval_utils import MODEL_COLORS as _MC
     model_colors = {
         "migas15": COLORS["migas15"],
-        "chronos_univar": COLORS["chronos"],
+        "chronos": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
-        "timesfm_univar": "#7B68EE",
-        "gpt_forecast": "#E8A838",
-        "migas": COLORS["migas15"],
+        "timesfm": _MC.get("timesfm", "#7B68EE"),
+        "toto": _MC.get("toto", "#4a7c9b"),
+        "prophet": _MC.get("prophet", "#d4893f"),
     }
 
     # Check if we have dates
@@ -1270,13 +1271,14 @@ def plot_multi_sample_comparison(
     figsize = (figsize_per_subplot[0] * n_cols, figsize_per_subplot[1] * n_rows)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, squeeze=False)
 
+    from migaseval.eval_utils import MODEL_COLORS as _MC
     model_colors = {
         "migas15": COLORS["migas15"],
-        "chronos_univar": COLORS["chronos"],
+        "chronos": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
-        "timesfm_univar": "#7B68EE",
-        "gpt_forecast": "#E8A838",
-        "migas": COLORS["migas15"],
+        "timesfm": _MC.get("timesfm", "#7B68EE"),
+        "toto": _MC.get("toto", "#4a7c9b"),
+        "prophet": _MC.get("prophet", "#d4893f"),
     }
 
     for idx, sample in enumerate(samples):
