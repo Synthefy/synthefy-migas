@@ -285,51 +285,6 @@ fig.tight_layout(pad=1.2)
 plt.show()
 
 # %% [markdown]
-# ## Individual scenario comparisons
-# 
-# Side-by-side plots showing the bullish and bearish counterfactuals against
-# the original forecast.
-
-# %%
-pred_dates = pd.bdate_range(start=last_date + pd.offsets.BDay(1), periods=PRED_LEN)
-all_timestamps = np.concatenate(
-    [raw["t"].values, pred_dates.strftime("%Y-%m-%d").values]
-)
-
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 4.5))
-
-for ax, fc_cf, cf_color, cf_fill, direction, title in [
-    (ax1, fc_bullish, BULLISH_COLOR, "#D5F5E3", "up", "Bullish counterfactual vs. original"),
-    (ax2, fc_bearish, BEARISH_COLOR, "#FADBD8", "down", "Bearish counterfactual vs. original"),
-]:
-    t_all = pd.to_datetime(all_timestamps)
-    t_c = t_all[:CONTEXT_LEN]
-    t_p = t_all[CONTEXT_LEN - 1:]
-    lv = float(context_vals[-1])
-
-    _draw_forecast_region(ax, CONTEXT_LEN, PRED_LEN, boundary=t_p[0], boundary_end=t_p[-1])
-    ax.plot(t_c, context_vals, color=COLORS["historical"], lw=2.0,
-            label="Historical", solid_capstyle="round")
-    ax.plot(t_p, np.concatenate([[lv], fc_original]),
-            color=COLORS["Migas-1.5"], lw=2.0, ls="--", alpha=0.85,
-            label="Original", solid_capstyle="round")
-    ax.plot(t_p, np.concatenate([[lv], fc_cf]),
-            color=cf_color, lw=2.4, label="Counterfactual", solid_capstyle="round")
-    ax.fill_between(t_p, np.concatenate([[lv], fc_original]),
-                    np.concatenate([[lv], fc_cf]), alpha=0.12, color=cf_fill)
-
-    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
-    for lbl in ax.get_xticklabels():
-        lbl.set_rotation(35); lbl.set_ha("right")
-    ax.set_ylabel("Price ($)")
-    ax.set_title(title, fontsize=10, fontweight=600)
-    ax.legend(fontsize=7, handlelength=1.6, labelspacing=0.3, borderpad=0.45)
-
-fig.suptitle(SERIES_NAME, fontsize=12, fontweight=600, y=1.01)
-fig.tight_layout(pad=1.0)
-plt.show()
-
-# %% [markdown]
 # ## Trend metrics
 #
 # | Metric | What it measures |
