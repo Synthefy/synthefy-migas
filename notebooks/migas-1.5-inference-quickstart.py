@@ -319,13 +319,11 @@ print(extract_predictive(summary))
 # Fallback narratives — used when no LLM key is available.  # <-- CHANGE ME if not using LLM
 _bullish_fallback = dedent("""
 **PREDICTIVE SIGNALS:**  :
-A severe winter weather event across the central U.S., together with unexpected LNG export
-facility outages, would trigger acute supply tightening and a demand surge. This would
-reverse the downward trajectory as heating demand spikes and inventory draws accelerate.
-Simultaneously, OPEC+ production cuts and a coordinated policy shift toward fossil fuel
-infrastructure investment would restore producer confidence, creating sustained upward
-momentum from the depressed levels observed at timestep 32.
-
+A sudden geopolitical escalation in major LNG export regions combined with unexpected
+winter demand surge across North America and Europe creates immediate supply constraints.
+Coupled with coordinated OPEC+ production cuts that restore crude oil prices and renewed
+industrial activity post-pandemic, natural gas would experience sustained upward momentum,
+reversing the deflationary trajectory and compressing the negative spread significantly.
 """).strip()
 
 
@@ -510,11 +508,5 @@ print(pd.DataFrame(rows).to_string(index=False))
 #   grounded in real recent context.
 # - **Batch evaluation** — see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 #   for rolling-window evaluation with ground truth.
-
-# %% [markdown]
-# 
-
-# %% [markdown]
-# 
 
 
