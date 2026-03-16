@@ -19,7 +19,6 @@
 # > the full CLI reference, baseline flags, output layout, and post-eval report scripts.
 
 # %%
-%matplotlib inline
 import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 
