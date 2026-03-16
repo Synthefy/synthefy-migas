@@ -128,7 +128,7 @@ def main() -> int:
     # Count datasets and models for report
     import pandas as pd
 
-    df = pd.read_csv(stats_csv)
+    df = pd.read_csv(stats_csv, comment="#")
     n_datasets = len(df)
     model_cols_mae = [c for c in df.columns if c.endswith("_mean_mae")]
     models = [c.replace("_mean_mae", "") for c in model_cols_mae]

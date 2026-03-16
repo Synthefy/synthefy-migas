@@ -296,7 +296,7 @@ def load_predictions_from_outputs(
         raise FileNotFoundError(f"Outputs directory not found: {outputs_dir}")
 
     # Read per-dataset CSV to get dataset order
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
 
     # Known model names to look for
     model_names = [
@@ -406,7 +406,7 @@ def load_predictions_from_npz(
         concatenated.
     """
     pred_dir = results_dir / "predictions"
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
 
     # Discover all model keys from npz filenames
     all_model_keys: set[str] = set()
@@ -466,7 +466,7 @@ def _load_norm_params_from_npz(
 
     Returns (history_means, history_stds, dataset_names_per_sample).
     """
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
     all_means: list[np.ndarray] = []
     all_stds: list[np.ndarray] = []
     all_ds_names: list[str] = []
@@ -506,7 +506,7 @@ def compute_raw_mean_std(
     from migaseval.dataset import LateFusionDataset, collate_fn as late_fusion_collate
     from torch.utils.data import DataLoader
 
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
     sample_count_col = (
         "n_eval_samples" if "n_eval_samples" in df.columns else "n_samples"
     )
@@ -629,7 +629,7 @@ def find_absolute_best_samples(
 
     if per_dataset:
         # Get top_k samples per dataset (lowest MAE)
-        df = pd.read_csv(per_dataset_csv)
+        df = pd.read_csv(per_dataset_csv, comment="#")
         sample_count_col = (
             "n_eval_samples" if "n_eval_samples" in df.columns else "n_samples"
         )
@@ -737,7 +737,7 @@ def find_best_samples(
     dataset_names: List[str],
     per_dataset_csv: Path,
     migas15_model: str = "migas15",
-    baseline_model: str = "chronos_univar",
+    baseline_model: str = "chronos",
     top_k: int = 10,
     per_dataset: bool = True,
 ) -> List[SampleData]:
@@ -787,7 +787,7 @@ def find_best_samples(
 
     if per_dataset:
         # Get top_k samples per dataset
-        df = pd.read_csv(per_dataset_csv)
+        df = pd.read_csv(per_dataset_csv, comment="#")
         sample_count_col = (
             "n_eval_samples" if "n_eval_samples" in df.columns else "n_samples"
         )
@@ -1456,7 +1456,7 @@ Examples:
     parser.add_argument(
         "--worse_model",
         type=str,
-        default="chronos_univar",
+        default="chronos",
         help="Model that should have higher MAE (the baseline to compare against)",
     )
     # Keep old args for backward compatibility
@@ -1475,7 +1475,7 @@ Examples:
     parser.add_argument(
         "--models_to_plot",
         type=str,
-        default="migas15,chronos_univar",
+        default="migas15,chronos",
         help="Comma-separated list of models to plot",
     )
     parser.add_argument(

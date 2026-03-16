@@ -102,7 +102,7 @@ def load_predictions_from_outputs(
         Tuple of (predictions dict, gt array) with all datasets concatenated
     """
     outputs_dir = results_dir / "outputs"
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
 
     predictions = {name: [] for name in model_names}
     all_gt = []
@@ -147,7 +147,7 @@ def load_predictions_from_npz(
         Tuple of (predictions dict, gt array) with all datasets concatenated.
     """
     pred_dir = results_dir / "predictions"
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
 
     predictions: dict[str, list[np.ndarray]] = {name: [] for name in model_names}
     all_gt: list[np.ndarray] = []
@@ -184,7 +184,7 @@ def load_predictions_from_npz(
 def plot_sample_level_scatter(
     results_dir: Path,
     per_dataset_csv: Path,
-    compare_model: str = "gpt_forecast",
+    compare_model: str = "chronos",
     window_length: int = None,
 ):
     """Create publication-quality scatter plots of Migas-1.5 MAE vs comparison model MAE at sample level.
@@ -312,7 +312,7 @@ def plot_sample_level_scatter(
         ts_pred = ts_pred[:n_samples_expected]
 
     # Load per-dataset info first to know dataset boundaries
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
     sample_count_col = (
         "n_eval_samples" if "n_eval_samples" in df.columns else "n_samples"
     )
@@ -885,8 +885,8 @@ def main():
     parser.add_argument(
         "--compare_model",
         type=str,
-        default="gpt_forecast",
-        help="Model to compare with Migas-1.5 (e.g., 'gpt_forecast', 'chronos_gpt_cov', 'timeseries', 'chronos_univar')",
+        default="chronos",
+        help="Model to compare with Migas-1.5 (e.g., 'chronos', 'timesfm', 'toto', 'prophet')",
     )
     parser.add_argument(
         "--window_length",
