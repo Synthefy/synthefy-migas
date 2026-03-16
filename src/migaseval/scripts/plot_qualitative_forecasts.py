@@ -53,7 +53,7 @@ def _find_dataset_file(datasets_dir, dataset_name: str) -> Path:
     return dd / f"{dataset_name}.csv"
 
 
-from migaseval.baselines.registry import MODEL_DISPLAY_NAMES
+from migaseval.eval_utils import MODEL_DISPLAY_NAMES
 
 
 @dataclass

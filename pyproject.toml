@@ -11,6 +11,7 @@ dependencies = [
     "pandas",
     "pyarrow",
     "torch",
+    "tabulate",
     "tqdm",
     "sentence-transformers>=5.1.1",
     "timesfm[torch]",

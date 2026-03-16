@@ -54,55 +54,41 @@ uv run python -m migaseval.scripts.download_data --dataset all --all
 
 ## Running evaluations
 
-### Baselines only (no LLM)
+### From pre-computed summaries (no LLM server)
 
-Example with **subset** (2 datasets):
-
-```bash
-uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/subset/subset_migas15/subset_csvs \
-  --output_dir   ./results \
-  --seq_len 384 --pred_len 16 --batch_size 64 \
-  --eval_chronos2 --eval_timesfm --eval_prophet --eval_naive
-```
-
-For **FNSPID** or **suite**, use `./data/fnspid_prepared/fnspid_migas15/fnspid_0.5_complement_csvs` or `./data/migas_1_5_suite/icml_suite_migas15/icml_suite_csvs` respectively.
-
-### With Migas-1.5 (requires LLM server or pre-computed summaries)
+The fastest path uses pre-cached summary JSONs (downloaded from HF or generated earlier):
 
 ```bash
 uv run python -m migaseval.evaluation \
-  --datasets_dir ./data/subset/subset_migas15/subset_csvs \
-  --output_dir   ./results \
-  --seq_len 384 --pred_len 16 --batch_size 64 \
-  --eval_migas15 --eval_chronos2 --eval_timesfm
-```
-
-### Fast path: pre-computed summaries (no LLM server)
-
-```bash
-uv run python -m migaseval.evaluation \
-  --datasets_dir  ./data/subset/subset_migas15/subset_csvs \
   --summaries_dir ./data/subset/subset_migas15/subset \
   --output_dir    ./results \
-  --seq_len 384 --pred_len 16 --batch_size 64 \
-  --eval_migas15 --checkpoint Synthefy/migas-1.5
 ```
 
-### Cache-then-evaluate workflow
+### From raw CSVs (generates summaries, needs LLM server)
 
 ```bash
-# Step 1 — cache summaries (requires LLM server)
 uv run python -m migaseval.evaluation \
   --datasets_dir ./data/subset/subset_migas15/subset_csvs \
   --output_dir   ./results \
-  --seq_len 384 --pred_len 16 --batch_size 64 \
-  --cache_summaries
+```
 
-# Step 2 — evaluate from cache (no LLM)
-uv run python -m migaseval.scripts.eval_simple \
-  --summaries_dir ./results/output/context_384 \
-  --checkpoint    Synthefy/migas-1.5 \
+### With additional baselines
+
+```bash
+uv run python -m migaseval.evaluation \
+  --summaries_dir ./data/subset/subset_migas15/subset \
+  --output_dir    ./results \
+  --eval_timesfm --eval_prophet
+```
+
+### Context length sweeping
+
+Evaluate at multiple context lengths in a single run:
+
+```bash
+uv run python -m migaseval.evaluation \
+  --summaries_dir ./data/subset/subset_migas15/subset \
+  --output_dir    ./results \
   --context_lengths 32 64 128 256 384 \
   --eval_timesfm --eval_toto --eval_prophet
 ```
@@ -111,19 +97,15 @@ uv run python -m migaseval.scripts.eval_simple \
 
 ## Baselines
 
+Migas-1.5 (with Chronos backbone) always runs. Additional baselines are enabled with flags:
+
 | Flag | Description |
 |------|-------------|
-| `--eval_migas15` | Migas-1.5 (default HF repo `Synthefy/migas-1.5`; override with `--checkpoint`) |
-| `--eval_migas15_timesfm` | Migas-1.5 with TimesFM backbone (requires `--checkpoint_timesfm`) |
-| `--eval_chronos2` | Chronos-2 univariate |
-| `--eval_chronos2_multivar` | Chronos-2 with covariates |
-| `--eval_chronos2_gpt` | Chronos-2 + GPT forecasts (run `--eval_gpt_forecast` first) |
-| `--eval_gpt_forecast` | LLM-only forecast (needs vLLM / OpenAI-compatible server) |
 | `--eval_timesfm` | TimesFM 2.5 univariate |
-| `--eval_naive` | Naive (last value) |
 | `--eval_prophet` | Prophet |
 | `--eval_tabpfn` | TabPFN 2.5 (requires `HF_TOKEN`) |
 | `--eval_toto` | Toto (optional: `pip install -e ".[toto]"`) |
+| `--eval_sarima` | Seasonal ARIMA (auto_arima) |
 
 ---
 
@@ -131,17 +113,14 @@ uv run python -m migaseval.scripts.eval_simple \
 
 ```
 <output_dir>/
-  <datasets_dir_name>/
-    context_<seq_len>/
-      eval_meta.json
-      stats_Context_<seq_len>_allsamples.csv
-      stats_Context_<seq_len>_june2024plus.csv   # if applicable
-      outputs/
-        <dataset_name>/
-          input.npy  gt.npy  migas_pred.npy  chronos_univar_pred.npy  ...
+  context_<ctx_len>/
+    results_<test_set>_ctx<ctx_len>.csv
+    predictions/
+      <dataset_name>/
+        migas15.npz  chronos.npz  timesfm.npz  prophet.npz  ...
 ```
 
-Re-runs skip datasets that already have all requested model outputs. Delete `outputs/<dataset_name>/` or use a new `--output_dir` to re-evaluate.
+Each `.npz` file contains `history`, `predictions`, `gt`, `history_means`, `history_stds`. Re-runs automatically load cached predictions per model — only missing models are computed.
 
 ---
 
@@ -169,7 +148,6 @@ Individual script modules for more control: `python -m migaseval.scripts.plot_ba
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `MIGAS_CHECKPOINT` | `Synthefy/migas-1.5` | Override the checkpoint source (HF repo id or local path) |
 | `MIGAS_EVAL_DATASETS_DIR` | `./data/test` | Default `--datasets_dir` |
 | `MIGAS_EVAL_OUTPUT_DIR` | — | Default `--output_dir` |
 | `HF_TOKEN` | — | Hugging Face token (only needed for TabPFN) |
@@ -181,20 +159,8 @@ Individual script modules for more control: `python -m migaseval.scripts.plot_ba
 
 ## Adding a new baseline
 
-1. Add `src/migaseval/baselines/<name>.py` with:
-
-   ```python
-   def evaluate_<name>(loader, device, pred_len, **kwargs) -> dict:
-       # returns {"input": Tensor, "gt": Tensor, "predictions": {model_name: Tensor}}
-   ```
-
-2. In `src/migaseval/baselines/__init__.py`:
-
-   ```python
-   register_baseline(name="<name>", eval_func=..., prediction_keys=[...], help_text="...")
-   ```
-
-The CLI gets `--eval_<name>` automatically. Baselines depending on another baseline's outputs are run after their dependencies.
+1. Add an `evaluate_<name>_precomputed()` function in `src/migaseval/eval_utils.py`.
+2. Add the `--eval_<name>` flag and call in `src/migaseval/evaluation.py`.
 
 ---
 
