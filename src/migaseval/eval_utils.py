@@ -421,7 +421,7 @@ def evaluate_toto_precomputed(
     except ImportError as e:
         raise ImportError(
             "Toto baseline requires the toto-ts package. "
-            "Install with: pip install toto-ts"
+            "Install with: uv sync --extra toto"
         ) from e
 
     print("Loading Toto model...")

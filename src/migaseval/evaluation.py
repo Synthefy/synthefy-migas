@@ -415,20 +415,30 @@ def main():
                     )
                     return r["predictions"]["toto_univar"].numpy()
 
-                toto_preds = _get_model_preds("toto", _run_toto)
-                toto_m = compute_metrics(toto_preds, gt)
-                row["toto_mean_mae"] = toto_m["mean_mae"]
-                row["toto_median_mae"] = toto_m["median_mae"]
-                row["toto_mean_mse"] = toto_m["mean_mse"]
-                row["toto_mean_mape"] = toto_m["mean_mape"]
-                row["toto_median_mape"] = toto_m["median_mape"]
-                row["migas15_vs_toto_improvement_pct"] = (
-                    (toto_m["mean_mae"] - migas_m["mean_mae"])
-                    / toto_m["mean_mae"]
-                    * 100
-                    if toto_m["mean_mae"] > 0
-                    else 0.0
-                )
+                try:
+                    toto_preds = _get_model_preds("toto", _run_toto)
+                except ImportError:
+                    print(
+                        "  WARNING: toto-ts is not installed, skipping Toto baseline. "
+                        "Install with: uv sync --extra toto"
+                    )
+                    args.eval_toto = False
+                    toto_preds = None
+
+                if toto_preds is not None:
+                    toto_m = compute_metrics(toto_preds, gt)
+                    row["toto_mean_mae"] = toto_m["mean_mae"]
+                    row["toto_median_mae"] = toto_m["median_mae"]
+                    row["toto_mean_mse"] = toto_m["mean_mse"]
+                    row["toto_mean_mape"] = toto_m["mean_mape"]
+                    row["toto_median_mape"] = toto_m["median_mape"]
+                    row["migas15_vs_toto_improvement_pct"] = (
+                        (toto_m["mean_mae"] - migas_m["mean_mae"])
+                        / toto_m["mean_mae"]
+                        * 100
+                        if toto_m["mean_mae"] > 0
+                        else 0.0
+                    )
 
             # ── TabPFN baseline ──────────────────────────────────────
             if args.eval_tabpfn:
@@ -444,40 +454,47 @@ def main():
                     )
                     return r["predictions"]
 
-                if _has_preds(ctx_dir, ds_name, "tabpfn"):
-                    tabpfn_preds = _load_preds(ctx_dir, ds_name, "tabpfn")[
-                        "predictions"
-                    ]
-                    assert tabpfn_preds.shape[0] == n_samples, (
-                        f"{ds_name}/tabpfn: cached predictions have "
-                        f"{tabpfn_preds.shape[0]} samples but expected {n_samples}"
+                try:
+                    if _has_preds(ctx_dir, ds_name, "tabpfn"):
+                        tabpfn_preds = _load_preds(ctx_dir, ds_name, "tabpfn")[
+                            "predictions"
+                        ]
+                        assert tabpfn_preds.shape[0] == n_samples, (
+                            f"{ds_name}/tabpfn: cached predictions have "
+                            f"{tabpfn_preds.shape[0]} samples but expected {n_samples}"
+                        )
+                        print(f"  {ds_name}/tabpfn: loaded from cache")
+                    else:
+                        tabpfn_preds = _run_tabpfn()
+                        _save_preds(
+                            ctx_dir,
+                            ds_name,
+                            "tabpfn",
+                            hist_arr,
+                            tabpfn_preds,
+                            gt,
+                            means_arr,
+                            stds_arr,
+                        )
+                except (ImportError, RuntimeError) as e:
+                    print(f"  WARNING: TabPFN skipped: {e}")
+                    args.eval_tabpfn = False
+                    tabpfn_preds = None
+
+                if tabpfn_preds is not None:
+                    tabpfn_m = compute_metrics(tabpfn_preds, gt)
+                    row["tabpfn_mean_mae"] = tabpfn_m["mean_mae"]
+                    row["tabpfn_median_mae"] = tabpfn_m["median_mae"]
+                    row["tabpfn_mean_mse"] = tabpfn_m["mean_mse"]
+                    row["tabpfn_mean_mape"] = tabpfn_m["mean_mape"]
+                    row["tabpfn_median_mape"] = tabpfn_m["median_mape"]
+                    row["migas15_vs_tabpfn_improvement_pct"] = (
+                        (tabpfn_m["mean_mae"] - migas_m["mean_mae"])
+                        / tabpfn_m["mean_mae"]
+                        * 100
+                        if tabpfn_m["mean_mae"] > 0
+                        else 0.0
                     )
-                    print(f"  {ds_name}/tabpfn: loaded from cache")
-                else:
-                    tabpfn_preds = _run_tabpfn()
-                    _save_preds(
-                        ctx_dir,
-                        ds_name,
-                        "tabpfn",
-                        hist_arr,
-                        tabpfn_preds,
-                        gt,
-                        means_arr,
-                        stds_arr,
-                    )
-                tabpfn_m = compute_metrics(tabpfn_preds, gt)
-                row["tabpfn_mean_mae"] = tabpfn_m["mean_mae"]
-                row["tabpfn_median_mae"] = tabpfn_m["median_mae"]
-                row["tabpfn_mean_mse"] = tabpfn_m["mean_mse"]
-                row["tabpfn_mean_mape"] = tabpfn_m["mean_mape"]
-                row["tabpfn_median_mape"] = tabpfn_m["median_mape"]
-                row["migas15_vs_tabpfn_improvement_pct"] = (
-                    (tabpfn_m["mean_mae"] - migas_m["mean_mae"])
-                    / tabpfn_m["mean_mae"]
-                    * 100
-                    if tabpfn_m["mean_mae"] > 0
-                    else 0.0
-                )
 
             # ── Prophet baseline ─────────────────────────────────────
             if args.eval_prophet:
@@ -516,20 +533,30 @@ def main():
                     )
                     return r["predictions"]
 
-                sarima_preds = _get_model_preds("sarima", _run_sarima)
-                sarima_m = compute_metrics(sarima_preds, gt)
-                row["sarima_mean_mae"] = sarima_m["mean_mae"]
-                row["sarima_median_mae"] = sarima_m["median_mae"]
-                row["sarima_mean_mse"] = sarima_m["mean_mse"]
-                row["sarima_mean_mape"] = sarima_m["mean_mape"]
-                row["sarima_median_mape"] = sarima_m["median_mape"]
-                row["migas15_vs_sarima_improvement_pct"] = (
-                    (sarima_m["mean_mae"] - migas_m["mean_mae"])
-                    / sarima_m["mean_mae"]
-                    * 100
-                    if sarima_m["mean_mae"] > 0
-                    else 0.0
-                )
+                try:
+                    sarima_preds = _get_model_preds("sarima", _run_sarima)
+                except ImportError:
+                    print(
+                        "  WARNING: pmdarima is not installed, skipping SARIMA baseline. "
+                        "Install with: pip install pmdarima"
+                    )
+                    args.eval_sarima = False
+                    sarima_preds = None
+
+                if sarima_preds is not None:
+                    sarima_m = compute_metrics(sarima_preds, gt)
+                    row["sarima_mean_mae"] = sarima_m["mean_mae"]
+                    row["sarima_median_mae"] = sarima_m["median_mae"]
+                    row["sarima_mean_mse"] = sarima_m["mean_mse"]
+                    row["sarima_mean_mape"] = sarima_m["mean_mape"]
+                    row["sarima_median_mape"] = sarima_m["median_mape"]
+                    row["migas15_vs_sarima_improvement_pct"] = (
+                        (sarima_m["mean_mae"] - migas_m["mean_mae"])
+                        / sarima_m["mean_mae"]
+                        * 100
+                        if sarima_m["mean_mae"] > 0
+                        else 0.0
+                    )
 
             rows.append(row)
 
