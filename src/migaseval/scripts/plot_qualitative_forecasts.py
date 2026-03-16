@@ -296,7 +296,7 @@ def load_predictions_from_outputs(
         raise FileNotFoundError(f"Outputs directory not found: {outputs_dir}")
 
     # Read per-dataset CSV to get dataset order
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
 
     # Known model names to look for
     model_names = [
@@ -393,6 +393,106 @@ def load_predictions(results_dir: Path) -> Dict[str, np.ndarray]:
     return predictions
 
 
+def load_predictions_from_npz(
+    results_dir: Path, per_dataset_csv: Path
+) -> Tuple[Dict[str, np.ndarray], np.ndarray, np.ndarray]:
+    """Load predictions from npz files under predictions/<dataset>/<model>.npz.
+
+    Each .npz contains 'predictions', 'gt', 'history', 'history_means',
+    'history_stds'.
+
+    Returns:
+        Tuple of (predictions dict, gt array, input array) with all datasets
+        concatenated.
+    """
+    pred_dir = results_dir / "predictions"
+    df = pd.read_csv(per_dataset_csv, comment="#")
+
+    # Discover all model keys from npz filenames
+    all_model_keys: set[str] = set()
+    for _, row in df.iterrows():
+        ds_dir = pred_dir / row["dataset_name"]
+        if ds_dir.is_dir():
+            for p in ds_dir.glob("*.npz"):
+                all_model_keys.add(p.stem)
+
+    predictions: Dict[str, list] = {m: [] for m in all_model_keys}
+    all_gt: list[np.ndarray] = []
+    all_input: list[np.ndarray] = []
+
+    print(f"\nLoading predictions from {len(df)} datasets (npz format)...")
+
+    for _, row in df.iterrows():
+        dataset_name = row["dataset_name"]
+        ds_dir = pred_dir / dataset_name
+        if not ds_dir.is_dir():
+            print(f"  Warning: Dataset directory not found: {ds_dir}")
+            continue
+
+        gt_loaded = False
+        for m in all_model_keys:
+            npz_path = ds_dir / f"{m}.npz"
+            if not npz_path.is_file():
+                continue
+            data = np.load(npz_path)
+            if not gt_loaded:
+                all_gt.append(data["gt"])
+                all_input.append(data["history"])
+                gt_loaded = True
+            predictions[m].append(data["predictions"])
+
+    if not all_gt:
+        raise FileNotFoundError(f"No npz files found in {pred_dir}")
+
+    gt_concat = np.concatenate(all_gt, axis=0)
+    input_concat = np.concatenate(all_input, axis=0)
+
+    predictions_concat: Dict[str, np.ndarray] = {}
+    for model_name, pred_list in predictions.items():
+        if pred_list:
+            predictions_concat[model_name] = np.concatenate(pred_list, axis=0)
+            print(f"  Loaded {model_name}: shape {predictions_concat[model_name].shape}")
+
+    print(f"  Ground truth shape: {gt_concat.shape}")
+    print(f"  Input shape: {input_concat.shape}")
+
+    return predictions_concat, gt_concat, input_concat
+
+
+def _load_norm_params_from_npz(
+    pred_dir: Path, per_dataset_csv: Path
+) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Load history_means and history_stds from npz files.
+
+    Returns (history_means, history_stds, dataset_names_per_sample).
+    """
+    df = pd.read_csv(per_dataset_csv, comment="#")
+    all_means: list[np.ndarray] = []
+    all_stds: list[np.ndarray] = []
+    all_ds_names: list[str] = []
+
+    for _, row in df.iterrows():
+        dataset_name = row["dataset_name"]
+        ds_dir = pred_dir / dataset_name
+        if not ds_dir.is_dir():
+            continue
+        # Find first available npz
+        npz_files = list(ds_dir.glob("*.npz"))
+        if not npz_files:
+            continue
+        data = np.load(npz_files[0])
+        n = data["gt"].shape[0]
+        all_means.append(data["history_means"])
+        all_stds.append(data["history_stds"])
+        all_ds_names.extend([dataset_name] * n)
+
+    return (
+        np.concatenate(all_means, axis=0),
+        np.concatenate(all_stds, axis=0),
+        all_ds_names,
+    )
+
+
 def compute_raw_mean_std(
     per_dataset_csv: Path, datasets_dir: Path, context_len: int, pred_len: int
 ) -> Tuple[np.ndarray, np.ndarray, List[str]]:
@@ -406,7 +506,7 @@ def compute_raw_mean_std(
     from migaseval.dataset import LateFusionDataset, collate_fn as late_fusion_collate
     from torch.utils.data import DataLoader
 
-    df = pd.read_csv(per_dataset_csv)
+    df = pd.read_csv(per_dataset_csv, comment="#")
     sample_count_col = (
         "n_eval_samples" if "n_eval_samples" in df.columns else "n_samples"
     )
@@ -529,7 +629,7 @@ def find_absolute_best_samples(
 
     if per_dataset:
         # Get top_k samples per dataset (lowest MAE)
-        df = pd.read_csv(per_dataset_csv)
+        df = pd.read_csv(per_dataset_csv, comment="#")
         sample_count_col = (
             "n_eval_samples" if "n_eval_samples" in df.columns else "n_samples"
         )
@@ -637,7 +737,7 @@ def find_best_samples(
     dataset_names: List[str],
     per_dataset_csv: Path,
     migas15_model: str = "migas15",
-    baseline_model: str = "chronos_univar",
+    baseline_model: str = "chronos",
     top_k: int = 10,
     per_dataset: bool = True,
 ) -> List[SampleData]:
@@ -687,7 +787,7 @@ def find_best_samples(
 
     if per_dataset:
         # Get top_k samples per dataset
-        df = pd.read_csv(per_dataset_csv)
+        df = pd.read_csv(per_dataset_csv, comment="#")
         sample_count_col = (
             "n_eval_samples" if "n_eval_samples" in df.columns else "n_samples"
         )
@@ -857,13 +957,14 @@ def _create_forecast_plot(
     last_input = input_data[-1]
     gt_extended = np.concatenate([[last_input], gt_data])
 
+    from migaseval.eval_utils import MODEL_COLORS as _MC
     model_colors = {
         "migas15": COLORS["migas15"],
-        "chronos_univar": COLORS["chronos"],
+        "chronos": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
-        "timesfm_univar": "#7B68EE",
-        "gpt_forecast": "#E8A838",
-        "migas": COLORS["migas15"],
+        "timesfm": _MC.get("timesfm", "#7B68EE"),
+        "toto": _MC.get("toto", "#2ECC71"),
+        "prophet": _MC.get("prophet", "#E74C3C"),
     }
 
     # Check if we have dates
@@ -1170,13 +1271,14 @@ def plot_multi_sample_comparison(
     figsize = (figsize_per_subplot[0] * n_cols, figsize_per_subplot[1] * n_rows)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, squeeze=False)
 
+    from migaseval.eval_utils import MODEL_COLORS as _MC
     model_colors = {
         "migas15": COLORS["migas15"],
-        "chronos_univar": COLORS["chronos"],
+        "chronos": COLORS["chronos"],
         "timeseries": COLORS["timeseries"],
-        "timesfm_univar": "#7B68EE",
-        "gpt_forecast": "#E8A838",
-        "migas": COLORS["migas15"],
+        "timesfm": _MC.get("timesfm", "#7B68EE"),
+        "toto": _MC.get("toto", "#2ECC71"),
+        "prophet": _MC.get("prophet", "#E74C3C"),
     }
 
     for idx, sample in enumerate(samples):
@@ -1356,7 +1458,7 @@ Examples:
     parser.add_argument(
         "--worse_model",
         type=str,
-        default="chronos_univar",
+        default="chronos",
         help="Model that should have higher MAE (the baseline to compare against)",
     )
     # Keep old args for backward compatibility
@@ -1375,7 +1477,7 @@ Examples:
     parser.add_argument(
         "--models_to_plot",
         type=str,
-        default="migas15,chronos_univar",
+        default="migas15,chronos",
         help="Comma-separated list of models to plot",
     )
     parser.add_argument(
@@ -1503,12 +1605,19 @@ Examples:
             )
             return
 
-    # Load predictions - detect new vs old format
+    # Load predictions - detect format: npz, outputs, or legacy
+    pred_dir = results_dir / "predictions"
     outputs_dir = results_dir / "outputs"
-    use_new_format = outputs_dir.exists() and outputs_dir.is_dir()
+    use_npz = pred_dir.exists() and pred_dir.is_dir()
+    use_outputs = (not use_npz) and outputs_dir.exists() and outputs_dir.is_dir()
 
-    if use_new_format:
-        print("\nDetected new per-dataset output format...")
+    if use_npz:
+        print("\nDetected npz prediction format...")
+        predictions, gt, input_data = load_predictions_from_npz(
+            results_dir, per_dataset_csv
+        )
+    elif use_outputs:
+        print("\nDetected per-dataset output format...")
         predictions, gt, input_data = load_predictions_from_outputs(
             results_dir, per_dataset_csv
         )
@@ -1521,8 +1630,14 @@ Examples:
             return
 
         # Load ground truth and input
-        gt = np.load(results_dir / "gt.npy")
-        input_data = np.load(results_dir / "input.npy")
+        gt_path = results_dir / "gt.npy"
+        input_path = results_dir / "input.npy"
+        if not gt_path.exists() or not input_path.exists():
+            print(f"Error: gt.npy or input.npy not found in {results_dir}")
+            print("Expected either predictions/<dataset>/<model>.npz or gt.npy + input.npy")
+            return
+        gt = np.load(gt_path)
+        input_data = np.load(input_path)
         print(f"Ground truth shape: {gt.shape}")
         print(f"Input shape: {input_data.shape}")
 
@@ -1531,10 +1646,16 @@ Examples:
         return
 
     # Compute normalization parameters
-    print("\nComputing normalization parameters...")
-    history_means, history_stds, dataset_names = compute_raw_mean_std(
-        per_dataset_csv, datasets_dir, args.context_len, args.pred_len
-    )
+    if use_npz:
+        print("\nLoading normalization parameters from npz files...")
+        history_means, history_stds, dataset_names = _load_norm_params_from_npz(
+            results_dir / "predictions", per_dataset_csv
+        )
+    else:
+        print("\nComputing normalization parameters...")
+        history_means, history_stds, dataset_names = compute_raw_mean_std(
+            per_dataset_csv, datasets_dir, args.context_len, args.pred_len
+        )
 
     # Verify shapes match
     if len(history_means) != len(gt):

@@ -659,13 +659,6 @@ def main():
                 writer.writeheader()
                 writer.writerows(rows)
 
-            with open(csv_path, "a") as f:
-                f.write(
-                    f"\n# Migas-1.5 wins: {migas_wins}/{n_datasets}  "
-                    f"Chronos wins: {chronos_wins}/{n_datasets}  "
-                    f"Avg improvement: {np.mean(all_impr):+.2f}%\n"
-                )
-
             print(f"\nResults saved to {csv_path}")
         print("=" * 80)
 

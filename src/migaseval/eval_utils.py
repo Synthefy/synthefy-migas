@@ -20,6 +20,18 @@ MODEL_DISPLAY_NAMES: Dict[str, str] = {
     "prophet": "Prophet",
 }
 
+MODEL_COLORS: Dict[str, str] = {
+    "migas15": "#F28C28",   # orange (brand)
+    "chronos": "#4A90D9",   # blue (brand)
+    "timesfm": "#7B68EE",   # medium slate blue / purple
+    "toto": "#2ECC71",      # emerald green
+    "prophet": "#E74C3C",   # red
+}
+
+OURS_MODELS = {"migas15"}
+
+MODEL_ORDER = ["migas15", "chronos", "timesfm", "toto", "prophet"]
+
 
 def get_display_name(key: str) -> str:
     return MODEL_DISPLAY_NAMES.get(key, key)

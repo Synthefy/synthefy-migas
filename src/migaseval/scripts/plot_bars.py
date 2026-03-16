@@ -367,7 +367,7 @@ def run(
         print(f"No stats_Context_*_allsamples.csv found in {results_dir}")
         return False
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, comment="#")
     if df.empty:
         print("Stats CSV is empty.")
         return False
