@@ -11,11 +11,13 @@ dependencies = [
     "pandas",
     "pyarrow",
     "torch",
+    "tabulate",
     "tqdm",
     "sentence-transformers>=5.1.1",
     "timesfm[torch]",
     "tabpfn>=6.3.1",
     "tabpfn-time-series>=1.0.7",
+    "pmdarima",
     "prophet>=1.2.2",
     "requests>=2.32.5",
     "nest-asyncio>=1.5.0",
@@ -34,7 +36,8 @@ timesfm = { git = "https://github.com/google-research/timesfm.git", rev = "bf88c
 
 [project.optional-dependencies]
 vllm = ["vllm>=0.11.0"]
-# Toto baseline (install with: uv sync --extra toto). May conflict with torch/vllm versions.
+# Toto baseline. Conflicts with vllm (transformers version mismatch).
+# Install manually: uv pip install toto-ts
 # toto = ["toto-ts"]
 
 [project.scripts]

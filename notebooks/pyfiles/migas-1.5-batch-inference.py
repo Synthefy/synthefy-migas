@@ -19,7 +19,6 @@
 # > the full CLI reference, baseline flags, output layout, and post-eval report scripts.
 
 # %%
-%matplotlib inline
 import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 
@@ -31,8 +30,13 @@ import torch
 
 from migaseval import MigasPipeline, list_data_files
 from migaseval.plotting_utils import apply_migas_style, plot_forecast_grid
+from migaseval.notebook_helpers import find_repo_root, require_data
 
 apply_migas_style()
+
+_REPO_ROOT = find_repo_root()
+_DL_CSVS = "uv run python -m migaseval.scripts.download_data --dataset subset --csvs"
+_DL_SUMMARIES = "uv run python -m migaseval.scripts.download_data --dataset subset --summaries"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device=device)
@@ -44,7 +48,9 @@ print(f"Using device: {device}")
 # `predict()` accepts a batch dimension: `context` has shape `(B, T)` and `text` is a list of B lists. This is more efficient than calling `predict()` in a loop.
 
 # %%
-csv_dir = "../data/subset/subset_migas15/subset_csvs"
+csv_dir = require_data(
+    os.path.join(_REPO_ROOT, "data/subset/subset_migas15/subset_csvs"), _DL_CSVS
+)
 csv_files = list_data_files(csv_dir)  # subset has 2 datasets
 print(f"Using {len(csv_files)} datasets: {[os.path.basename(f) for f in csv_files]}")
 
@@ -85,8 +91,13 @@ plt.show()
 # For large-scale runs you'll typically loop over files and collect results. Using pre-computed summaries avoids the LLM bottleneck.
 
 # %%
-csv_dir = "../data/subset/subset_migas15/subset_csvs"
-summaries_root = "../data/subset/subset_migas15/subset"
+csv_dir = os.path.join(_REPO_ROOT, "data/subset/subset_migas15/subset_csvs")
+summaries_root = os.path.join(_REPO_ROOT, "data/subset/subset_migas15/subset")
+if not os.path.isdir(summaries_root):
+    print(
+        "WARNING: Summaries directory not found. Pre-computed summary section will be skipped.\n"
+        f"Download summaries with:\n  {_DL_SUMMARIES}"
+    )
 
 results = []
 

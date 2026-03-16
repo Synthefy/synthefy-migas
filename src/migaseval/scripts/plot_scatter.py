@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from migaseval.baselines.registry import MODEL_DISPLAY_NAMES
+from migaseval.eval_utils import MODEL_DISPLAY_NAMES
 
 try:
     import matplotlib.pyplot as plt

@@ -21,12 +21,40 @@ from .inference_utils import (
 CONTEXT_SUMMARIZER: Optional[ContextSummarizer] = None
 
 
+def _check_vllm_server(base_url: str) -> None:
+    """Verify the vLLM server is reachable; raise a clear error if not."""
+    import urllib.request
+    import urllib.error
+
+    # Strip /v1 suffix to hit the base health endpoint, then try /v1/models
+    health_url = base_url.rstrip("/")
+    if health_url.endswith("/v1"):
+        health_url = health_url[:-3]
+    health_url = health_url.rstrip("/") + "/v1/models"
+
+    try:
+        req = urllib.request.Request(health_url, method="GET")
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+    except (urllib.error.URLError, OSError, TimeoutError):
+        raise ConnectionError(
+            f"\n{'=' * 70}\n"
+            f"  Cannot reach the vLLM server at {base_url}\n\n"
+            f"  Live summarization requires a running vLLM server.\n"
+            f"  Start it with:\n\n"
+            f"      bash start_vllm.sh\n\n"
+            f"  Or pass pre-computed summaries to skip the LLM server.\n"
+            f"{'=' * 70}\n"
+        )
+
+
 def _get_context_summarizer() -> ContextSummarizer:
     """Lazily initialize and return the global context summarizer."""
     global CONTEXT_SUMMARIZER
     if CONTEXT_SUMMARIZER is None:
         base_url = os.environ.get("VLLM_BASE_URL", "http://localhost:8004/v1")
         model_name = os.environ.get("VLLM_MODEL", "openai/gpt-oss-120b")
+        _check_vllm_server(base_url)
         CONTEXT_SUMMARIZER = ContextSummarizer(
             base_url=base_url,
             model_name=model_name,
