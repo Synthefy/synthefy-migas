@@ -22,8 +22,7 @@
 import warnings
 warnings.filterwarnings("ignore", message="IProgress not found")
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-import json, os
+import json
 import numpy as np
 import pandas as pd
 import torch
