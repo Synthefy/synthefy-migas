@@ -1,24 +1,24 @@
 # %% [markdown]
 # # Inference Quick Start
-#
+# 
 # This notebook shows how to run Migas-1.5 on **your own data** end-to-end:
-#
+# 
 # 1. **Load time series data** — load values from a CSV file (columns: `t`, `y_t`, `split`).
 # 2. **Prepare a text summary** — learn the two-part `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS` format the model expects. A sample summary is provided so the notebook runs out of the box; an optional section shows how to auto-generate one with an LLM.
 # 3. **Forecast** — compare Chronos-2 (text-free baseline) against Migas-1.5 (text-conditioned).
 # 4. **Counterfactual exploration** — rewrite the predictive signals and watch the forecast shift, demonstrating the text-conditioned time series forecasting.
-#
+# 
 # **Requirements:** Install the package from the repo root (`uv sync`). Section 3 (LLM summary generation) optionally requires an OpenAI or Anthropic API key.
-#
+# 
 # **See also:** [Counterfactual Scenarios](migas-1.5-counterfactual-scenarios.ipynb) · [Batch Inference](migas-1.5-batch-inference.ipynb) · [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 
 # %% [markdown]
 # ## User Configuration
-#
+# 
 # **Edit the cell below before running anything else.** All parameters you are likely to
 # want to change are collected here — you should not need to touch anything else in the
 # notebook for a basic run.
-#
+# 
 # | Parameter | What it controls | Typical values |
 # |-----------|-----------------|----------------|
 # | `DATA_PATH` | CSV with columns `t`, `y_t`, `split` (`"context"` / `"ground_truth"`) | Relative to this notebook |
@@ -28,7 +28,7 @@
 # | `PRED_LEN` | Number of steps to forecast | `8` – `64` |
 # | `LLM_PROVIDER` | LLM used to auto-generate the text summary in Section 3 | `"anthropic"` (recommended) or `"openai"` |
 # | `LLM_API_KEY` | API key for the LLM provider — **required only for Section 3** | Set via env var `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
-#
+# 
 # **Also check:**
 # - **Section 2** — replace the loaded `summary` with one that matches your series and date window.
 # - **Section 5** — edit `bullish_predictive` / `bearish_predictive` to craft your own counterfactual narratives.
@@ -81,18 +81,18 @@ print(f"Using device: {device}")
 
 # %% [markdown]
 # ## 1. Load Time Series Data
-#
+# 
 # Below we load values from a CSV file. The CSV must have at least two columns:
-#
+# 
 # | Column | Description |
 # |--------|-------------|
 # | `t` | Date string (`YYYY-MM-DD`) |
 # | `y_t` | Numeric value |
-#
+# 
 # The last `SEQ_LEN + PRED_LEN` rows are taken: the first `SEQ_LEN` rows form the
 # **context window** fed to the model; the remaining `PRED_LEN` rows are held out as
 # **ground truth** so we can measure forecast accuracy.
-#
+# 
 # You can swap `DATA_PATH` for any CSV that follows this format.
 
 # %%
@@ -149,16 +149,16 @@ plt.show()
 
 # %% [markdown]
 # ## 2. Understanding the Summary Format
-#
+# 
 # Migas-1.5 accepts a **text summary** alongside the time series. The summary must follow a two-part structure:
-#
+# 
 # | Section | Purpose |
 # |---------|---------|
 # | `FACTUAL SUMMARY` | What already happened — observed trends, price action, key events, macro drivers |
 # | `PREDICTIVE SIGNALS` | Forward-looking interpretation — analyst outlook, catalysts, risks |
-#
+# 
 # This is the format produced by Migas-1.5's internal `ContextSummarizer` (which calls an LLM over per-timestep text). The model was trained to condition on this structure, so deviating significantly from it will reduce text impact.
-#
+# 
 # Below is a pre-computed summary for the energy series loaded above. **To generate a fresh one from real headlines, see Section 3.**
 
 # %%
@@ -174,18 +174,18 @@ print(summary)
 
 # %% [markdown]
 # ## 3. (Optional) Generate a Summary with an LLM
-#
+# 
 # A good summary requires context about the series over the full context window.
 # This section generates a `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS` using an LLM:
-#
+# 
 # - **Anthropic (recommended)** — Claude uses its built-in web search tool to autonomously
 #   find news and market events for the exact date range, then summarizes them. No extra API
 #   key required beyond your Anthropic key.
 # - **OpenAI / vLLM** — generates a summary from value data only (no web search available).
-#
+# 
 # **Required environment variables:**
 # - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` — required to call the LLM.
-#
+# 
 # If no LLM key is found the section is skipped and the pre-computed summary is kept.
 
 # %%
@@ -214,15 +214,15 @@ else:
 
 # %% [markdown]
 # ## 4. Forecast: Chronos-2 Baseline vs. Migas-1.5
-#
+# 
 # We run two forecasts on the same numerical context:
-#
+# 
 # - **Chronos-2** — Migas's own internal Chronos backbone, before text fusion.
 # - **Migas-1.5** — same Chronos base, fused with the text summary above.
-#
+# 
 # Both share the **exact same normalization path and Chronos call** — so the gap
 # between the two lines is the pure text conditioning effect.
-#
+# 
 # **If the pre-written summary doesn't match your actual data window**, text can
 # steer the forecast in the wrong direction (Migas MAPE > Chronos MAPE). Run
 # Section 3 to generate a window-aligned summary and close that gap.
@@ -297,15 +297,15 @@ print(f"Slope difference : {linear_slope(migas_fc) - linear_slope(chronos_fc):+.
 
 # %% [markdown]
 # ## 5. Counterfactual — Rewrite the Narrative
-#
+# 
 # Here is the core idea behind Migas-1.5: **the numerical input is identical across all
 # runs below — only the text changes.**
-#
+# 
 # We keep the **factual section** unchanged (what already happened doesn't change) and
 # replace only the **predictive signals** with a bullish or bearish outlook.
 # If the model truly integrates text with time series, the forecast should shift
 # in the direction of the new narrative.
-#
+# 
 # If `LLM_API_KEY` is set, the predictive signals are generated by the LLM conditioned
 # on the factual context. Otherwise, hardcoded fallback narratives are used.
 
@@ -318,25 +318,25 @@ print(extract_predictive(summary))
 # %%
 # Fallback narratives — used when no LLM key is available.  # <-- CHANGE ME if not using LLM
 _bullish_fallback = dedent("""
-    PREDICTIVE SIGNALS:
-    The energy market is entering a strong upside regime: an unexpected cold snap has
-    driven heating demand to multi-year highs, storage draws are accelerating well beyond
-    seasonal norms, and LNG export capacity is running near full utilization. Supply
-    disruptions from key production regions and a weaker dollar are compounding the
-    tightness. The path of least resistance is sharply higher, with a rapid continuation
-    move and further gains far more likely than any meaningful pullback over the forecast
-    window.
+**PREDICTIVE SIGNALS:**  :
+A severe winter weather event across the central U.S., together with unexpected LNG export
+facility outages, would trigger acute supply tightening and a demand surge. This would
+reverse the downward trajectory as heating demand spikes and inventory draws accelerate.
+Simultaneously, OPEC+ production cuts and a coordinated policy shift toward fossil fuel
+infrastructure investment would restore producer confidence, creating sustained upward
+momentum from the depressed levels observed at timestep 32.
+
 """).strip()
 
+
 _bearish_fallback = dedent("""
-    PREDICTIVE SIGNALS:
-    The energy market is entering a strong downside regime: a warmer-than-expected
-    weather pattern has collapsed heating demand, storage injections are running above
-    seasonal norms, and record domestic production is overwhelming any export-driven
-    support. Demand destruction from high prices in prior months is now feeding back
-    into oversupply, and risk appetite for commodity longs has deteriorated sharply.
-    The highest-probability path over the forecast window is a rapid, sustained decline
-    with little prospect of near-term recovery.
+**PREDICTIVE SIGNALS:**  :
+- A prolonged economic recession, accelerated electrification of heating systems, and a glut
+of domestic shale production coming online simultaneously would create a structural demand
+collapse while supply remains abundant. The series would likely extend its downward
+trajectory beyond timestep 32, with natural gas prices remaining anchored near or below
+the pandemic-crisis lows as oversupply persists and storage facilities struggle to absorb
+excess volumes.
 """).strip()
 
 if LLM_API_KEY:
@@ -364,8 +364,8 @@ if LLM_API_KEY:
     # Split on the second "PREDICTIVE SIGNALS:" marker
     _parts = _cf_response.split("PREDICTIVE SIGNALS:")
     if len(_parts) >= 3:
-        bullish_predictive = ("PREDICTIVE SIGNALS:" + _parts[1]).strip()
-        bearish_predictive = ("PREDICTIVE SIGNALS:" + _parts[2]).strip()
+        bullish_predictive = ("**PREDICTIVE SIGNALS:**" + _parts[1]).strip()
+        bearish_predictive = ("**PREDICTIVE SIGNALS:**" + _parts[2]).strip()
     else:
         # Fallback if the LLM didn't produce the expected structure
         bullish_predictive = _bullish_fallback
@@ -502,20 +502,19 @@ print(pd.DataFrame(rows).to_string(index=False))
 # The table confirms what the plot shows: the bullish narrative steers the slope positive,
 # the bearish narrative pulls it negative — all with the same context window.
 # Compare the Chronos-2 row (no text) with Migas-1.5 to see the baseline text effect.
-#
+# 
 # ## What's next
-#
+# 
 # - **Try your own data** — point `DATA_PATH` at any CSV with `t`, `y_t`, `split` columns.
 # - **Generate a fresh summary** — set your API key and re-run Section 3 for a summary
 #   grounded in real recent context.
 # - **Batch evaluation** — see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 #   for rolling-window evaluation with ground truth.
 
-# %%
+# %% [markdown]
+# 
 
-
-
-# %%
-
+# %% [markdown]
+# 
 
 
