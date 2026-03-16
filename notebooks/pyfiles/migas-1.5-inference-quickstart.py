@@ -35,15 +35,19 @@
 
 # %%
 import os
+from migaseval.notebook_helpers import find_repo_root, require_data
 
 # ── USER CONFIGURATION — edit here, then run the notebook top-to-bottom ──────
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(
-    _HERE, "data/timemmd_energy_sample.csv"
+_REPO_ROOT = find_repo_root()
+_NOTEBOOKS = os.path.join(_REPO_ROOT, "notebooks")
+DATA_PATH = require_data(
+    os.path.join(_NOTEBOOKS, "data/timemmd_energy_sample.csv"),
+    "Place your CSV in notebooks/data/ (see README for format)",
 )  # <-- CHANGE ME: CSV with columns t, y_t, split
-SUMMARY_PATH = os.path.join(
-    _HERE, "data/timemmd_energy_sample_summary.txt"
+SUMMARY_PATH = require_data(
+    os.path.join(_NOTEBOOKS, "data/timemmd_energy_sample_summary.txt"),
+    "Place your summary text file in notebooks/data/ (see Section 3 to generate one)",
 )  # <-- CHANGE ME: pre-computed summary text file
 SERIES_NAME = (
     "US Natural Gas (Henry Hub)"  # <-- CHANGE ME: human-readable name for the series

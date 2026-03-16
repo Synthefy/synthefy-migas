@@ -33,8 +33,13 @@ import matplotlib.pyplot as plt
 from migaseval import MigasPipeline
 from migaseval.model.inference_utils import evaluate_chronos
 from migaseval.plotting_utils import apply_migas_style, plot_forecast_grid
+from migaseval.notebook_helpers import find_repo_root, require_data
 
 apply_migas_style()
+
+_REPO_ROOT = find_repo_root()
+_DL_CSVS = "uv run python -m migaseval.scripts.download_data --dataset subset --csvs"
+_DL_SUMMARIES = "uv run python -m migaseval.scripts.download_data --dataset subset --summaries"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device=device)
@@ -44,7 +49,10 @@ print(f"Using device: {device}")
 # ## Configure the backtest
 
 # %%
-csv_path = "../data/subset/subset_migas15/subset_csvs/jpm_with_text.csv"  # one of 2 subset datasets
+csv_path = require_data(
+    os.path.join(_REPO_ROOT, "data/subset/subset_migas15/subset_csvs/jpm_with_text.csv"),
+    _DL_CSVS,
+)  # one of 2 subset datasets
 df = pd.read_csv(csv_path)
 print(f"Dataset: {os.path.basename(csv_path)}  —  {len(df)} rows")
 
@@ -156,7 +164,7 @@ plt.show()
 
 # %%
 dataset_name = os.path.splitext(os.path.basename(csv_path))[0]
-summaries_dir = f"../data/subset/subset_migas15/subset/{dataset_name}"
+summaries_dir = os.path.join(_REPO_ROOT, f"data/subset/subset_migas15/subset/{dataset_name}")
 
 offline_migas = []
 offline_chronos = []
