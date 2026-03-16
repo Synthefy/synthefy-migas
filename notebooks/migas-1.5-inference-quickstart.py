@@ -38,8 +38,8 @@ import os
 
 # ── USER CONFIGURATION — edit here, then run the notebook top-to-bottom ──────
 
-DATA_PATH    = "../data/timemmd_energy_sample.csv"           # <-- CHANGE ME: CSV with columns t, y_t, split
-SUMMARY_PATH = "../data/timemmd_energy_sample_summary.txt"   # <-- CHANGE ME: pre-computed summary text file
+DATA_PATH    = "data/timemmd_energy_sample.csv"           # <-- CHANGE ME: CSV with columns t, y_t, split
+SUMMARY_PATH = "data/timemmd_energy_sample_summary.txt"   # <-- CHANGE ME: pre-computed summary text file
 SERIES_NAME  = "US Natural Gas (Henry Hub)"                  # <-- CHANGE ME: human-readable name for the series
 SEQ_LEN      = 64                                            # <-- CHANGE ME: context window in steps
 PRED_LEN     = 16                                            # <-- CHANGE ME: forecast horizon in steps
