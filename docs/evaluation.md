@@ -134,11 +134,16 @@ uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/conte
 # Add qualitative forecast plots
 uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --qualitative
 
+# Aggregate PDF across all context lengths (scans parent dir for context_* dirs)
+uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --aggregate
+
 # Everything
 uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --all
 ```
 
-Individual script modules for more control: `python -m migaseval.scripts.plot_bars`, `python -m migaseval.scripts.plot_scatter`, `python -m migaseval.scripts.plot_qualitative_forecasts`. Use `--help` for options.
+The `--aggregate` flag generates a multi-page PDF with aggregate MAE/MSE tables, win counts, Elo ratings, and per-context detail tables. It auto-discovers `context_*` subdirectories from the parent of `--results_dir`. Pass `--summaries_dir` to filter out windows with bad LLM summaries.
+
+Individual script modules for more control: `python -m migaseval.scripts.plot_bars`, `python -m migaseval.scripts.plot_scatter`, `python -m migaseval.scripts.plot_qualitative_forecasts`, `python -m migaseval.scripts.plot_aggregate`. Use `--help` for options.
 
 ---
 
