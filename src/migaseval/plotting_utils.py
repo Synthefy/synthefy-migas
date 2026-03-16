@@ -389,37 +389,67 @@ def _format_summary_text(text: str, width: int) -> str:
     """Format summary text with styled section headers and wrapped body text.
 
     Sections starting with 'HEADER:' are reformatted as:
-        ◆ HEADER
+        • HEADER
         ─────────────────────
         <wrapped body text>
+
+    Handles both plain headers (``FACTUAL SUMMARY:``) and markdown-bold
+    headers (``**FACTUAL SUMMARY:**``).  Bullet-point lines (``- ...``)
+    are preserved as individual wrapped items.
     """
     _RULE_CHAR = "─"
+
+    def _strip_md_bold(s: str) -> str:
+        """Remove leading/trailing ``**`` markdown bold markers."""
+        s = s.strip()
+        if s.startswith("**") and s.endswith("**"):
+            s = s[2:-2]
+        elif s.startswith("**"):
+            s = s[2:]
+        return s.strip()
+
+    def _is_header(line: str) -> bool:
+        """Return True if *line* looks like a section header."""
+        cleaned = _strip_md_bold(line)
+        return cleaned.endswith(":") and len(cleaned) < 60
+
+    def _wrap_body(body_text: str) -> str:
+        """Wrap body text, preserving bullet-point lines individually."""
+        lines = body_text.strip().splitlines()
+        out: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("- "):
+                out.append(textwrap.fill(stripped, width=width,
+                                         subsequent_indent="  "))
+            else:
+                out.append(textwrap.fill(stripped, width=width))
+        return "\n".join(out)
+
     paragraphs = text.strip().split("\n\n")
     parts = []
     for para in paragraphs:
         para = para.strip()
         if not para:
             continue
-        # Detect a section header: first line ends with ':'
         first_line, _, rest = para.partition("\n")
         first_line = first_line.strip()
-        if first_line.endswith(":") and len(first_line) < 60:
-            header = first_line.rstrip(":")
-            body = (
-                " ".join(rest.split()).strip()
-                if rest.strip()
-                else " ".join(para.split()[len(first_line.split()) :]).strip()
-            )
+        if _is_header(first_line):
+            header = _strip_md_bold(first_line).rstrip(":")
             rule = _RULE_CHAR * min(width, 52)
             header_block = f"• {header}\n{rule}"
+            body = rest.strip()
+            if not body:
+                # All text was on the header line — nothing after it
+                body = " ".join(para.split()[len(first_line.split()):]).strip()
             if body:
-                wrapped_body = textwrap.fill(body, width=width)
-                parts.append(f"{header_block}\n{wrapped_body}")
+                parts.append(f"{header_block}\n{_wrap_body(body)}")
             else:
                 parts.append(header_block)
         else:
-            body = " ".join(para.split()).strip()
-            parts.append(textwrap.fill(body, width=width))
+            parts.append(_wrap_body(para))
     return "\n\n".join(parts)
 
 
