@@ -205,9 +205,8 @@ def main():
         print(f"  EVALUATING AT CONTEXT LENGTH = {ctx_len}")
         print("#" * 80 + "\n")
 
-        test_set_name = os.path.basename(os.path.normpath(summaries_dir))
         csv_path = os.path.join(
-            ctx_dir, f"results_{test_set_name}_ctx{ctx_len}.csv"
+            ctx_dir, f"stats_Context_{ctx_len}_allsamples.csv"
         )
 
         rows = []
@@ -328,7 +327,7 @@ def main():
             windows_tied = n_samples - windows_migas_better - windows_chronos_better
 
             row = {
-                "dataset": ds_name,
+                "dataset_name": ds_name,
                 "n_samples": n_samples,
                 "migas15_mean_mae": migas_m["mean_mae"],
                 "migas15_median_mae": migas_m["median_mae"],
@@ -353,6 +352,18 @@ def main():
                 "pct_windows_migas15_better": (
                     windows_migas_better / n_samples * 100
                     if n_samples > 0
+                    else 0.0
+                ),
+                "migas15_win_pct": (
+                    windows_migas_better / n_samples * 100
+                    if n_samples > 0
+                    else 0.0
+                ),
+                "improvement_pct_mean": (
+                    (chro_m["mean_mae"] - migas_m["mean_mae"])
+                    / chro_m["mean_mae"]
+                    * 100
+                    if chro_m["mean_mae"] > 0
                     else 0.0
                 ),
             }
