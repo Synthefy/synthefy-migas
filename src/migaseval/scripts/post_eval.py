@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Single entry point for post-evaluation: bar plots, optional scatter and qualitative
-plots, and a Markdown report.
+Single entry point for post-evaluation: bar plots, optional scatter, qualitative,
+aggregate PDF, and a Markdown report.
 
 When using --qualitative or --all, datasets_dir is read from eval_meta.json (written
 by the evaluation) if not passed via --datasets_dir.
@@ -10,6 +10,7 @@ Usage:
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --scatter
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --qualitative
+  uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --aggregate
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --all
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --qualitative --datasets_dir ./data/test
 """
@@ -74,9 +75,20 @@ def main() -> int:
         help="Also generate qualitative forecast plots (requires --datasets_dir)",
     )
     parser.add_argument(
+        "--aggregate",
+        action="store_true",
+        help="Generate aggregate PDF across all context lengths in the parent of results_dir",
+    )
+    parser.add_argument(
+        "--summaries_dir",
+        type=str,
+        default=None,
+        help="Directory with LLM summary JSONs for aggregate quality filtering (optional)",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
-        help="Run bar plots, scatter, and qualitative (requires --datasets_dir)",
+        help="Run bar plots, scatter, qualitative, and aggregate",
     )
     parser.add_argument(
         "--datasets_dir",
@@ -101,6 +113,7 @@ def main() -> int:
 
     do_scatter = args.scatter or args.all
     do_qualitative = args.qualitative or args.all
+    do_aggregate = args.aggregate or args.all
     datasets_dir = args.datasets_dir
     if do_qualitative:
         if not datasets_dir:
@@ -219,6 +232,36 @@ def main() -> int:
             report_lines.append("")
         else:
             report_lines.append("Qualitative forecast plots failed or skipped.")
+            report_lines.append("")
+
+    # Aggregate PDF across context lengths (optional)
+    if do_aggregate:
+        from migaseval.scripts.plot_aggregate import run as run_aggregate
+
+        # The parent of results_dir contains context_32/, context_64/, etc.
+        parent_dir = results_dir.parent
+        agg_pdf = out_dir / "aggregate_summary.pdf"
+
+        # Try to find summaries_dir: explicit arg, or <parent>/summaries/
+        agg_summaries = args.summaries_dir
+        if not agg_summaries:
+            candidate = parent_dir / "summaries"
+            if candidate.is_dir():
+                agg_summaries = str(candidate)
+
+        if run_aggregate(
+            output_dir=parent_dir,
+            summaries_dir=agg_summaries,
+            out_path=agg_pdf,
+        ):
+            report_lines.append("### Aggregate summary")
+            report_lines.append("")
+            report_lines.append(
+                "- [aggregate_summary.pdf](aggregate_summary.pdf)"
+            )
+            report_lines.append("")
+        else:
+            report_lines.append("Aggregate summary failed or skipped.")
             report_lines.append("")
 
     report_lines.append("---")
