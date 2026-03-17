@@ -175,6 +175,14 @@ If the user does not have `ANTHROPIC_API_KEY` set in the environment or `.env`:
 Without an API key, the pipeline falls back to price-data-only summaries (no news
 context), which limits the text-conditioning effect.
 
+## Running scripts
+
+- **Always use `uv run python`** to execute Python scripts (e.g. `uv run python scripts/foo.py`).
+  Do not use bare `python` or `python3` — `uv run` ensures the correct virtualenv and
+  dependencies are active.
+- If the virtualenv does not exist yet or dependencies are missing, run **`uv sync`** first
+  to create the environment and install all packages.
+
 ## Key conventions
 
 - Data columns: `t` (YYYY-MM-DD string), `y_t` (float), `text` (str, optional)
@@ -184,8 +192,6 @@ context), which limits the text-conditioning effect.
 - Always call `apply_migas_style()` before any plot
 - Always prepend `last_val` to forecast arrays when plotting:
   `np.concatenate([[last_val], forecast])`
-- Use `uv run python` to run scripts
-
 ## Project layout
 
 ```
