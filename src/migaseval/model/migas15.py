@@ -282,7 +282,7 @@ class Migas15(nn.Module):
 
         if summaries is None:
             values_batch = [ts.cpu().numpy()[i, :, 0].tolist() for i in range(B)]
-            trim_context_len = 64
+            trim_context_len = 32
             trimmed_text = [t[-trim_context_len:] for t in text]
             trimmed_values = [v[-trim_context_len:] for v in values_batch]
             trimmed_timestamps = None
