@@ -62,34 +62,42 @@ def call_llm(
 # ---------------------------------------------------------------------------
 
 
-def _parse_web_search_output(text: str) -> tuple[str, str]:
-    """Split the three-section output into (summary, news_digest).
+def _parse_news_digest(text: str) -> str:
+    """Extract the news digest from the web search step output.
 
-    Expected format:
-        NEWS DIGEST:
-        ...
-
-        FACTUAL SUMMARY:
-        ...
-
-        PREDICTIVE SIGNALS:
-        ...
-
-    Returns (summary, news_digest) where summary = FACTUAL SUMMARY + PREDICTIVE SIGNALS.
-    If the expected sections are not found, returns (text, "") as a fallback.
+    Looks for a NEWS DIGEST: section; falls back to the full text.
     """
     import re
 
-    news_match = re.search(r"NEWS DIGEST:\s*(.*?)(?=FACTUAL SUMMARY:)", text, re.DOTALL)
-    summary_match = re.search(r"(FACTUAL SUMMARY:.*)", text, re.DOTALL)
+    match = re.search(r"NEWS DIGEST:\s*(.*)", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
 
-    if news_match and summary_match:
-        news_digest = news_match.group(1).strip()
-        summary = summary_match.group(1).strip()
-        return summary, news_digest
 
-    # Fallback: no recognisable structure — treat whole response as summary
-    return text, ""
+def _map_news_to_dates(
+    news_digest: str,
+    dates: list[str],
+) -> list[str]:
+    """Map news digest lines to per-day text entries.
+
+    Each news line is expected as ``YYYY-MM-DD: headline``.  Lines whose date
+    falls on a date in *dates* are assigned to that day; others are dropped.
+    Days with no matching news get an empty string.
+    """
+    import re
+
+    date_set = set(dates)
+    by_date: dict[str, list[str]] = {}
+    for line in news_digest.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r"(\d{4}-\d{2}-\d{2})[:\s]+(.+)", line)
+        if m and m.group(1) in date_set:
+            by_date.setdefault(m.group(1), []).append(m.group(2).strip())
+
+    return ["; ".join(by_date.get(d, [])) for d in dates]
 
 
 def _fetch_news_via_web_search(
@@ -101,44 +109,32 @@ def _fetch_news_via_web_search(
     model: str,
     max_iterations: int = 10,
 ) -> tuple[str, str]:
-    """Use Claude web search to gather news and generate the summary in one agentic call.
+    """Two-step summary generation: (1) web search for news, (2) summarize
+    using the training-format prompt.
 
     Returns (summary, news_digest).
     """
     import anthropic
 
-    price_lines = "\n".join(f"[{d}] (value: {p:.4f})" for d, p in zip(dates, prices))
-    prompt = f"""\
-You are analyzing {series_name} for time series forecasting.
-
-HISTORICAL DATA:
-{price_lines}
-
-PREDICTION PERIOD: {pred_period}
-
-Use web search to find news, analyst commentary, and market events for {series_name} \
+    # ── Step 1: web search — gather news only ────────────────────────────
+    search_prompt = f"""\
+Search for news, analyst commentary, and market events for {series_name} \
 from {dates[0]} through {dates[-1]}. Run multiple targeted searches to gather \
-comprehensive coverage.
+comprehensive coverage of this period.
 
-After searching, output ONLY the three sections below in this exact format — \
-no preamble, no markdown headers, nothing before "NEWS DIGEST:".
+After searching, output ONLY a chronological news digest in this exact format — \
+no preamble, no analysis, no markdown headers, nothing before "NEWS DIGEST:".
 
 NEWS DIGEST:
-[Key news and events found, organized chronologically by date. Each entry on its \
-own line as: YYYY-MM-DD: headline or brief description. Plain text only.]
-
-FACTUAL SUMMARY:
-[2-3 sentences: observed trends, key events, macro drivers. Plain prose only.]
-
-PREDICTIVE SIGNALS:
-[2-3 sentences: forward-looking signals for {pred_period}. Relative terms only \
-— e.g. "likely to continue higher", "risk of 5-10% pullback". No absolute price \
-targets. Plain prose only.]"""
+YYYY-MM-DD: headline or brief description
+YYYY-MM-DD: headline or brief description
+..."""
 
     client = anthropic.Anthropic(api_key=api_key)
     tools = [{"type": "web_search_20250305", "name": "web_search"}]
-    messages = [{"role": "user", "content": prompt}]
+    messages: list[dict] = [{"role": "user", "content": search_prompt}]
 
+    news_digest = ""
     for _ in range(max_iterations):
         resp = client.messages.create(
             model=model,
@@ -148,18 +144,35 @@ targets. Plain prose only.]"""
         )
         if resp.stop_reason == "end_turn":
             raw = "\n".join(b.text for b in resp.content if hasattr(b, "text")).strip()
-            return _parse_web_search_output(raw)
+            news_digest = _parse_news_digest(raw)
+            break
         elif resp.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": resp.content})
         else:
-            text = "\n".join(b.text for b in resp.content if hasattr(b, "text")).strip()
-            if text:
-                return _parse_web_search_output(text)
+            raw = "\n".join(b.text for b in resp.content if hasattr(b, "text")).strip()
+            if raw:
+                news_digest = _parse_news_digest(raw)
+                break
             raise RuntimeError(f"Unexpected stop_reason={resp.stop_reason!r}")
+    else:
+        raise RuntimeError(
+            f"Web search loop hit max_iterations={max_iterations} for {series_name!r}"
+        )
 
-    raise RuntimeError(
-        f"Web search loop hit max_iterations={max_iterations} for {ticker!r}"
+    # ── Step 2: summarize using the training-format prompt ───────────────
+    per_day_texts = _map_news_to_dates(news_digest, dates)
+    prompt = build_context_summarizer_prompt(
+        series_name, dates, prices, per_day_texts, pred_period
     )
+
+    summary = call_llm(
+        prompt,
+        provider="anthropic",
+        api_key=api_key,
+        model=model,
+    )
+
+    return summary, news_digest
 
 
 # ---------------------------------------------------------------------------
@@ -185,9 +198,10 @@ def build_context_summarizer_prompt(
         lines.append(f"[{date}] (value: {price:.4f}): {entry_text}")
     combined = "\n---\n".join(lines)
 
+    # Use the exact same prompt structure as ContextSummarizer._create_prompt
+    # in src/migaseval/model/util.py — this is what the model saw during training.
     return f"""\
-You are analyzing a time series with text annotations. \
-Extract information to help forecast future values for {series_name}.
+You are analyzing a time series with text annotations. Extract information to help forecast future values.
 
 HISTORICAL DATA:
 {combined}
@@ -200,12 +214,7 @@ SECTION 1 - FACTUAL SUMMARY:
 Summarize observed facts, patterns, trends, and key events. (2-3 sentences)
 
 SECTION 2 - PREDICTIVE SIGNALS:
-Identify forward-looking directional signals, expectations, and sentiment for
-the forecast window. Express momentum and risk in RELATIVE terms only — for
-example: "likely to continue higher", "risk of 5-10% pullback", "bullish bias
-with upside momentum". Do NOT include absolute price levels, specific support/
-resistance numbers, or external analyst price targets — these often refer to a
-different instrument or unit and will mislead the model. (2-3 sentences)
+Identify forward-looking information, predictions, expectations, or signals for future behavior. (2-3 sentences)
 
 Format:
 FACTUAL SUMMARY:
