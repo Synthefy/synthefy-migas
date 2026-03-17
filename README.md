@@ -6,7 +6,7 @@
 
 ![Migas-1.5 vs Chronos-2 on crude oil: text steers the forecast downward while the numeric-only baseline trends up](figures/oil_scenario.png)
 
-*When OPEC announces a surprise production cut, Migas-1.5 (orange) incorporates the news and forecasts a price rebound — while the text-free Chronos-2 baseline (blue) continues upward. Same numbers, different story.*
+*When OPEC announces a 2M barrel/day production increase, Migas-1.5 (orange) incorporates the news and forecasts a price decline — while the text-free Chronos-2 baseline (blue) trends upward. Same numbers, different story.*
 
 ---
 
@@ -28,7 +28,7 @@ import pandas as pd
 from migaseval import MigasPipeline
 
 # Load the bundled crude-oil context window
-df = pd.read_csv("data/oil_scenario_sim.csv")
+df = pd.read_csv("data/timemmd_energy_sample.csv")
 df.head()
 #             t      y_t 
 # 0  2024-08-27  71.870  
@@ -40,7 +40,7 @@ ctx_df = df[df["split"] == "context"]
 
 # Load the pre-written summary (factual history + forward-looking signals).
 # When you have per-step text, Migas generates this automatically — see below.
-with open("data/oil_scenario_sim_summary.txt") as f:
+with open("data/timemmd_energy_sample_summary.txt") as f:
     summary = f.read()
 
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device="cpu")
@@ -103,10 +103,10 @@ forecast = pipeline.predict_from_dataframe(
 
 | Notebook | LLM needed? | Description |
 |----------|-------------|-------------|
-| [Inference Quick Start](notebooks/migas-1.5-inference-quickstart.ipynb) | Optional | End-to-end on any Yahoo Finance ticker: fetch data, write or auto-generate a summary, compare Chronos-2 vs Migas-1.5, and explore counterfactual scenarios. A pre-written summary is included so the notebook runs out of the box — an LLM is only needed to auto-generate a window-aligned summary (Section 3). |
-| [Counterfactual Scenarios](notebooks/migas-1.5-counterfactual-scenarios.ipynb) | Optional | Swap bullish/bearish predictive signals and watch the forecast shift. Hand-written scenarios run without an LLM. Best-of-N candidate selection requires a vLLM server. |
-| [Batch Inference](notebooks/migas-1.5-batch-inference.ipynb) | Optional | Run Migas-1.5 on multiple time series in one `predict()` call and iterate over a directory of CSVs. Pre-computed summaries skip the LLM entirely. |
-| [Backtest and Metrics](notebooks/migas-1.5-backtest-and-metrics.ipynb) | Optional | Rolling-window backtest comparing Migas-1.5 and Chronos-2 with MAE, MSE, MAPE, and directional accuracy. Offline mode uses pre-computed summaries. |
+| [Inference Quick Start](notebooks/migas-1.5-inference-quickstart.ipynb) | Optional | Load a CSV, prepare a two-part summary (`FACTUAL SUMMARY` + `PREDICTIVE SIGNALS`), compare Chronos-2 vs Migas-1.5, and rewrite the predictive signals to see the forecast shift. A pre-written summary is included so the notebook runs out of the box — an LLM (Anthropic with web search, or OpenAI) is only needed to auto-generate a window-aligned summary. |
+| [Counterfactual Scenarios](notebooks/migas-1.5-counterfactual-scenarios.ipynb) | Optional | Fetch live market data via Yahoo Finance for any ticker, generate or load a summary, then run three forecasts (original, bullish, bearish) on identical numerical context with different text. Includes trend metrics and slope-shift visualization. An Anthropic key enables Claude-powered summaries with web search; without it, a pre-written fallback is used. |
+| [Batch Inference](notebooks/migas-1.5-batch-inference.ipynb) | Optional | Run Migas-1.5 on multiple time series in one batched `predict()` call, iterate over a directory of CSVs with pre-computed summaries, and collect results into a DataFrame. Requires the `subset` dataset download. |
+| [Backtest and Metrics](notebooks/migas-1.5-backtest-and-metrics.ipynb) | Optional | Rolling-window backtest comparing Migas-1.5 and Chronos-2 with MAE, MSE, MAPE, and directional accuracy. Includes an offline section using pre-computed summaries. Requires the `subset` dataset download. |
 
 ---
 
