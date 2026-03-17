@@ -42,3 +42,4 @@ results/
 Thumbs.db
 
 # Data (large / generated)
+data/
