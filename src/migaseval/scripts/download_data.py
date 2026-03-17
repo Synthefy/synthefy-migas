@@ -157,10 +157,8 @@ def download(
                 n = sum(1 for f in os.listdir(full) if f.endswith(".csv"))
                 print(f"  [{key}] CSVs:      {full}  ({n} files)")
             else:
-                dirs = [
-                    d for d in os.listdir(full) if os.path.isdir(os.path.join(full, d))
-                ]
-                print(f"  [{key}] Summaries: {full}  ({len(dirs)} datasets)")
+                n = sum(1 for f in os.listdir(full) if f.endswith(".json"))
+                print(f"  [{key}] Summaries: {full}  ({n} files)")
 
 
 def main() -> None:
