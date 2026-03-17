@@ -28,6 +28,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -64,6 +65,40 @@ DATASET_PRESETS: dict[str, dict[str, Any]] = {
         },
     },
 }
+
+
+def _unpack_summaries(summary_dir: str) -> int:
+    """Unpack packed summary JSONs (one array per dataset) into individual files.
+
+    Each .json file in summary_dir is expected to contain a JSON array.
+    It gets unpacked into <summary_dir>/<dataset>/summary_0.json, summary_1.json, ...
+    and the original packed file is removed.
+    """
+    packed_files = sorted(
+        f
+        for f in os.listdir(summary_dir)
+        if f.endswith(".json") and os.path.isfile(os.path.join(summary_dir, f))
+    )
+    if not packed_files:
+        return 0
+
+    total = 0
+    for fname in packed_files:
+        packed_path = os.path.join(summary_dir, fname)
+        with open(packed_path) as fh:
+            samples = json.load(fh)
+        if not isinstance(samples, list):
+            continue
+        ds_name = fname.removesuffix(".json")
+        out_dir = os.path.join(summary_dir, ds_name)
+        os.makedirs(out_dir, exist_ok=True)
+        for idx, sample in enumerate(samples):
+            with open(os.path.join(out_dir, f"summary_{idx}.json"), "w") as fh:
+                json.dump(sample, fh)
+        os.remove(packed_path)
+        print(f"    unpacked {ds_name}: {len(samples)} summaries")
+        total += len(samples)
+    return total
 
 
 def _collect_allow_patterns(
@@ -157,8 +192,12 @@ def download(
                 n = sum(1 for f in os.listdir(full) if f.endswith(".csv"))
                 print(f"  [{key}] CSVs:      {full}  ({n} files)")
             else:
-                n = sum(1 for f in os.listdir(full) if f.endswith(".json"))
-                print(f"  [{key}] Summaries: {full}  ({n} files)")
+                # Summaries are packed (one JSON array per dataset) — unpack them
+                _unpack_summaries(full)
+                n = sum(
+                    1 for d in os.listdir(full) if os.path.isdir(os.path.join(full, d))
+                )
+                print(f"  [{key}] Summaries: {full}  ({n} datasets unpacked)")
 
 
 def main() -> None:
