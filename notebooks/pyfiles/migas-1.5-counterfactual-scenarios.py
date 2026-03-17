@@ -55,7 +55,7 @@ from migaseval.counterfactual_utils import (
     plot_scenario_comparison,
     splice_summary,
 )
-from migaseval.plotting_utils import COLORS, _draw_forecast_region, apply_migas_style
+from migaseval.plotting_utils import COLORS, _draw_forecast_region, apply_migas_style, format_date_axis
 from migaseval.summary_utils import generate_summary
 
 
@@ -268,12 +268,7 @@ ax.fill_between(
     alpha=0.08, color="#9B8EC4", label="Scenario range",
 )
 
-ax.xaxis.set_major_formatter(
-    mdates.ConciseDateFormatter(ax.xaxis.get_major_locator())
-)
-for lbl in ax.get_xticklabels():
-    lbl.set_rotation(35)
-    lbl.set_ha("right")
+format_date_axis(ax)
 ax.set_xlabel("Date", color="#566573")
 ax.set_ylabel("Price ($)", color="#566573")
 ax.set_title(
@@ -281,75 +276,6 @@ ax.set_title(
     fontsize=11, fontweight=600,
 )
 ax.legend(fontsize=8, handlelength=1.6, labelspacing=0.35, borderpad=0.45)
-fig.tight_layout(pad=1.2)
-plt.show()
-
-# %% [markdown]
-# ## Trend metrics
-#
-# | Metric | What it measures |
-# |--------|------------------|
-# | **Slope** | Least-squares linear fit through the forecast |
-# | **Endpoint Chg** | Relative change from first to last predicted value |
-# | **Monotonicity** | Fraction of steps moving in the target direction (0-1) |
-# | **Trend Score** | Weighted composite of slope, endpoint change, and monotonicity |
-
-# %%
-rows = []
-for label, fc, direction in [
-    ("Original", fc_original, "up"),
-    ("Bullish", fc_bullish, "up"),
-    ("Bearish", fc_bearish, "down"),
-]:
-    rows.append(
-        {
-            "Scenario": label,
-            "Slope": f"{linear_slope(fc):+.5f}",
-            "Endpoint Chg": f"{endpoint_change(fc):+.3f}",
-            "Monotonicity": f"{monotonicity(fc, direction):.2f}",
-            "Trend Score": f"{composite_trend_score(fc, direction):+.3f}",
-        }
-    )
-
-metrics_df = pd.DataFrame(rows)
-display(
-    metrics_df.style.set_caption(
-        "Trend metrics: same context, different text -- different forecast trajectory"
-    )
-)
-
-# %% [markdown]
-# ## Slope shift summary
-# 
-# The bullish narrative shifts the forecast slope upward relative to the original,
-# while the bearish narrative shifts it downward. The magnitude of these shifts
-# quantifies the text-conditioning effect.
-
-# %%
-orig_slope = linear_slope(fc_original)
-bull_shift = linear_slope(fc_bullish) - orig_slope
-bear_shift = linear_slope(fc_bearish) - orig_slope
-
-fig, ax = plt.subplots(figsize=(6, 4))
-bars = ax.bar(
-    ["Bullish", "Bearish"],
-    [bull_shift, bear_shift],
-    color=[BULLISH_COLOR, BEARISH_COLOR],
-    alpha=0.85,
-    width=0.5,
-)
-ax.axhline(0, color="#ABB2B9", lw=0.7)
-ax.set_ylabel("Slope shift vs. original forecast")
-ax.set_title(
-    f"Text-driven slope shift -- {TICKER}",
-    fontsize=11, fontweight=600,
-)
-for bar, val in zip(bars, [bull_shift, bear_shift]):
-    ax.text(
-        bar.get_x() + bar.get_width() / 2, bar.get_height(),
-        f"{val:+.4f}", ha="center",
-        va="bottom" if val > 0 else "top", fontsize=10, fontweight=500,
-    )
 fig.tight_layout(pad=1.2)
 plt.show()
 

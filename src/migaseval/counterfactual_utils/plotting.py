@@ -145,9 +145,7 @@ def plot_scenario_comparison(
     )
 
     if use_dates:
-        ax.xaxis.set_major_formatter(
-            mdates.ConciseDateFormatter(ax.xaxis.get_major_locator())
-        )
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
         for lbl in ax.get_xticklabels():
             lbl.set_rotation(35)
             lbl.set_ha("right")

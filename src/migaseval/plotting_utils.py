@@ -137,6 +137,19 @@ apply_migas_style()
 
 
 # ---------------------------------------------------------------------------
+# Axis helpers
+# ---------------------------------------------------------------------------
+
+
+def format_date_axis(ax) -> None:
+    """Apply YYYY-MM-DD date formatting and rotated labels to a matplotlib axis."""
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    for lbl in ax.get_xticklabels():
+        lbl.set_rotation(35)
+        lbl.set_ha("right")
+
+
+# ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
 
@@ -331,9 +344,7 @@ def plot_one_forecast(
 
     # ---- x-axis formatting ----
     if use_dates:
-        ax.xaxis.set_major_formatter(
-            mdates.ConciseDateFormatter(ax.xaxis.get_major_locator())
-        )
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
         for lbl in ax.get_xticklabels():
             lbl.set_rotation(35)
             lbl.set_ha("right")

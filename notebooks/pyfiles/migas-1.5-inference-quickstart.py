@@ -89,6 +89,7 @@ from migaseval.plotting_utils import (
     COLORS,
     _draw_forecast_region,
     apply_migas_style,
+    format_date_axis,
     plot_forecast_single,
 )
 
@@ -150,10 +151,7 @@ ax.plot(
     solid_capstyle="round",
     label="Historical",
 )
-ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
-for lbl in ax.get_xticklabels():
-    lbl.set_rotation(35)
-    lbl.set_ha("right")
+format_date_axis(ax)
 ax.set_xlabel("Date", color="#566573")
 ax.set_ylabel(SERIES_NAME, color="#566573")
 ax.set_title(f"{SERIES_NAME} — context window")
@@ -474,10 +472,7 @@ ax.fill_between(
     label="Scenario range",
 )
 
-ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
-for lbl in ax.get_xticklabels():
-    lbl.set_rotation(35)
-    lbl.set_ha("right")
+format_date_axis(ax)
 ax.set_xlabel("Date", color="#566573")
 ax.set_ylabel(SERIES_NAME, color="#566573")
 ax.set_title(
@@ -489,43 +484,7 @@ ax.legend(fontsize=8, handlelength=1.6, labelspacing=0.35, borderpad=0.45)
 fig.tight_layout(pad=1.2)
 plt.show()
 
-# %%
-orig_slope = linear_slope(migas_fc)
-bull_slope = linear_slope(bullish_fc)
-bear_slope = linear_slope(bearish_fc)
-
-rows = [
-    {
-        "Scenario": "Chronos-2 (no text)",
-        "Slope": f"{linear_slope(chronos_fc):+.5f}",
-        "Slope shift vs original": "—",
-        "Trend score (↑)": f"{composite_trend_score(chronos_fc, 'up', context_vals):+.3f}",
-    },
-    {
-        "Scenario": "Migas-1.5 original",
-        "Slope": f"{orig_slope:+.5f}",
-        "Slope shift vs original": "—",
-        "Trend score (↑)": f"{composite_trend_score(migas_fc, 'up', context_vals):+.3f}",
-    },
-    {
-        "Scenario": "Bullish",
-        "Slope": f"{bull_slope:+.5f}",
-        "Slope shift vs original": f"{bull_slope - orig_slope:+.5f}",
-        "Trend score (↑)": f"{composite_trend_score(bullish_fc, 'up', context_vals):+.3f}",
-    },
-    {
-        "Scenario": "Bearish",
-        "Slope": f"{bear_slope:+.5f}",
-        "Slope shift vs original": f"{bear_slope - orig_slope:+.5f}",
-        "Trend score (↑)": f"{composite_trend_score(bearish_fc, 'up', context_vals):+.3f}",
-    },
-]
-print(pd.DataFrame(rows).to_string(index=False))
-
 # %% [markdown]
-# The table confirms what the plot shows: the bullish narrative steers the slope positive,
-# the bearish narrative pulls it negative — all with the same context window.
-# Compare the Chronos-2 row (no text) with Migas-1.5 to see the baseline text effect.
 #
 # ## What's next
 #
@@ -534,3 +493,5 @@ print(pd.DataFrame(rows).to_string(index=False))
 #   grounded in real recent context.
 # - **Batch evaluation** — see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 #   for rolling-window evaluation with ground truth.
+
+# %%
