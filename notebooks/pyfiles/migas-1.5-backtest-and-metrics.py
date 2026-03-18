@@ -189,7 +189,7 @@ for i in range(n_offline):
     df_ctx = df.iloc[start:end]
     context = df_ctx["y_t"].values.astype(np.float32).reshape(1, -1)
 
-    migas_pred = pipeline.predict(context, pred_len=pred_len, summaries=[summary])
+    migas_pred = pipeline.predict(context, pred_len=pred_len, summaries=summary)
     ctx_tensor = torch.tensor(context).reshape(1, -1, 1)
     chronos_pred = evaluate_chronos(ctx_tensor, pred_len=pred_len, device=device)
 

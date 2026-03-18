@@ -141,6 +141,8 @@ class MigasPipeline:
             When return_univariate=True: tuple of (forecast (B, pred_len, 1),
                 univariate_forecast (B, pred_len, 1)) — both on the pipeline device.
         """
+        if isinstance(summaries, str):
+            summaries = [summaries]
         if text is None and summaries is None:
             raise ValueError(
                 "Either 'text' or 'summaries' must be provided. Pass per-timestep "
@@ -210,13 +212,20 @@ class MigasPipeline:
         Accepts a DataFrame with columns ``t``, ``y_t``, and ``text`` (the
         standard Migas-1.5 data format) and returns a 1-D numpy forecast.
 
+        **Ensemble mode:** When *summaries* contains more than one string, the
+        same context is replicated N times (once per summary), all N forecasts
+        are computed in a single batched forward pass, and the per-timestep
+        mean is returned.  This reduces variance from stochastic summary
+        generation.
+
         Args:
             df: DataFrame with columns ``t``, ``y_t``, ``text``.
             pred_len: Forecast horizon. Defaults to 16.
             seq_len: Use only the last *seq_len* rows as context. If ``None``,
                 all rows are used.
             summaries: Pre-computed summary string(s). When provided the LLM
-                summarizer is skipped and ``text`` is unused.
+                summarizer is skipped and ``text`` is unused.  Pass a list with
+                multiple summaries to enable ensemble averaging.
             return_univariate: If True, return a tuple (forecast, univariate_forecast)
                 where both are numpy arrays of shape ``(pred_len,)``. The univariate
                 forecast is the internal Chronos output that Migas used as its baseline.
@@ -230,6 +239,31 @@ class MigasPipeline:
             df = df.tail(seq_len).reset_index(drop=True)
 
         context = df["y_t"].values.astype(np.float32).reshape(1, -1)
+
+        # Normalize summaries: accept a bare string or a list of strings.
+        if isinstance(summaries, str):
+            summaries = [summaries]
+
+        # ── Ensemble mode: multiple summaries for the same context ────────
+        if summaries is not None and len(summaries) > 1:
+            n = len(summaries)
+            context_batch = np.tile(context, (n, 1))  # (N, T)
+            result = self.predict(
+                context_batch,
+                text=None,
+                pred_len=pred_len,
+                summaries=summaries,
+                return_univariate=return_univariate,
+            )
+            if return_univariate:
+                forecast, ts_fc = result
+                return (
+                    forecast[:, :, 0].median(dim=0).values.detach().cpu().numpy(),
+                    ts_fc[:, :, 0].median(dim=0).values.detach().cpu().numpy(),
+                )
+            return result[:, :, 0].median(dim=0).values.detach().cpu().numpy()
+
+        # ── Single-summary path (unchanged) ───────────────────────────────
         text: Optional[List[List[str]]] = None
         timestamps: Optional[List[List[str]]] = None
         if summaries is None:

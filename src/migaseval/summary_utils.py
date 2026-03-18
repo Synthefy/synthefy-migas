@@ -278,19 +278,20 @@ Generate entries for ALL {len(chunk_dates)} dates. No preamble."""
     return all_texts
 
 
-def _fetch_news_via_web_search(
+def _fetch_news_and_context(
     series_name: str,
     dates: list[str],
     prices: list[float],
-    pred_period: str,
     api_key: str,
     model: str,
     max_iterations: int = 10,
-) -> tuple[str, str]:
-    """Two-step summary generation: (1) web search for news, (2) summarize
-    using the training-format prompt.
+) -> tuple[str, list[str]]:
+    """Web search + enrichment only.  Returns (news_digest, per_day_texts).
 
-    Returns (summary, news_digest).
+    Performs the expensive web search and news enrichment steps but does NOT
+    build the final summary prompt or call the summarization LLM.  This
+    allows the caller to reuse the same news context for multiple summary
+    generations (ensemble mode).
     """
     import anthropic
 
@@ -343,7 +344,27 @@ YYYY-MM-DD: headline or brief description
         series_name, news_digest, dates, prices, api_key, model,
     )
 
-    # ── Step 3: summarize using the training-format prompt ───────────────
+    return news_digest, per_day_texts
+
+
+def _fetch_news_via_web_search(
+    series_name: str,
+    dates: list[str],
+    prices: list[float],
+    pred_period: str,
+    api_key: str,
+    model: str,
+    max_iterations: int = 10,
+) -> tuple[str, str]:
+    """Two-step summary generation: (1) web search for news, (2) summarize
+    using the training-format prompt.
+
+    Returns (summary, news_digest).
+    """
+    news_digest, per_day_texts = _fetch_news_and_context(
+        series_name, dates, prices, api_key, model, max_iterations,
+    )
+
     prompt = build_context_summarizer_prompt(
         series_name, dates, prices, per_day_texts, pred_period
     )
@@ -418,6 +439,35 @@ PREDICTIVE SIGNALS:
 
 
 # ---------------------------------------------------------------------------
+# Ensemble helper
+# ---------------------------------------------------------------------------
+
+
+def _generate_n_summaries(
+    prompt: str,
+    n: int,
+    *,
+    provider: str,
+    api_key: str,
+    base_url: str | None = None,
+    model: str | None = None,
+) -> list[str]:
+    """Call ``call_llm`` *n* times on the same prompt and normalize each result.
+
+    Returns a list of *n* normalized summary strings.
+    """
+    summaries: list[str] = []
+    for i in range(n):
+        raw = call_llm(
+            prompt, provider=provider, api_key=api_key,
+            base_url=base_url, model=model,
+        )
+        summaries.append(_normalize_summary(raw))
+        print(f"  Generated summary {i + 1}/{n}")
+    return summaries
+
+
+# ---------------------------------------------------------------------------
 # High-level orchestrator
 # ---------------------------------------------------------------------------
 
@@ -433,8 +483,14 @@ def generate_summary(
     llm_model: str | None = None,
     return_news: bool = False,
     text_source: str = "web_search",
-) -> "str | tuple[str, str]":
-    """Generate a FACTUAL SUMMARY / PREDICTIVE SIGNALS text for *series*.
+    n_summaries: int = 9,
+) -> "list[str] | tuple[list[str], str]":
+    """Generate FACTUAL SUMMARY / PREDICTIVE SIGNALS text(s) for *series*.
+
+    Always returns a list of summaries (even when ``n_summaries=1``).  The
+    expensive step (web search + enrichment, or text extraction) is performed
+    once; only the final LLM summarization call is repeated *n_summaries*
+    times to produce diverse summaries for ensemble forecasting.
 
     Args:
         series_name:  Human-readable name or description of the series (e.g. ``"GLD"``,
@@ -447,9 +503,10 @@ def generate_summary(
         llm_api_key:  API key for the chosen LLM provider.
         llm_base_url: Optional base URL override (e.g. for local vLLM).
         llm_model:    Optional model name override.
-        return_news:  When True, return ``(summary, news_digest)`` instead of just
-                      the summary string.  Only meaningful with ``llm_provider="anthropic"``
-                      (OpenAI path always returns an empty news digest).
+        return_news:  When True, return ``(summaries, news_digest)`` tuple instead
+                      of just the summaries list.  Only meaningful with
+                      ``llm_provider="anthropic"`` (other paths return an empty
+                      news digest).
         text_source:  Where to get per-timestep text context.
 
                       - ``"web_search"`` (default) — use Claude's web search to find
@@ -458,15 +515,11 @@ def generate_summary(
                       - ``"dataframe"`` — use the ``text`` column from *series*.
                         The LLM summarizes the provided text instead of searching
                         the web.  Works with any provider.
+        n_summaries:  Number of summaries to generate.  Defaults to ``9``.
 
     Returns:
-        Summary string, or ``(summary, news_digest)`` tuple when ``return_news=True``.
-
-    When ``llm_provider="anthropic"`` and ``text_source="web_search"``, Claude's
-    built-in web search is used to find relevant news for the date range before
-    summarizing.  When ``text_source="dataframe"``, the ``text`` column from the
-    series DataFrame is passed directly to the LLM for summarization — no web
-    search is performed.
+        List of summary strings, or ``(summaries_list, news_digest)`` tuple
+        when ``return_news=True``.
     """
     dates = series["t"].tolist()
     prices = series["y_t"].tolist()
@@ -487,24 +540,15 @@ def generate_summary(
         prompt = build_context_summarizer_prompt(
             series_name, dates, prices, per_day_texts, pred_period
         )
-        summary = call_llm(
-            prompt,
-            provider=llm_provider,
-            api_key=llm_api_key,
-            base_url=llm_base_url,
-            model=llm_model,
-        )
         news_digest = ""
-    elif llm_provider == "anthropic":
+    elif llm_provider == "anthropic" and text_source == "web_search":
         model = llm_model or "claude-sonnet-4-6"
         print(f"Using Claude web search for {series_name} ({dates[0]} → {dates[-1]}) …")
-        summary, news_digest = _fetch_news_via_web_search(
-            series_name=series_name,
-            dates=dates,
-            prices=prices,
-            pred_period=pred_period,
-            api_key=llm_api_key,
-            model=model,
+        news_digest, per_day_texts = _fetch_news_and_context(
+            series_name, dates, prices, llm_api_key, model,
+        )
+        prompt = build_context_summarizer_prompt(
+            series_name, dates, prices, per_day_texts, pred_period
         )
     else:
         # OpenAI / vLLM: price-data-only summary (no web search available)
@@ -513,17 +557,15 @@ def generate_summary(
             series_name, dates, prices, per_day_texts, pred_period
         )
         print(f"Calling {llm_provider} to generate summary (price data only) …")
-        summary = call_llm(
-            prompt,
-            provider=llm_provider,
-            api_key=llm_api_key,
-            base_url=llm_base_url,
-            model=llm_model,
-        )
         news_digest = ""
 
-    summary = _normalize_summary(summary)
+    print(f"Generating {n_summaries} summary(ies) …")
+    summaries = _generate_n_summaries(
+        prompt, n_summaries,
+        provider=llm_provider, api_key=llm_api_key,
+        base_url=llm_base_url, model=llm_model,
+    )
 
-    print("\nGenerated summary:\n")
-    print(summary)
-    return (summary, news_digest) if return_news else summary
+    print(f"\nGenerated {n_summaries} summary(ies):\n")
+    print(summaries[0])
+    return (summaries, news_digest) if return_news else summaries

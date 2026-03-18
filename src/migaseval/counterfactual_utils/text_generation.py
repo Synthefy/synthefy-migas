@@ -38,8 +38,7 @@ SYSTEM_MSG = (
 # ---------------------------------------------------------------------------
 
 
-def extract_factual(summary: str) -> str:
-    """Return the FACTUAL SUMMARY portion of a Migas-1.5 summary string."""
+def _extract_factual_one(summary: str) -> str:
     if "FACTUAL SUMMARY:" not in summary:
         return summary
     fact_start = summary.find("FACTUAL SUMMARY:")
@@ -49,17 +48,48 @@ def extract_factual(summary: str) -> str:
     return summary[fact_start:].strip()
 
 
-def extract_predictive(summary: str) -> str:
-    """Return the PREDICTIVE SIGNALS portion, or empty string if absent."""
+def extract_factual(summary: "str | list[str]") -> "str | list[str]":
+    """Return the FACTUAL SUMMARY portion of a Migas-1.5 summary string.
+
+    Accepts a single summary or a list of summaries (ensemble mode).
+    """
+    if isinstance(summary, list):
+        return [_extract_factual_one(s) for s in summary]
+    return _extract_factual_one(summary)
+
+
+def _extract_predictive_one(summary: str) -> str:
     if "PREDICTIVE SIGNALS:" not in summary:
         return ""
     pred_start = summary.find("PREDICTIVE SIGNALS:")
     return summary[pred_start:].strip()
 
 
-def splice_summary(original_summary: str, new_predictive: str) -> str:
-    """Replace the predictive-signals section of *original_summary*."""
-    factual = extract_factual(original_summary)
+def extract_predictive(summary: "str | list[str]") -> "str | list[str]":
+    """Return the PREDICTIVE SIGNALS portion, or empty string if absent.
+
+    Accepts a single summary or a list of summaries (ensemble mode).
+    """
+    if isinstance(summary, list):
+        return [_extract_predictive_one(s) for s in summary]
+    return _extract_predictive_one(summary)
+
+
+def splice_summary(
+    original_summary: "str | list[str]", new_predictive: str,
+) -> "str | list[str]":
+    """Replace the predictive-signals section of *original_summary*.
+
+    Accepts a single summary or a list of summaries (ensemble mode).
+    When a list is passed, each summary gets the same *new_predictive*
+    spliced in, preserving per-summary factual sections.
+    """
+    if isinstance(original_summary, list):
+        return [
+            f"{_extract_factual_one(s)}\n\n{new_predictive}"
+            for s in original_summary
+        ]
+    factual = _extract_factual_one(original_summary)
     return f"{factual}\n\n{new_predictive}"
 
 

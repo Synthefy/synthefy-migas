@@ -146,15 +146,15 @@ if LLM_API_KEY:
         )
     except Exception as e:
         print(f"LLM generation failed: {e}. Using fallback.")
-        summary = FALLBACK_SUMMARY
+        summary = [FALLBACK_SUMMARY]
         news_digest = ""
 else:
     print("No LLM key found — using fallback summary.")
-    summary = FALLBACK_SUMMARY
+    summary = [FALLBACK_SUMMARY]
     news_digest = ""
 
 print(f"\n{'=' * 60}")
-print(summary)
+print(summary[0])
 
 # %% [markdown]
 # ## The core idea: keep the facts, rewrite the outlook
@@ -194,11 +194,13 @@ bullish_summary = splice_summary(summary, bullish_predictive)
 bearish_summary = splice_summary(summary, bearish_predictive)
 
 # %%
+# extract_factual handles list[str] natively; show the first for display.
 print("Factual section (unchanged across all three scenarios):\n")
-print(extract_factual(summary))
+_factual = extract_factual(summary)
+print(_factual[0])
 
 # %%
-display(HTML(display_text_comparison(summary, bullish_summary)))
+display(HTML(display_text_comparison(summary[0], bullish_summary[0] if isinstance(bullish_summary, list) else bullish_summary)))
 
 # %% [markdown]
 # ## Run three forecasts: original, bullish, bearish
@@ -207,13 +209,13 @@ display(HTML(display_text_comparison(summary, bullish_summary)))
 
 # %%
 fc_original = pipeline.predict_from_dataframe(
-    raw, pred_len=PRED_LEN, summaries=[summary]
+    raw, pred_len=PRED_LEN, summaries=summary
 )
 fc_bullish = pipeline.predict_from_dataframe(
-    raw, pred_len=PRED_LEN, summaries=[bullish_summary]
+    raw, pred_len=PRED_LEN, summaries=bullish_summary
 )
 fc_bearish = pipeline.predict_from_dataframe(
-    raw, pred_len=PRED_LEN, summaries=[bearish_summary]
+    raw, pred_len=PRED_LEN, summaries=bearish_summary
 )
 
 print(f"Original slope:  {linear_slope(fc_original):+.5f}")

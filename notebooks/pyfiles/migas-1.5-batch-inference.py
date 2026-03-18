@@ -114,7 +114,7 @@ for csv_path in list_data_files(csv_dir):  # subset has 2 datasets
         summary = json.load(f)["summary"]
 
     forecast = pipeline.predict_from_dataframe(
-        df, pred_len=pred_len, seq_len=seq_len, summaries=[summary]
+        df, pred_len=pred_len, seq_len=seq_len, summaries=summary
     )
     results.append({"dataset": name, "forecast": forecast.tolist()})
     print(f"  {name}: forecast={forecast[:3]}...")
