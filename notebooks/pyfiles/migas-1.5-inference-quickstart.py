@@ -28,6 +28,7 @@
 # | `PRED_LEN` | Number of steps to forecast | `8` – `64` |
 # | `LLM_PROVIDER` | LLM used to auto-generate the text summary in Section 3 | `"anthropic"` (recommended) or `"openai"` |
 # | `LLM_API_KEY` | API key for the LLM provider — **required only for Section 3** | Set via env var `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
+# | `TEXT_SOURCE` | Where per-timestep text comes from: `"web_search"` (Claude searches the web) or `"dataframe"` (use `text` column from CSV) | `"web_search"` (default) |
 #
 # **Also check:**
 # - **Section 2** — replace the loaded `summary` with one that matches your series and date window.
@@ -59,6 +60,8 @@ LLM_API_KEY = os.getenv(
     {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}[LLM_PROVIDER]
 )
 # LLM_API_KEY is optional — only needed for Section 3 (LLM summary generation)
+
+TEXT_SOURCE = "dataframe"  # <-- CHANGE ME: "web_search" (Claude finds news) | "dataframe" (use text column from CSV)
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -122,11 +125,13 @@ raw = pd.read_csv(DATA_PATH)
 raw["t"] = pd.to_datetime(raw["t"]).dt.strftime("%Y-%m-%d")
 
 # Take the last SEQ_LEN + PRED_LEN rows so the window is always exactly the right size
-full = raw[["t", "y_t"]].iloc[-(SEQ_LEN + PRED_LEN) :].reset_index(drop=True)
+_cols = ["t", "y_t"] + (["text"] if "text" in raw.columns else [])
+full = raw[_cols].iloc[-(SEQ_LEN + PRED_LEN) :].reset_index(drop=True)
 
 # Context window fed to the model
-series = full.iloc[:SEQ_LEN][["t", "y_t"]].copy().reset_index(drop=True)
-series["text"] = ""
+series = full.iloc[:SEQ_LEN][_cols].copy().reset_index(drop=True)
+if "text" not in series.columns:
+    series["text"] = ""
 
 # Ground truth for the forecast horizon
 gt_vals = full.iloc[SEQ_LEN:]["y_t"].values.astype(np.float32)
@@ -188,12 +193,17 @@ print(summary)
 # ## 3. (Optional) Generate a Summary with an LLM
 #
 # A good summary requires context about the series over the full context window.
-# This section generates a `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS` using an LLM:
+# This section generates a `FACTUAL SUMMARY` + `PREDICTIVE SIGNALS` using an LLM.
 #
-# - **Anthropic (recommended)** — Claude uses its built-in web search tool to autonomously
-#   find news and market events for the exact date range, then summarizes them. No extra API
-#   key required beyond your Anthropic key.
-# - **OpenAI / vLLM** — generates a summary from value data only (no web search available).
+# The `TEXT_SOURCE` parameter (set above) controls where per-timestep text comes from:
+#
+# - **`"web_search"`** (default) — Claude uses its built-in web search tool to autonomously
+#   find news and market events for the exact date range, then summarizes them. Requires
+#   `llm_provider="anthropic"`.
+# - **`"dataframe"`** — uses the `text` column from the loaded CSV directly. The LLM
+#   summarizes the provided text instead of searching the web. This is useful when your
+#   data already has per-timestep annotations (headlines, analyst notes, etc.). Works with
+#   any provider.
 #
 # **Required environment variables:**
 # - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` — required to call the LLM.
@@ -219,6 +229,7 @@ else:
         llm_base_url=LLM_BASE_URL,
         llm_model=LLM_MODEL,
         return_news=True,
+        text_source=TEXT_SOURCE,
     )
     if news_digest:
         print("\n" + "=" * 60)
