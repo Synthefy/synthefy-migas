@@ -64,6 +64,8 @@ raw["text"] = ""
 context_vals = raw["y_t"].values.astype(np.float32)
 
 # ── Generate summary (requires ANTHROPIC_API_KEY) ────────────────────────────
+# generate_summary returns a list of summaries (default n_summaries=9).
+# Multiple summaries are averaged in predict_from_dataframe for stability.
 summary, news_digest = generate_summary(
     SERIES_NAME, raw, PRED_LEN,
     llm_provider="anthropic",
@@ -85,15 +87,17 @@ significant headwinds for gold, suggesting a pullback of 5-10% is likely over \
 the forecast window. Institutional positioning is increasingly crowded long, \
 raising the risk of a sharp unwind if risk appetite returns to equities."""
 
+# splice_summary handles list[str] — splices each summary with the same predictive text
 bullish_summary = splice_summary(summary, bullish_predictive)
 bearish_summary = splice_summary(summary, bearish_predictive)
 
 # ── Run forecasts ─────────────────────────────────────────────────────────────
 import matplotlib.pyplot as plt
 
-fc_original = pipeline.predict_from_dataframe(raw, pred_len=PRED_LEN, summaries=[summary])
-fc_bullish  = pipeline.predict_from_dataframe(raw, pred_len=PRED_LEN, summaries=[bullish_summary])
-fc_bearish  = pipeline.predict_from_dataframe(raw, pred_len=PRED_LEN, summaries=[bearish_summary])
+# Pass summary list directly — ensemble averaging happens under the hood
+fc_original = pipeline.predict_from_dataframe(raw, pred_len=PRED_LEN, summaries=summary)
+fc_bullish  = pipeline.predict_from_dataframe(raw, pred_len=PRED_LEN, summaries=bullish_summary)
+fc_bearish  = pipeline.predict_from_dataframe(raw, pred_len=PRED_LEN, summaries=bearish_summary)
 
 # ── Plot ──────────────────────────────────────────────────────────────────────
 t_ctx  = pd.to_datetime(raw["t"].values)
@@ -141,7 +145,9 @@ file(s) before writing anything:
 
 **Key patterns the pyfiles establish (do not deviate):**
 
-- Summary generation always uses `generate_summary(series_name, series, pred_len, llm_provider, llm_api_key, return_news=True)` → returns `(summary, news_digest)` tuple.
+- Summary generation always uses `generate_summary(series_name, series, pred_len, llm_provider, llm_api_key, return_news=True)` → returns `(summaries_list, news_digest)` tuple. `summaries_list` is always a `list[str]` (default `n_summaries=9`).
+- When `predict_from_dataframe` receives multiple summaries, it replicates context N times, runs a batched forward pass, and returns the **mean** per timestep — reducing variance from stochastic summary generation.
+- `splice_summary`, `extract_factual`, and `extract_predictive` all accept `str | list[str]` and return the same type.
 - LLM-generated counterfactual signals use `call_llm(prompt, provider, api_key, ...)` from `migaseval.summary_utils` — not a raw API call.
 - Counterfactual predictive text passed to `splice_summary` must start with `PREDICTIVE SIGNALS:` (the function handles stripping bold markers).
 - Forecast dates use `pd.bdate_range(start=last_date, periods=PRED_LEN + 1)` — business days, length `PRED_LEN + 1` to match the prepended `last_val`.

@@ -46,7 +46,7 @@ with open("data/timemmd_energy_sample_summary.txt") as f:
 pipeline = MigasPipeline.from_pretrained("Synthefy/migas-1.5", device="cpu")
 
 forecast = pipeline.predict_from_dataframe(
-    ctx_df, pred_len=16, summaries=[summary],
+    ctx_df, pred_len=16, summaries=summary,
 )
 # forecast — numpy array of shape (16,), values in $/barrel
 print(forecast.round(2))
@@ -83,7 +83,7 @@ ax.set_ylabel("Price ($/barrel)")
 
 | You have | How to run |
 |----------|-----------|
-| Time series + pre-written summary | Pass `summaries=[...]` — no LLM server needed |
+| Time series + pre-written summary | Pass `summaries=` — no LLM server needed |
 | Time series + per-step text (news, notes, …) | Migas generates the summary automatically — see [LLM server](#optional-llm-server) |
 
 ```python
@@ -93,8 +93,15 @@ forecast = pipeline.predict_from_dataframe(df, pred_len=16, seq_len=128)
 # With a pre-computed summary — no LLM call
 forecast = pipeline.predict_from_dataframe(
     df, pred_len=16, seq_len=128,
-    summaries=["FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ..."],
+    summaries="FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ...",
 )
+
+# With ensemble averaging — pass multiple summaries for lower-variance forecasts
+# (generate_summary returns a list by default with n_summaries=9)
+from migaseval.summary_utils import generate_summary
+summaries = generate_summary("My Asset", df, pred_len=16,
+    llm_provider="anthropic", llm_api_key=os.getenv("ANTHROPIC_API_KEY"))
+forecast = pipeline.predict_from_dataframe(df, pred_len=16, summaries=summaries)
 ```
 
 ---
