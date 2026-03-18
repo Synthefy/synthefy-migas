@@ -39,12 +39,12 @@ def _normalize_summary(text: str) -> str:
     # Patterns that match various LLM renderings of the two section headers.
     # Order matters: try more specific patterns first.
     _FACTUAL_RE = re.compile(
-        r"(?:#+ *)?"                          # optional markdown headers
-        r"(?:\*{0,2})"                        # optional bold open
-        r"(?:SECTION\s*1\s*[-–—:]*\s*)?"      # optional "SECTION 1 -"
-        r"FACTUAL\s+SUMMARY\s*:?"             # core label
-        r"(?:\*{0,2})"                        # optional bold close
-        r"\s*:?\s*",                           # trailing colon / whitespace
+        r"(?:#+ *)?"  # optional markdown headers
+        r"(?:\*{0,2})"  # optional bold open
+        r"(?:SECTION\s*1\s*[-–—:]*\s*)?"  # optional "SECTION 1 -"
+        r"FACTUAL\s+SUMMARY\s*:?"  # core label
+        r"(?:\*{0,2})"  # optional bold close
+        r"\s*:?\s*",  # trailing colon / whitespace
         re.IGNORECASE,
     )
     _PREDICTIVE_RE = re.compile(
@@ -341,7 +341,12 @@ YYYY-MM-DD: headline or brief description
     # ── Step 2: enrich sparse headlines into dense per-timestep context ──
     print(f"Enriching news into per-timestep context paragraphs …")
     per_day_texts = _enrich_news_to_context(
-        series_name, news_digest, dates, prices, api_key, model,
+        series_name,
+        news_digest,
+        dates,
+        prices,
+        api_key,
+        model,
     )
 
     return news_digest, per_day_texts
@@ -362,7 +367,12 @@ def _fetch_news_via_web_search(
     Returns (summary, news_digest).
     """
     news_digest, per_day_texts = _fetch_news_and_context(
-        series_name, dates, prices, api_key, model, max_iterations,
+        series_name,
+        dates,
+        prices,
+        api_key,
+        model,
+        max_iterations,
     )
 
     prompt = build_context_summarizer_prompt(
@@ -459,8 +469,11 @@ def _generate_n_summaries(
     summaries: list[str] = []
     for i in range(n):
         raw = call_llm(
-            prompt, provider=provider, api_key=api_key,
-            base_url=base_url, model=model,
+            prompt,
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
         )
         summaries.append(_normalize_summary(raw))
         print(f"  Generated summary {i + 1}/{n}")
@@ -483,7 +496,7 @@ def generate_summary(
     llm_model: str | None = None,
     return_news: bool = False,
     text_source: str = "web_search",
-    n_summaries: int = 9,
+    n_summaries: int = 5,
 ) -> "list[str] | tuple[list[str], str]":
     """Generate FACTUAL SUMMARY / PREDICTIVE SIGNALS text(s) for *series*.
 
@@ -545,7 +558,11 @@ def generate_summary(
         model = llm_model or "claude-sonnet-4-6"
         print(f"Using Claude web search for {series_name} ({dates[0]} → {dates[-1]}) …")
         news_digest, per_day_texts = _fetch_news_and_context(
-            series_name, dates, prices, llm_api_key, model,
+            series_name,
+            dates,
+            prices,
+            llm_api_key,
+            model,
         )
         prompt = build_context_summarizer_prompt(
             series_name, dates, prices, per_day_texts, pred_period
@@ -561,9 +578,12 @@ def generate_summary(
 
     print(f"Generating {n_summaries} summary(ies) …")
     summaries = _generate_n_summaries(
-        prompt, n_summaries,
-        provider=llm_provider, api_key=llm_api_key,
-        base_url=llm_base_url, model=llm_model,
+        prompt,
+        n_summaries,
+        provider=llm_provider,
+        api_key=llm_api_key,
+        base_url=llm_base_url,
+        model=llm_model,
     )
 
     print(f"\nGenerated {n_summaries} summary(ies):\n")

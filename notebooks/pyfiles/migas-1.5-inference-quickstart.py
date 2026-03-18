@@ -230,6 +230,7 @@ else:
         llm_model=LLM_MODEL,
         return_news=True,
         text_source=TEXT_SOURCE,
+        n_summaries=5,
     )
     if news_digest:
         print("\n" + "=" * 60)

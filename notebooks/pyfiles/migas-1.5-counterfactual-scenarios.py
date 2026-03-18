@@ -1,20 +1,20 @@
 # %% [markdown]
 # # Migas-1.5: Counterfactual Scenarios
-# 
+#
 # Most time-series models only see numbers. Migas-1.5 fuses **text and time series**,
 # so you can rewrite the narrative and watch the forecast respond. This notebook
 # demonstrates **counterfactual scenario analysis** on live crude-oil data: we fetch
 # recent prices, create a factual summary, then swap the forward-looking outlook for
 # bullish or bearish alternatives and watch the forecast diverge.
-# 
+#
 # **What you will see:** the same price history produces three dramatically different
 # forecasts depending on the text — confirming that Migas-1.5 genuinely integrates
 # textual signals into its predictions.
-# 
-# **Requirements:** `uv sync` from the repo root. An `ANTHROPIC_API_KEY` 
+#
+# **Requirements:** `uv sync` from the repo root. An `ANTHROPIC_API_KEY`
 # enables Claude-powered summary generation with web search; without it the notebook
 # uses a pre-written fallback summary.
-# 
+#
 # **See also:** [Inference Quick Start](migas-1.5-inference-quickstart.ipynb) ·
 # [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb)
 
@@ -55,7 +55,12 @@ from migaseval.counterfactual_utils import (
     plot_scenario_comparison,
     splice_summary,
 )
-from migaseval.plotting_utils import COLORS, _draw_forecast_region, apply_migas_style, format_date_axis
+from migaseval.plotting_utils import (
+    COLORS,
+    _draw_forecast_region,
+    apply_migas_style,
+    format_date_axis,
+)
 from migaseval.summary_utils import generate_summary
 
 
@@ -63,20 +68,20 @@ apply_migas_style()
 
 # %% [markdown]
 # ## Configuration
-# 
+#
 # Edit the cell below to customize the asset, context length, or LLM settings.
 # The notebook works with any Yahoo Finance ticker — just change `TICKER` and
 # `SERIES_NAME`.
 
 # %%
 # ── USER CONFIGURATION ────────────────────────────────────────────────────────
-TICKER      = "USO"                            # <-- CHANGE ME: any Yahoo Finance ticker
-SERIES_NAME = "United States Oil Fund (USO)"   # <-- CHANGE ME: human-readable name
-CONTEXT_LEN = 64                               # trading days of history
-PRED_LEN    = 16                               # forecast horizon (steps)
+TICKER = "USO"  # <-- CHANGE ME: any Yahoo Finance ticker
+SERIES_NAME = "United States Oil Fund (USO)"  # <-- CHANGE ME: human-readable name
+CONTEXT_LEN = 64  # trading days of history
+PRED_LEN = 16  # forecast horizon (steps)
 
 LLM_PROVIDER = "anthropic"  # "anthropic" (recommended, uses web search) | "openai"
-LLM_API_KEY  = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
+LLM_API_KEY = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
 if LLM_API_KEY and not os.getenv("ANTHROPIC_API_KEY"):
     LLM_PROVIDER = "openai"
 # ───────────────────────────────────────────────────────────────────────────────
@@ -87,14 +92,18 @@ print(f"Pipeline loaded on {device}")
 
 # %% [markdown]
 # ## Fetch live market data
-# 
+#
 # We pull the most recent trading days for USO (crude oil ETF) via Yahoo Finance.
 
 # %%
 end = datetime.today()
 start = end - timedelta(days=int(CONTEXT_LEN * 2.5))
-raw = yf.download(TICKER, start=start.strftime("%Y-%m-%d"),
-                  end=end.strftime("%Y-%m-%d"), progress=False)
+raw = yf.download(
+    TICKER,
+    start=start.strftime("%Y-%m-%d"),
+    end=end.strftime("%Y-%m-%d"),
+    progress=False,
+)
 raw = raw[["Close"]].dropna().tail(CONTEXT_LEN).reset_index()
 raw.columns = ["t", "y_t"]
 raw["t"] = pd.to_datetime(raw["t"]).dt.strftime("%Y-%m-%d")
@@ -107,7 +116,7 @@ print(f"Price range: ${context_vals.min():.2f} - ${context_vals.max():.2f}")
 
 # %% [markdown]
 # ## Generate (or load) a text summary
-# 
+#
 # If `ANTHROPIC_API_KEY` is set, `generate_summary()` uses Claude with **web
 # search** to find real recent news and produce a grounded `FACTUAL SUMMARY` +
 # `PREDICTIVE SIGNALS`. Otherwise a pre-written fallback summary is used.
@@ -135,7 +144,9 @@ FALLBACK_SUMMARY = dedent("""\
 
 if LLM_API_KEY:
     try:
-        print(f"Generating summary for {TICKER} via {LLM_PROVIDER} (with web search)...")
+        print(
+            f"Generating summary for {TICKER} via {LLM_PROVIDER} (with web search)..."
+        )
         summary, news_digest = generate_summary(
             SERIES_NAME,
             raw,
@@ -143,6 +154,7 @@ if LLM_API_KEY:
             llm_provider=LLM_PROVIDER,
             llm_api_key=LLM_API_KEY,
             return_news=True,
+            n_summaries=5,
         )
     except Exception as e:
         print(f"LLM generation failed: {e}. Using fallback.")
@@ -158,15 +170,15 @@ print(summary[0])
 
 # %% [markdown]
 # ## The core idea: keep the facts, rewrite the outlook
-# 
+#
 # Every Migas-1.5 summary has two parts:
-# 
+#
 # - **FACTUAL SUMMARY** — what already happened (unchanged across all scenarios)
 # - **PREDICTIVE SIGNALS** — the forward-looking interpretation (this is what we rewrite)
-# 
+#
 # We replace the predictive section with a strongly **bullish** or **bearish**
 # narrative. The numerical input is identical — only the text embedding changes.
-# 
+#
 # These counterfactual texts reference plausible oil-market catalysts:
 # supply disruptions and inventory draws for bullish, demand collapse and
 # oversupply for bearish.
@@ -200,17 +212,24 @@ _factual = extract_factual(summary)
 print(_factual[0])
 
 # %%
-display(HTML(display_text_comparison(summary[0], bullish_summary[0] if isinstance(bullish_summary, list) else bullish_summary)))
+display(
+    HTML(
+        display_text_comparison(
+            summary[0],
+            bullish_summary[0]
+            if isinstance(bullish_summary, list)
+            else bullish_summary,
+        )
+    )
+)
 
 # %% [markdown]
 # ## Run three forecasts: original, bullish, bearish
-# 
+#
 # All three use the **exact same numerical context** — only the text differs.
 
 # %%
-fc_original = pipeline.predict_from_dataframe(
-    raw, pred_len=PRED_LEN, summaries=summary
-)
+fc_original = pipeline.predict_from_dataframe(raw, pred_len=PRED_LEN, summaries=summary)
 fc_bullish = pipeline.predict_from_dataframe(
     raw, pred_len=PRED_LEN, summaries=bullish_summary
 )
@@ -225,7 +244,7 @@ print(f"Bull-Bear spread: {linear_slope(fc_bullish) - linear_slope(fc_bearish):+
 
 # %% [markdown]
 # ## Scenario fan: same numbers, three different stories
-# 
+#
 # The gap between the bullish and bearish lines is the **pure text-conditioning
 # effect** — the model sees identical price history but produces divergent
 # forecasts based solely on the narrative.
@@ -245,29 +264,46 @@ _draw_forecast_region(
 )
 
 ax.plot(
-    t_ctx, context_vals, color=COLORS["historical"], lw=2.0,
-    label="Historical", solid_capstyle="round",
-)
-ax.plot(
-    t_pred, np.concatenate([[last_val], fc_original]),
-    color=COLORS["Migas-1.5"], lw=2.2, ls="--", alpha=0.85,
-    label="Original forecast", solid_capstyle="round",
-)
-ax.plot(
-    t_pred, np.concatenate([[last_val], fc_bullish]),
-    color=BULLISH_COLOR, lw=2.4, label="Bullish scenario",
+    t_ctx,
+    context_vals,
+    color=COLORS["historical"],
+    lw=2.0,
+    label="Historical",
     solid_capstyle="round",
 )
 ax.plot(
-    t_pred, np.concatenate([[last_val], fc_bearish]),
-    color=BEARISH_COLOR, lw=2.4, label="Bearish scenario",
+    t_pred,
+    np.concatenate([[last_val], fc_original]),
+    color=COLORS["Migas-1.5"],
+    lw=2.2,
+    ls="--",
+    alpha=0.85,
+    label="Original forecast",
+    solid_capstyle="round",
+)
+ax.plot(
+    t_pred,
+    np.concatenate([[last_val], fc_bullish]),
+    color=BULLISH_COLOR,
+    lw=2.4,
+    label="Bullish scenario",
+    solid_capstyle="round",
+)
+ax.plot(
+    t_pred,
+    np.concatenate([[last_val], fc_bearish]),
+    color=BEARISH_COLOR,
+    lw=2.4,
+    label="Bearish scenario",
     solid_capstyle="round",
 )
 ax.fill_between(
     t_pred,
     np.concatenate([[last_val], fc_bearish]),
     np.concatenate([[last_val], fc_bullish]),
-    alpha=0.08, color="#9B8EC4", label="Scenario range",
+    alpha=0.08,
+    color="#9B8EC4",
+    label="Scenario range",
 )
 
 format_date_axis(ax)
@@ -275,7 +311,8 @@ ax.set_xlabel("Date", color="#566573")
 ax.set_ylabel("Price ($)", color="#566573")
 ax.set_title(
     f"Migas-1.5 scenario fan -- {SERIES_NAME}: same numbers, three different stories",
-    fontsize=11, fontweight=600,
+    fontsize=11,
+    fontweight=600,
 )
 ax.legend(fontsize=8, handlelength=1.6, labelspacing=0.35, borderpad=0.45)
 fig.tight_layout(pad=1.2)
@@ -283,17 +320,14 @@ plt.show()
 
 # %% [markdown]
 # ## What's next
-# 
+#
 # The forecast genuinely shifts when the narrative changes, while the numerical
 # input stays identical. This confirms that Migas-1.5 integrates textual signals
 # into its predictions.
-# 
+#
 # - **Try another asset** -- change `TICKER` at the top to any Yahoo Finance symbol
 # - **Generate fresh summaries** -- set `ANTHROPIC_API_KEY` in `.env` for Claude-powered summaries with web search
 # - **Batch evaluation** -- see [Backtest and Metrics](migas-1.5-backtest-and-metrics.ipynb) for rolling-window evaluation
 # - **Counterfactual utilities** -- all tools used here are available via `migaseval.counterfactual_utils`
 
 # %%
-
-
-
