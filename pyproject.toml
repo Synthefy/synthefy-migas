@@ -27,6 +27,7 @@ dependencies = [
     "anthropic>=0.84.0",
     "ipykernel>=7.2.0",
     "ipython>=9.10.0",
+    "paramiko>=4.0.0",
 ]
 
 [tool.uv.sources]
