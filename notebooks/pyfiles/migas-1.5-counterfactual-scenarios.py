@@ -80,6 +80,8 @@ SERIES_NAME = "United States Oil Fund (USO)"  # <-- CHANGE ME: human-readable na
 CONTEXT_LEN = 64  # trading days of history
 PRED_LEN = 16  # forecast horizon (steps)
 
+N_SUMMARIES = 5  # ensemble size (more = stabler forecasts, more LLM calls)
+
 LLM_PROVIDER = "anthropic"  # "anthropic" (recommended, uses web search) | "openai"
 LLM_API_KEY = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
 if LLM_API_KEY and not os.getenv("ANTHROPIC_API_KEY"):
@@ -154,7 +156,7 @@ if LLM_API_KEY:
             llm_provider=LLM_PROVIDER,
             llm_api_key=LLM_API_KEY,
             return_news=True,
-            n_summaries=5,
+            n_summaries=N_SUMMARIES,
         )
     except Exception as e:
         print(f"LLM generation failed: {e}. Using fallback.")

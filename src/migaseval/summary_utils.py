@@ -16,6 +16,9 @@ import re
 
 import pandas as pd
 
+DEFAULT_N_SUMMARIES = 5
+"""Default number of summaries to generate for ensemble forecasting."""
+
 
 # ---------------------------------------------------------------------------
 # Summary format normalizer
@@ -496,7 +499,7 @@ def generate_summary(
     llm_model: str | None = None,
     return_news: bool = False,
     text_source: str = "web_search",
-    n_summaries: int = 5,
+    n_summaries: int = DEFAULT_N_SUMMARIES,
 ) -> "list[str] | tuple[list[str], str]":
     """Generate FACTUAL SUMMARY / PREDICTIVE SIGNALS text(s) for *series*.
 
@@ -528,7 +531,8 @@ def generate_summary(
                       - ``"dataframe"`` — use the ``text`` column from *series*.
                         The LLM summarizes the provided text instead of searching
                         the web.  Works with any provider.
-        n_summaries:  Number of summaries to generate.  Defaults to ``9``.
+        n_summaries:  Number of summaries to generate.  Defaults to
+                      ``DEFAULT_N_SUMMARIES`` (5).
 
     Returns:
         List of summary strings, or ``(summaries_list, news_digest)`` tuple

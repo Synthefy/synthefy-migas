@@ -29,6 +29,7 @@
 # | `LLM_PROVIDER` | LLM used to auto-generate the text summary in Section 3 | `"anthropic"` (recommended) or `"openai"` |
 # | `LLM_API_KEY` | API key for the LLM provider — **required only for Section 3** | Set via env var `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
 # | `TEXT_SOURCE` | Where per-timestep text comes from: `"web_search"` (Claude searches the web) or `"dataframe"` (use `text` column from CSV) | `"web_search"` (default) |
+# | `N_SUMMARIES` | Number of summaries to generate for ensemble averaging (higher = more stable forecasts, more LLM calls) | `5` (default) |
 #
 # **Also check:**
 # - **Section 2** — replace the loaded `summary` with one that matches your series and date window.
@@ -62,6 +63,7 @@ LLM_API_KEY = os.getenv(
 # LLM_API_KEY is optional — only needed for Section 3 (LLM summary generation)
 
 TEXT_SOURCE = "dataframe"  # <-- CHANGE ME: "web_search" (Claude finds news) | "dataframe" (use text column from CSV)
+N_SUMMARIES = 5  # <-- CHANGE ME: ensemble size (more = stabler forecasts, more LLM calls)
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -230,7 +232,7 @@ else:
         llm_model=LLM_MODEL,
         return_news=True,
         text_source=TEXT_SOURCE,
-        n_summaries=5,
+        n_summaries=N_SUMMARIES,
     )
     if news_digest:
         print("\n" + "=" * 60)
