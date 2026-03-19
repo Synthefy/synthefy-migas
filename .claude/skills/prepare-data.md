@@ -1,7 +1,9 @@
-# Prepare Data for Migas-1.5
+---
+name: prepare-data
+description: "Use this skill any time data is loaded, fetched, downloaded, or structured for the Migas-1.5 pipeline. This includes: loading CSVs, fetching live market data via yfinance, formatting DataFrames with t/y_t/text columns, splitting context and ground-truth windows, or preparing batch inference inputs. Trigger whenever the user mentions data prep, data loading, downloading tickers, or formatting series data."
+---
 
-When the user asks how to format, load, or prepare their data for Migas-1.5,
-follow these instructions.
+# Prepare Data for Migas-1.5
 
 ## Required CSV Format
 

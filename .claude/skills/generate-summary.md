@@ -1,7 +1,9 @@
-# Generate Text Summary for Migas-1.5
+---
+name: generate-summary
+description: "Use this skill any time a FACTUAL SUMMARY / PREDICTIVE SIGNALS text string is created, generated, modified, or used with Migas-1.5. This includes: calling generate_summary(), writing summaries manually, creating counterfactual scenarios with splice_summary(), or editing predictive signals text. Trigger whenever the user mentions summaries, text conditioning, sentiment text, bullish/bearish narratives, or news digests for forecasting."
+---
 
-When the user asks you to create, generate, or write a **text summary** for a time series
-(for use with Migas-1.5 forecasting), follow the instructions below.
+# Generate Text Summary for Migas-1.5
 
 ## Summary Format
 

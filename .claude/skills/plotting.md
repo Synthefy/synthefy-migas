@@ -1,8 +1,12 @@
+---
+name: plotting
+description: "Use this skill any time a forecast chart, visualization, or figure is created. This includes: plotting single forecasts, grid comparisons, counterfactual scenario fans, backtest result charts, or any matplotlib figure using Migas-1.5 outputs. Trigger whenever the user mentions plotting, charting, visualizing, or saving forecast figures."
+---
+
 # Plotting Migas-1.5 Forecasts
 
-When the user asks you to plot, visualize, or chart forecasts, use the plotting
-utilities from `migaseval.plotting_utils`. Always call `apply_migas_style()` once
-before any plotting to get consistent, release-quality styling.
+Always call `apply_migas_style()` once before any plotting to get consistent,
+release-quality styling.
 
 ## Setup
 

@@ -1,7 +1,9 @@
-# Run Forecasts with Migas-1.5
+---
+name: run-forecast
+description: "Use this skill any time MigasPipeline is used or forecast code is written. This includes: running single-series or batch inference, comparing Migas-1.5 vs Chronos-2 baselines, running counterfactual forecasts with different summaries, performing rolling-window backtests, or computing forecast metrics (MAE, MAPE, directional accuracy). Trigger whenever the user mentions forecasting, prediction, inference, backtesting, or model evaluation."
+---
 
-When the user asks how to run a forecast, predict, or do inference with Migas-1.5,
-follow these instructions.
+# Run Forecasts with Migas-1.5
 
 ## Pipeline Setup
 

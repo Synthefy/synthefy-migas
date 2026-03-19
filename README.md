@@ -97,7 +97,7 @@ forecast = pipeline.predict_from_dataframe(
 )
 
 # With ensemble averaging — pass multiple summaries for lower-variance forecasts
-# (generate_summary returns a list by default with n_summaries=9)
+# (generate_summary returns a list by default with n_summaries=5)
 from migaseval.summary_utils import generate_summary
 summaries = generate_summary("My Asset", df, pred_len=16,
     llm_provider="anthropic", llm_api_key=os.getenv("ANTHROPIC_API_KEY"))
