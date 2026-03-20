@@ -65,9 +65,16 @@ OUTPUT_DIR = "."
 # HELPER — generic API call with retry
 # ══════════════════════════════════════════════════════════════════════════════
 
-def call_entsoe(params: dict, description: str) -> str:
-    """Call the ENTSO-E API and return XML text (handles ZIP-compressed responses)."""
-    params["securityToken"] = API_TOKEN
+TOO_MANY = "TOO_MANY"  # sentinel: window too large, caller should halve it
+
+
+def call_entsoe(params: dict, description: str):
+    """
+    Call the ENTSO-E API and return XML text / list[str] for ZIP responses.
+    Returns TOO_MANY sentinel if the API says the window has too many instances.
+    Returns None on other failures.
+    """
+    params = {**params, "securityToken": API_TOKEN}
 
     for attempt in range(3):
         try:
@@ -75,12 +82,11 @@ def call_entsoe(params: dict, description: str) -> str:
             resp = requests.get(BASE_URL, params=params, timeout=120)
 
             if resp.status_code == 200:
-                # ZIP response — return all XML files as a list
                 if resp.content[:2] == b"PK":
                     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
                         names = [n for n in zf.namelist() if n.endswith(".xml")]
                         if not names:
-                            return None  # empty ZIP = no data for this period
+                            return None
                         return [zf.read(n).decode("utf-8") for n in names]
                 return resp.text
             elif resp.status_code == 401:
@@ -90,13 +96,15 @@ def call_entsoe(params: dict, description: str) -> str:
                 print("  ⏳ Rate limited, waiting 60s...")
                 time.sleep(60)
             else:
-                # Extract human-readable error from ENTSO-E acknowledgement XML
                 try:
                     root = ET.fromstring(resp.text)
                     reason = next(
                         (el.text for el in root.iter() if el.tag.endswith("}text") and el.text),
                         resp.text[:200],
                     )
+                    if "exceeds the allowed maximum" in (reason or ""):
+                        print(f"  ↓ Too many instances — halving window")
+                        return TOO_MANY  # don't retry, just shrink
                     print(f"  ✗ HTTP {resp.status_code}: {reason}")
                 except Exception:
                     print(f"  ✗ HTTP {resp.status_code}: {resp.text[:200]}")
@@ -211,35 +219,46 @@ def fetch_remit_messages(zone: str, start: str, end: str) -> pd.DataFrame:
     """
     print("\n[2/3] Fetching REMIT messages...")
 
-    # 2-hour chunks — worst observed density was ~60 records/hour, so 2h ≈ 120 < 200 limit
+    # Adaptive chunking: start at 2h, halve on TOO_MANY, double back after success
     start_dt = datetime.strptime(start, "%Y%m%d%H%M")
     end_dt = datetime.strptime(end, "%Y%m%d%H%M")
 
     all_messages = []
     chunk_start = start_dt
+    chunk_hours = 2.0
 
     while chunk_start < end_dt:
-        chunk_end = min(chunk_start + timedelta(hours=2), end_dt)
+        chunk_end = min(chunk_start + timedelta(hours=chunk_hours), end_dt)
 
-        # A78 = generation unavailability; A77 = transmission unavailability
         for doc_type in ["A78", "A77"]:
-            params = {
-                "documentType": doc_type,
-                "in_Domain": zone,
-                "out_Domain": zone,
-                "periodStart": chunk_start.strftime("%Y%m%d%H%M"),
-                "periodEnd": chunk_end.strftime("%Y%m%d%H%M"),
-            }
+            window_start = chunk_start
+            window_end   = chunk_end
+            window_hours = chunk_hours
 
-            result = call_entsoe(params, f"REMIT {doc_type} {chunk_start.strftime('%Y-%m-%d %H:%M')}")
+            while True:
+                params = {
+                    "documentType": doc_type,
+                    "in_Domain": zone,
+                    "out_Domain": zone,
+                    "periodStart": window_start.strftime("%Y%m%d%H%M"),
+                    "periodEnd":   window_end.strftime("%Y%m%d%H%M"),
+                }
+                result = call_entsoe(params, f"REMIT {doc_type} {window_start.strftime('%Y-%m-%d %H:%M')} ({window_hours:.1f}h)")
 
-            if result:
-                xml_list = result if isinstance(result, list) else [result]
-                chunk_msgs = []
-                for xml_text in xml_list:
-                    chunk_msgs.extend(parse_remit_xml(xml_text, doc_type))
-                all_messages.extend(chunk_msgs)
-                print(f"    ✓ {len(chunk_msgs)} messages ({doc_type})")
+                if result is TOO_MANY:
+                    window_hours /= 2
+                    if window_hours < 0.25:  # give up below 15-min window
+                        print(f"  ✗ Window too small, skipping {window_start}")
+                        break
+                    window_end = window_start + timedelta(hours=window_hours)
+                    continue
+
+                if result:
+                    xml_list = result if isinstance(result, list) else [result]
+                    chunk_msgs = [m for x in xml_list for m in parse_remit_xml(x, doc_type)]
+                    all_messages.extend(chunk_msgs)
+                    print(f"    ✓ {len(chunk_msgs)} messages ({doc_type})")
+                break
 
             time.sleep(1)
 
