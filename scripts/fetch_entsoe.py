@@ -236,13 +236,21 @@ def fetch_remit_messages(zone: str, start: str, end: str) -> pd.DataFrame:
             window_hours = chunk_hours
 
             while True:
-                params = {
-                    "documentType": doc_type,
-                    "in_Domain": zone,
-                    "out_Domain": zone,
-                    "periodStart": window_start.strftime("%Y%m%d%H%M"),
-                    "periodEnd":   window_end.strftime("%Y%m%d%H%M"),
-                }
+                if doc_type == "A77":
+                    params = {
+                        "documentType": doc_type,
+                        "biddingZone_Domain": zone,
+                        "periodStart": window_start.strftime("%Y%m%d%H%M"),
+                        "periodEnd":   window_end.strftime("%Y%m%d%H%M"),
+                    }
+                else:
+                    params = {
+                        "documentType": doc_type,
+                        "in_Domain": zone,
+                        "out_Domain": zone,
+                        "periodStart": window_start.strftime("%Y%m%d%H%M"),
+                        "periodEnd":   window_end.strftime("%Y%m%d%H%M"),
+                    }
                 result = call_entsoe(params, f"REMIT {doc_type} {window_start.strftime('%Y-%m-%d %H:%M')} ({window_hours:.1f}h)")
 
                 if result is TOO_MANY:
