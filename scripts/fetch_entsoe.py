@@ -205,7 +205,7 @@ def parse_price_xml(xml_text: str) -> list:
 # 2. REMIT URGENT MARKET MESSAGES (document type A78)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def fetch_remit_messages(zone: str, start: str, end: str) -> pd.DataFrame:
+def fetch_remit_messages(zone: str, start: str, end: str, incremental_path: str = None) -> pd.DataFrame:
     """
     Fetch REMIT Urgent Market Messages (UMMs) for a bidding zone.
     Document type A78 = Unavailability of generation/production units.
@@ -224,6 +224,7 @@ def fetch_remit_messages(zone: str, start: str, end: str) -> pd.DataFrame:
     end_dt = datetime.strptime(end, "%Y%m%d%H%M")
 
     all_messages = []
+    _header_written = False
     chunk_start = start_dt
     chunk_hours = 2.0
 
@@ -265,6 +266,11 @@ def fetch_remit_messages(zone: str, start: str, end: str) -> pd.DataFrame:
                     xml_list = result if isinstance(result, list) else [result]
                     chunk_msgs = [m for x in xml_list for m in parse_remit_xml(x, doc_type)]
                     all_messages.extend(chunk_msgs)
+                    if incremental_path and chunk_msgs:
+                        chunk_df = pd.DataFrame(chunk_msgs)
+                        chunk_df.to_csv(incremental_path, mode="a", index=False,
+                                        header=not _header_written)
+                        _header_written = True
                     print(f"    ✓ {len(chunk_msgs)} messages ({doc_type})")
                 break
 
@@ -521,18 +527,15 @@ if __name__ == "__main__":
 
     # ── Fetch ──────────────────────────────────────────────────────────────
     prices = fetch_day_ahead_prices(ZONE, START, END)
-    remit = fetch_remit_messages(ZONE, START, END)
+    remit_path = os.path.join(OUTPUT_DIR, f"entsoe_remit_{ZONE_LABEL}.csv")
+    remit = fetch_remit_messages(ZONE, START, END, incremental_path=remit_path)
 
     # ── Save raw ───────────────────────────────────────────────────────────
     prices_path = os.path.join(OUTPUT_DIR, f"entsoe_prices_{ZONE_LABEL}.csv")
-    remit_path = os.path.join(OUTPUT_DIR, f"entsoe_remit_{ZONE_LABEL}.csv")
 
     prices.to_csv(prices_path, index=False)
     print(f"\n  ✓ Saved {prices_path}")
-
-    if not remit.empty:
-        remit.to_csv(remit_path, index=False)
-        print(f"  ✓ Saved {remit_path}")
+    print(f"  ✓ REMIT saved incrementally to {remit_path}")
 
     # ── Join ───────────────────────────────────────────────────────────────
     joined = join_prices_and_remit(prices, remit)
