@@ -297,9 +297,61 @@ This path is where the inference notebooks expect custom data. The file is then 
 
 ---
 
+## How Much Data Do We Actually Need?
+
+**This is a critical question — check with Sai before deciding how many zones to fetch.**
+
+Migas-1.5 was trained on hundreds of text-annotated time series. To fine-tune or extend it on ENTSO-E data, we need enough series that the model can learn a generalizable relationship between outage text and price movement — not just memorize one country.
+
+Some rough guidance while waiting for Sai's input:
+
+- **One zone, one year** (~365 rows) is enough to run inference and test whether the annotations are useful at all. Do this first.
+- **Training** likely requires significantly more. A reasonable starting target is **5–10 zones × 3–5 years each** = 5,000–18,000 annotated daily rows. Each zone takes ~3–4 hours to fetch.
+- **Zone diversity matters** — don't just fetch 5 Germanic zones. Include different market structures: France (nuclear-heavy), Spain (solar-heavy), Poland (coal-heavy), Norway (hydro-heavy). Different supply mixes mean different text-price dynamics, which makes the training data richer.
+- **Year diversity matters too** — 2021–2022 had extreme price volatility driven by the energy crisis. Those years likely have the strongest text signal and should be prioritized.
+
+### Building the training dataset
+
+Once the single-zone validation (Steps 1–5 above) confirms the annotations are predictive, scale up by fetching multiple zones and years. The fetch script already supports arbitrary date ranges and zones via CLI flags:
+
+```bash
+# Example: fetch France for 2022 (high-signal year)
+ENTSOE_API_TOKEN=a447c244-ce1a-4568-bd84-cb601805204a uv run python scripts/fetch_entsoe.py \
+  --start 202201010000 --end 202212310000 \
+  --zone 10YFR-RTE------C --zone-label FR \
+  --output-dir ./entsoe_data_FR_2022
+
+# Example: fetch Spain for 2023
+ENTSOE_API_TOKEN=a447c244-ce1a-4568-bd84-cb601805204a uv run python scripts/fetch_entsoe.py \
+  --start 202301010000 --end 202312310000 \
+  --zone 10YES-REE------0 --zone-label ES \
+  --output-dir ./entsoe_data_ES_2023
+```
+
+Each run produces its own `entsoe_joined_<ZONE>.csv`. Repeat Steps 3–5 for each, then stack all the resulting `t / y_t / text` CSVs into a single training dataset:
+
+```python
+import pandas as pd, glob
+
+frames = []
+for path in glob.glob("data/entsoe/*.csv"):
+    df = pd.read_csv(path)
+    df["series_id"] = path  # keep track of which zone/year
+    frames.append(df)
+
+training_data = pd.concat(frames).reset_index(drop=True)
+print(f"Total training rows: {len(training_data)}")
+print(f"Series: {training_data['series_id'].nunique()}")
+```
+
+Save this combined file as `data/entsoe/entsoe_training_combined.csv` and flag it for Sai to review before any training run.
+
+---
+
 ## Acceptance Criteria
 
-- [ ] Full year 2024 (at minimum Jan–Dec, daily rows)
+**Phase 1 — Validation (one zone):**
+- [ ] Full year 2024 for DE_LU (at minimum Jan–Dec, daily rows)
 - [ ] `t` column is `YYYY-MM-DD` string
 - [ ] `y_t` column is daily mean day-ahead price in EUR/MWh, no NaNs
 - [ ] `text` column populated for days with active REMIT events (expect ~60–80% coverage for DE_LU)
@@ -308,7 +360,15 @@ This path is where the inference notebooks expect custom data. The file is then 
 - [ ] **Event inspection plots saved** for the top 5 largest unplanned outages
 - [ ] **Written findings doc** at `docs/entsoe-annotation-findings.md` with a clear verdict on predictive usefulness
 - [ ] File saved at `data/entsoe/de_lu_prices_annotated_2024.csv`
-- [ ] All of the above committed to the `entsoe-bulk-download` branch
+
+**Phase 2 — Training dataset (only after Phase 1 verdict is positive and Sai confirms scale):**
+- [ ] At least 5 zones fetched and annotated
+- [ ] At least 3 years per zone (prioritize 2021–2024)
+- [ ] Zone diversity: at least one each of nuclear-heavy, solar-heavy, coal-heavy, hydro-heavy
+- [ ] Combined training CSV at `data/entsoe/entsoe_training_combined.csv`
+- [ ] Total row count and zone/year breakdown documented in findings doc
+
+**All of the above committed to the `entsoe-bulk-download` branch.**
 
 ---
 
