@@ -58,7 +58,7 @@ END   = "202412310000"
 
 BASE_URL = "https://web-api.tp.entsoe.eu/api"
 
-OUTPUT_DIR = "."
+OUTPUT_DIR = "./data/entsoe_raw"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -320,6 +320,17 @@ def parse_remit_xml(xml_text: str, doc_type: str) -> list:
         found = el.find(f".//{p}{tag}")
         return found.text.strip() if found is not None and found.text else None
 
+    # Dump first XML sample for debugging structure
+    if not hasattr(parse_remit_xml, "_dumped") and xml_text:
+        parse_remit_xml._dumped = True
+        debug_path = "debug_remit_sample.xml"
+        try:
+            with open(debug_path, "w") as f:
+                f.write(xml_text[:20000])
+            print(f"    [debug] Saved XML sample to {debug_path}")
+        except Exception:
+            pass
+
     for ts in root.findall(f".//{p}TimeSeries"):
         start_date = g(ts, "start_DateAndOrTime.date")
         start_time = (g(ts, "start_DateAndOrTime.time") or "00:00:00Z").replace("Z", "")
@@ -332,13 +343,23 @@ def parse_remit_xml(xml_text: str, doc_type: str) -> list:
         nominal_p = g(ts, "production_RegisteredResource.pSRType.powerSystemResources.nominalP")
         quantity   = g(ts, "quantity")
 
+        # Try multiple paths for reason text
+        reason = None
+        for reason_tag in ["Reason", "reason"]:
+            reason_el = ts.find(f".//{p}{reason_tag}/{p}text")
+            if reason_el is not None and reason_el.text:
+                reason = reason_el.text.strip()
+                break
+        if not reason:
+            reason = g(ts, "text")
+
         msg = {
             "doc_type":              doc_type,
             "message_id":            g(ts, "mRID"),
             "event_type":            g(ts, "businessType"),
             "asset_name":            g(ts, "production_RegisteredResource.name") or g(ts, "registeredResource.name"),
             "fuel_type":             g(ts, "production_RegisteredResource.pSRType.psrType"),
-            "reason_text":           g(ts, "text"),  # inside <Reason><text>
+            "reason_text":           reason,
             "event_start":           f"{start_date}T{start_time}",
             "event_end":             f"{end_date}T{end_time}" if end_date else f"{start_date}T{end_time}",
             "available_capacity_mw": float(quantity) if quantity else None,
