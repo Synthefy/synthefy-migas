@@ -1019,6 +1019,21 @@ wheels = [
 ]
 
 [[package]]
+name = "entsoe-py"
+version = "0.7.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "pandas" },
+    { name = "pytz" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cb/81/bd4eb750beb1e67bd344d2c44858614289b1ae2aa1ffd22eefa5b5c5b760/entsoe_py-0.7.11.tar.gz", hash = "sha256:8f4f8c0c676e2caa9ff0ff3102facfc862101b10ec5e322c92c665935d9b8d1c", size = 1597174 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/d6/6f9ec19fdb43bda4b9a2fe3f3f564a9aba78f8a8612ed3d5bcf0b0a45a0f/entsoe_py-0.7.11-py3-none-any.whl", hash = "sha256:9beeeafb24f8e524511f8a3caf8391e112dce880e8682e22d45d43690ce368b0", size = 1620492 },
+]
+
+[[package]]
 name = "eval-type-backport"
 version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -4831,6 +4846,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "chronos-forecasting" },
+    { name = "entsoe-py" },
     { name = "huggingface-hub", extra = ["cli"] },
     { name = "ipykernel" },
     { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -4864,6 +4880,7 @@ vllm = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.84.0" },
     { name = "chronos-forecasting" },
+    { name = "entsoe-py", specifier = ">=0.7.11" },
     { name = "huggingface-hub", extras = ["cli"], specifier = ">=0.36.1" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "ipython", specifier = ">=9.10.0" },

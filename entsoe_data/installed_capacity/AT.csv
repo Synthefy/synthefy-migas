@@ -1,0 +1,40 @@
+,Bidding Zone,Installed Capacity [MW],Name,Production Type,Start,Voltage Connection Level [kV]
+11WD2GBRO000327I,10YAT-APG------L,100,KW Braunau-Simbach AT,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,110
+11WD2KAUT0001512,10YAT-APG------L,392,KW Kaunertal,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,220
+14W-BAA-KW-----D,10YAT-APG------L,175.5,Abwinden-Asten,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,110
+14W-BAS-KW-----I,10YAT-APG------L,289.4,Aschach,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,380
+14W-BAW-KW-----F,10YAT-APG------L,333,Altenwörth,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,380
+14W-BFR-KW-----A,10YAT-APG------L,174.2,Freudenau,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,110
+14W-BGS-KW-----Q,10YAT-APG------L,297,Greifenstein,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,380
+14W-BME-KW-----Q,10YAT-APG------L,187,Melk,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,110
+14W-BOW-KW-----9,10YAT-APG------L,179,Ottensheim-Wilhering,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,110
+14W-BWM-KW-----L,10YAT-APG------L,210,Wallsee-Mitterkirchen,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,380
+14W-BYP-KW-----6,10YAT-APG------L,242.3,Ybbs-Persenbeug,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,380
+14W-DAN-KW-----7,10YAT-APG------L,103,Annabrücke,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,380
+14W-DMH-KW-----9,10YAT-APG------L,727.5,Malta-Hauptstufe,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,380
+14W-DMO-KW-----D,10YAT-APG------L,156,Malta-Oberstufe,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,110
+14W-DRP-KW-----M,10YAT-APG------L,430,Reisseck 2,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,380
+14W-E110349----M,10YAT-APG------L,114,Kraftwerk Oschenik,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,110
+14W-E110352----K,10YAT-APG------L,140,Kraftwerk Feldsee,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,110
+14W-E110354----8,10YAT-APG------L,100,Kraftwerk Außerfragant,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,110
+14W-KW-HMUHR---R,10YAT-APG------L,107,Kraftwerk Hintermuhr,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,110
+14W-KW-THE-EVN-7,10YAT-APG------L,495,Kraftwerk Theiß,Fossil Gas,2023-12-31 23:00:00+00:00,110
+14W-PROD-DO----O,10YAT-APG------L,395,KW Donaustadt,Fossil Gas,2023-12-31 23:00:00+00:00,380
+14W-PROD-LAU---8,10YAT-APG------L,140,KW Leopoldau,Fossil Gas,2023-12-31 23:00:00+00:00,380
+14W-PROD-SIM---P,10YAT-APG------L,1349.2,KW Simmering,Fossil Gas,2023-12-31 23:00:00+00:00,380
+14W-TKH-KW-----O,10YAT-APG------L,280,Kaprun-Hauptstufe,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,110
+14W-TKO-KW-----S,10YAT-APG------L,160,Kaprun-Oberstufe,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,110
+14W-TKP-KW-----I,10YAT-APG------L,480,Limberg II,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,380
+14W-TKS-KW-----P,10YAT-APG------L,120,Kaprun-Schwarzach,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,110
+14W-TZG-KW-----H,10YAT-APG------L,215,Gerlos,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,110
+14W-TZH-KW-----7,10YAT-APG------L,420,Häusling,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,380
+14W-TZMA-KW----N,10YAT-APG------L,370,Mayrhofen,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,380
+14W-TZR-KW-----I,10YAT-APG------L,240,Roßhag,Hydro Pumped Storage,2023-12-31 23:00:00+00:00,240
+14W-VOEST-KW---0,10YAT-APG------L,153,voestalpine KW Linz,Fossil Gas,2023-12-31 23:00:00+00:00,110
+14W-WGM-KW-----J,10YAT-APG------L,838,GDK-Mellach,Fossil Gas,2023-12-31 23:00:00+00:00,380
+14W-WML-KW-----0,10YAT-APG------L,165,FHKW Mellach,Fossil Gas,2023-12-31 23:00:00+00:00,110
+14WENERGIE--WT02,10YAT-APG------L,400,Kraftwerk Timelkam Gesamtanlage,Fossil Gas,2023-12-31 23:00:00+00:00,110
+14WLSG-1SUED---5,10YAT-APG------L,158,FHKW Linz Süd,Fossil Gas,2023-12-31 23:00:00+00:00,110
+14WLSG-MITTE---U,10YAT-APG------L,216.8,FHKW Linz Mitte,Fossil Gas,2023-12-31 23:00:00+00:00,110
+14WTK3KW-------1,10YAT-APG------L,480,Limberg III,Hydro Pumped Storage,2025-12-31 23:00:00+00:00,380
+14WVERB-GJO-KW-5,10YAT-APG------L,132,Kraftwerk Jochenstein AT,Hydro Run-of-river and poundage,2024-12-31 23:00:00+00:00,220

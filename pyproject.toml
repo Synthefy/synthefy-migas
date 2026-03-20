@@ -28,6 +28,7 @@ dependencies = [
     "ipykernel>=7.2.0",
     "ipython>=9.10.0",
     "paramiko>=4.0.0",
+    "entsoe-py>=0.7.11",
 ]
 
 [tool.uv.sources]

@@ -1,0 +1,20 @@
+,Bidding Zone,Installed Capacity [MW],Name,Production Type,Start,Voltage Connection Level [kV]
+50WP000000001491,10YNO-1--------2,230,F.K.F,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,10
+50WP00000000294T,10YNO-1--------2,117,Hunderfossen,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,66
+50WP000000003370,10YNO-1--------2,86.8,Kaggefoss,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,50
+50WP000000005039,10YNO-1--------2,344,Nedre Vinstra,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,10
+50WP00000000565O,10YNO-1--------2,114,Rendal 2,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,11
+50WP00000000566M,10YNO-1--------2,99,Rendalen,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,300
+50WP00000000592L,10YNO-1--------2,84,Rånåsfo1,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,66
+50WP000000006035,10YNO-1--------2,80,Sarp,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,47
+50WP00000000639L,10YNO-1--------2,99,Skollenborg,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,132
+50WP00000000650X,10YNO-1--------2,110.5,Solberg1,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,10
+50WP00000000651V,10YNO-1--------2,100,Solberg2,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,15.5
+50WP00000000749E,10YNO-1--------2,164,Torpa,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,8
+50WP000000007957,10YNO-1--------2,213,Vamma,Hydro Run-of-river and poundage,2023-12-31 23:00:00+00:00,5
+50WP00000000852L,10YNO-1--------2,140,Ovre Vinstra,Hydro Water Reservoir,2023-12-31 23:00:00+00:00,12
+50WP00000000855F,10YNO-1--------2,97,Åbjøra,Hydro Water Reservoir,2025-12-31 23:00:00+00:00,132
+50WP00000001397E,10YNO-1--------2,88,Osa,Hydro Water Reservoir,2025-12-31 23:00:00+00:00,132
+50WP00000001718K,10YNO-1--------2,111.6,Raskiftet,Wind Onshore,2025-12-31 23:00:00+00:00,132
+50WP00000002159P,10YNO-1--------2,110.4,Songkjølen Vind,Wind Onshore,2025-12-31 23:00:00+00:00,132
+50WPI00000019675,10YNO-1--------2,110,Harpefossen,Hydro Run-of-river and poundage,2025-12-31 23:00:00+00:00,300
