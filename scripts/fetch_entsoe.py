@@ -486,6 +486,7 @@ if __name__ == "__main__":
     parser.add_argument("--zone",       default=ZONE,       help="Bidding zone EIC code (default: %(default)s)")
     parser.add_argument("--zone-label", default=ZONE_LABEL, help="Short label for output filenames (default: %(default)s)")
     parser.add_argument("--output-dir", default=OUTPUT_DIR, help="Directory for output CSVs (default: %(default)s)")
+    parser.add_argument("--prices-only", action="store_true", help="Only fetch prices, skip REMIT")
     args = parser.parse_args()
 
     START      = args.start
@@ -548,14 +549,22 @@ if __name__ == "__main__":
 
     # ── Fetch ──────────────────────────────────────────────────────────────
     prices = fetch_day_ahead_prices(ZONE, START, END)
-    remit_path = os.path.join(OUTPUT_DIR, f"entsoe_remit_{ZONE_LABEL}.csv")
-    remit = fetch_remit_messages(ZONE, START, END, incremental_path=remit_path)
 
-    # ── Save raw ───────────────────────────────────────────────────────────
+    # ── Save prices immediately ───────────────────────────────────────────
     prices_path = os.path.join(OUTPUT_DIR, f"entsoe_prices_{ZONE_LABEL}.csv")
-
     prices.to_csv(prices_path, index=False)
     print(f"\n  ✓ Saved {prices_path}")
+
+    if args.prices_only:
+        print(f"\n{'=' * 70}")
+        print("DONE (prices only)")
+        print(f"{'=' * 70}")
+        print(f"  Prices: {len(prices)} hourly rows")
+        print(f"  File:   {prices_path}")
+        sys.exit(0)
+
+    remit_path = os.path.join(OUTPUT_DIR, f"entsoe_remit_{ZONE_LABEL}.csv")
+    remit = fetch_remit_messages(ZONE, START, END, incremental_path=remit_path)
     print(f"  ✓ REMIT saved incrementally to {remit_path}")
 
     # ── Join ───────────────────────────────────────────────────────────────
