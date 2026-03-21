@@ -194,7 +194,11 @@ def parse_messages(messages: list[dict], zone_eic: str) -> pd.DataFrame:
     df["event_start"] = pd.to_datetime(df["event_start"], format="ISO8601", utc=True)
     df["event_end"] = pd.to_datetime(df["event_end"], format="ISO8601", utc=True)
     df["publication_date"] = pd.to_datetime(df["publication_date"], format="ISO8601", utc=True)
-    df = df.sort_values("event_start").reset_index(drop=True)
+    df = df.sort_values(
+        ["publication_date", "message_id", "version", "event_start", "event_end", "asset_name"],
+        na_position="first",
+        kind="mergesort",
+    ).reset_index(drop=True)
     return df
 
 
