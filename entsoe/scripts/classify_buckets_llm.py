@@ -24,7 +24,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.dirname(_SCRIPT_DIR)
 
 DATA_DIR = os.path.join(_ROOT_DIR, "data/entsoe_examples_new")
-OUTPUT_PATH = os.path.join(_ROOT_DIR, "data/reason_text_buckets.json")
+OUTPUT_PATH = os.path.join(_ROOT_DIR, "reason_text_buckets.json")
 
 # ── Load all unique reason texts with counts ──────────────────────────────
 
@@ -45,7 +45,9 @@ frequent = counts[counts >= 2].index.tolist()
 rare = counts[counts == 1].index.tolist()
 
 print(f"Total unique: {len(counts)}")
-print(f"Frequent (2+): {len(frequent)} texts covering {counts[counts >= 2].sum()} events")
+print(
+    f"Frequent (2+): {len(frequent)} texts covering {counts[counts >= 2].sum()} events"
+)
 print(f"Rare (1x): {len(rare)} texts covering {len(rare)} events")
 
 # ── Load existing mapping if resuming ─────────────────────────────────────
@@ -112,16 +114,18 @@ Return ONLY a JSON object mapping each input text to its bucket name. No explana
 
 def classify_batch(texts: list[str]) -> dict:
     """Send a batch of texts to Claude, get back bucket mapping."""
-    numbered = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
+    numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": f"Classify these {len(texts)} outage reason texts into buckets:\n\n{numbered}"
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": f"Classify these {len(texts)} outage reason texts into buckets:\n\n{numbered}",
+            }
+        ],
     )
 
     # Parse JSON from response
@@ -152,10 +156,12 @@ def classify_batch(texts: list[str]) -> dict:
 
 # Process in batches
 n_batches = (len(to_classify) + BATCH_SIZE - 1) // BATCH_SIZE
-print(f"\nProcessing {len(to_classify)} texts in {n_batches} batches of {BATCH_SIZE}...")
+print(
+    f"\nProcessing {len(to_classify)} texts in {n_batches} batches of {BATCH_SIZE}..."
+)
 
 for i in range(0, len(to_classify), BATCH_SIZE):
-    batch = to_classify[i:i + BATCH_SIZE]
+    batch = to_classify[i : i + BATCH_SIZE]
     batch_num = i // BATCH_SIZE + 1
 
     print(f"\n  Batch {batch_num}/{n_batches} ({len(batch)} texts)...")
@@ -186,7 +192,7 @@ RARE_BATCH_SIZE = 300
 n_rare_batches = (len(to_classify_rare) + RARE_BATCH_SIZE - 1) // RARE_BATCH_SIZE
 
 for i in range(0, len(to_classify_rare), RARE_BATCH_SIZE):
-    batch = to_classify_rare[i:i + RARE_BATCH_SIZE]
+    batch = to_classify_rare[i : i + RARE_BATCH_SIZE]
     batch_num = i // RARE_BATCH_SIZE + 1
 
     print(f"\n  Rare batch {batch_num}/{n_rare_batches} ({len(batch)} texts)...")

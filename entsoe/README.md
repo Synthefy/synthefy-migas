@@ -56,6 +56,7 @@ ENTSOE_API_TOKEN=your-token uv run python scripts/build_training_data.py
 ```
 
 This produces:
+
 ```
 data/entsoe_raw/<zone>_<year>/    # Raw data per zone/year
   umm_raw_<zone>_<year>.json      #   Raw UMM API response
@@ -128,7 +129,7 @@ All scripts run with `uv run python scripts/<name>.py` from the repo root.
 | `entsoe_text_buckets.py` | Price impact grouped by LLM-classified outage reason buckets | Heatmaps, trajectories, boxplots (all zones + per zone) |
 | `entsoe_bucket_deep_analysis.py` | Deep analysis: bucket x MW, bucket x zone, recovery time, cascade, seasonality, signal audit | 10+ plots, statistical tests, correlation comparison |
 | `entsoe_findings_plots.py` | Presentation-ready summary plots from daily data | Coverage heatmap, signal by zone, fuel breakdown |
-| `classify_buckets_llm.py` | Uses Claude API to classify outage reason texts into semantic buckets | `data/reason_text_buckets.json` (4,882 entries) |
+| `classify_buckets_llm.py` | Uses Claude API to classify outage reason texts into semantic buckets | `reason_text_buckets.json` (4,882 entries) |
 
 ### Visualization
 
@@ -231,11 +232,13 @@ Used Claude (Sonnet) to classify 7,082 unique outage reason texts into 26 semant
 ## Dependencies
 
 Core:
+
 ```
 pandas, numpy, matplotlib, scipy, requests, pytz, python-dotenv
 ```
 
 Optional (for LLM classification only):
+
 ```
 anthropic
 ```
