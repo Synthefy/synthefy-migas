@@ -252,13 +252,11 @@ def plot_elo_bars(
     out_dir: Path,
     model_display: dict[str, str] | None = None,
 ) -> None:
-    """ELO ratings bar chart (requires multielo)."""
+    """ELO ratings bar chart (requires multi-elo)."""
     try:
-        from multielo import MultiElo
+        from multi_elo import EloPlayer, calc_elo
     except ImportError:
         return
-    # Build rankings per row: for each dataset row, rank models by metric (lower = better)
-    metric_col = f"_{metric}"
     rankings = []
     for _, row in df.iterrows():
         row_rank = []
@@ -272,14 +270,13 @@ def plot_elo_bars(
 
     if not rankings:
         return
-    elo = MultiElo(k_value=32, d_value=400)
     base_rating = 1500
     ratings = {m: float(base_rating) for m in models}
     for rank in rankings:
-        current = np.array([ratings[m] for m in rank])
-        new = elo.get_new_ratings(current)
-        for m, r in zip(rank, new):
-            ratings[m] = r
+        players = [EloPlayer(place=i + 1, elo=ratings[m]) for i, m in enumerate(rank)]
+        new_ratings = calc_elo(players)
+        for m, r in zip(rank, new_ratings):
+            ratings[m] = float(r)
 
     labels = [get_display_name(m, model_display) for m in models]
     values = [ratings[m] for m in models]

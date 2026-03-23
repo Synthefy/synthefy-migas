@@ -13,24 +13,30 @@ from tqdm import tqdm
 
 MODEL_DISPLAY_NAMES: Dict[str, str] = {
     "migas15": "Migas-1.5",
+    "migas15_best": "Migas-1.5 (Best)",
+    "migas": "Migas",
     "timeseries": "TS-Only",
     "chronos": "Chronos2",
     "timesfm": "TimesFM2.5",
     "toto": "Toto",
     "prophet": "Prophet",
+    "tabpfn": "TabPFN",
 }
 
 MODEL_COLORS: Dict[str, str] = {
     "migas15": "#F28C28",   # orange (brand)
+    "migas15_best": "#E8651A",  # darker orange
+    "migas": "#D2691E",     # chocolate / darker orange
     "chronos": "#4A90D9",   # blue (brand)
     "timesfm": "#7B68EE",   # medium slate blue / purple
     "toto": "#2ECC71",      # emerald green
     "prophet": "#E74C3C",   # red
+    "tabpfn": "#8B008B",    # dark magenta
 }
 
-OURS_MODELS = {"migas15"}
+OURS_MODELS = {"migas15", "migas15_best"}
 
-MODEL_ORDER = ["migas15", "chronos", "timesfm", "toto", "prophet"]
+MODEL_ORDER = ["migas15", "migas15_best", "migas", "chronos", "timesfm", "toto", "prophet", "tabpfn"]
 
 
 def get_display_name(key: str) -> str:
@@ -551,7 +557,7 @@ def evaluate_prophet_precomputed(
     historic: list,
     forecast: list,
     pred_len: int,
-    freq: str = "h",
+    freq: str = "D",
     means: list = None,
     stds: list = None,
 ) -> dict:

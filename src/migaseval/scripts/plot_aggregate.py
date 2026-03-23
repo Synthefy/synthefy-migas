@@ -247,9 +247,8 @@ def compute_elo(
         return {m: base for m in models}
 
     try:
-        from multielo import MultiElo
+        from multi_elo import EloPlayer, calc_elo
 
-        elo_calc = MultiElo(k_value=32, d_value=400)
         use_multielo = True
     except ImportError:
         use_multielo = False
@@ -268,8 +267,8 @@ def compute_elo(
             order = [m for m, _ in ranking]
 
             if use_multielo:
-                current = np.array([ratings[m] for m in order])
-                new = elo_calc.get_new_ratings(current)
+                players = [EloPlayer(place=i + 1, elo=ratings[m]) for i, m in enumerate(order)]
+                new = calc_elo(players)
                 for m, r in zip(order, new):
                     ratings[m] = float(r)
             else:
@@ -469,29 +468,69 @@ def page_aggregate_metrics(
     models: list[str],
     ctx_lengths: list[int],
 ):
-    """Separate MAE and MSE aggregate tables per context length."""
+    """Separate MAE and MSE aggregate tables per context length.
+
+    When a ``group`` column is present the table shows per-group rows for
+    each context length plus an overall row, separated by visual grouping.
+    """
     model_labels = [get_display_name(m) for m in models]
     n_model = len(models)
+    has_groups = "group" in df.columns
+    groups = sorted(df["group"].unique().tolist()) if has_groups else []
 
     for metric_suffix, metric_name in [("mean_mae", "MAE"), ("mean_mse", "MSE")]:
-        col_labels = ["Ctx"] + model_labels
+        if has_groups and groups:
+            col_labels = ["Ctx", "Group"] + model_labels
+        else:
+            col_labels = ["Ctx"] + model_labels
         rows = []
         row_colors = []
+
+        GROUP_HEADER_COLOR = "#dce6f1"
+        OVERALL_COLOR = "#e3f2fd"
+
         for ci, ctx in enumerate(ctx_lengths):
             sub = df[df["context_length"] == ctx]
             if sub.empty:
                 continue
-            row: list = [str(ctx)]
-            for m in models:
-                col = f"{m}_{metric_suffix}"
-                row.append(sub[col].mean() if col in sub.columns else "")
-            rows.append(row)
-            row_colors.append(ALT_ROW_COLORS[ci % 2])
 
-        ctx_w = 0.06
-        metric_w = (1.0 - ctx_w) / n_model
-        col_widths = [ctx_w] + [metric_w] * n_model
-        highlight = [list(range(1, 1 + n_model))]
+            if has_groups and groups:
+                for gi, grp in enumerate(groups):
+                    grp_sub = sub[sub["group"] == grp]
+                    if grp_sub.empty:
+                        continue
+                    row: list = [str(ctx), grp]
+                    for m in models:
+                        col = f"{m}_{metric_suffix}"
+                        row.append(grp_sub[col].mean() if col in grp_sub.columns else "")
+                    rows.append(row)
+                    row_colors.append(ALT_ROW_COLORS[gi % 2])
+
+                row_all: list = ["", "All"]
+                for m in models:
+                    col = f"{m}_{metric_suffix}"
+                    row_all.append(sub[col].mean() if col in sub.columns else "")
+                rows.append(row_all)
+                row_colors.append(OVERALL_COLOR)
+            else:
+                row = [str(ctx)]
+                for m in models:
+                    col = f"{m}_{metric_suffix}"
+                    row.append(sub[col].mean() if col in sub.columns else "")
+                rows.append(row)
+                row_colors.append(ALT_ROW_COLORS[ci % 2])
+
+        if has_groups and groups:
+            ctx_w = 0.04
+            grp_w = 0.06
+            metric_w = (1.0 - ctx_w - grp_w) / n_model
+            col_widths = [ctx_w, grp_w] + [metric_w] * n_model
+            highlight = [list(range(2, 2 + n_model))]
+        else:
+            ctx_w = 0.06
+            metric_w = (1.0 - ctx_w) / n_model
+            col_widths = [ctx_w] + [metric_w] * n_model
+            highlight = [list(range(1, 1 + n_model))]
 
         fig, ax = plt.subplots(figsize=(18, max(6, len(rows) * 0.4 + 3)))
         _render_table(
@@ -650,9 +689,19 @@ def page_detail_tables(
     models: list[str],
     ctx_lengths: list[int],
 ):
-    """Per context-length tables with per-dataset results for every model."""
+    """Per context-length tables with per-dataset results for every model.
+
+    When a ``group`` column is present, datasets are grouped with a header
+    row per group and a per-group mean, followed by an overall mean.
+    """
     model_labels = [get_display_name(m) for m in models]
     n_model = len(models)
+    has_groups = "group" in df.columns
+    groups = sorted(df["group"].unique().tolist()) if has_groups else []
+
+    GROUP_HEADER_BG = "#dce6f1"
+    GROUP_MEAN_BG = "#e8eef7"
+    OVERALL_MEAN_BG = "#e3f2fd"
 
     for ctx in ctx_lengths:
         sub = df[df["context_length"] == ctx]
@@ -666,28 +715,66 @@ def page_detail_tables(
             col_labels = ["Dataset", "N"] + model_labels
 
             rows = []
-            agg_vals: dict[str, list[float]] = {m: [] for m in models}
-            for _, row in sub.iterrows():
-                ds = str(row["dataset"]).replace("_with_text", "")
-                n = int(row["n_samples"]) if pd.notna(row.get("n_samples")) else 0
-                r: list = [ds, str(n)]
-                for m in models:
-                    c = f"{m}_{metric_suffix}"
-                    v = (
-                        row[c]
-                        if c in row.index and pd.notna(row[c])
-                        else np.nan
-                    )
-                    r.append(v if not np.isnan(v) else "-")
-                    agg_vals[m].append(v)
-                rows.append(r)
+            row_colors = []
+            all_agg_vals: dict[str, list[float]] = {m: [] for m in models}
 
-            # Mean row
-            mean_row: list = ["Mean", ""]
+            if has_groups and groups:
+                for grp in groups:
+                    grp_sub = sub[sub["group"] == grp]
+                    if grp_sub.empty:
+                        continue
+
+                    header_row: list = [f"── {grp} ──", ""] + [""] * n_model
+                    rows.append(header_row)
+                    row_colors.append(GROUP_HEADER_BG)
+
+                    grp_agg: dict[str, list[float]] = {m: [] for m in models}
+                    for _, row in grp_sub.iterrows():
+                        ds = str(row["dataset"]).replace("_with_text", "")
+                        n = int(row["n_samples"]) if pd.notna(row.get("n_samples")) else 0
+                        r: list = [ds, str(n)]
+                        for m in models:
+                            c = f"{m}_{metric_suffix}"
+                            v = (
+                                row[c]
+                                if c in row.index and pd.notna(row[c])
+                                else np.nan
+                            )
+                            r.append(v if not np.isnan(v) else "-")
+                            grp_agg[m].append(v)
+                            all_agg_vals[m].append(v)
+                        rows.append(r)
+                        row_colors.append(ALT_ROW_COLORS[len(rows) % 2])
+
+                    grp_mean: list = [f"Mean ({grp})", ""]
+                    for m in models:
+                        vals = [v for v in grp_agg[m] if not np.isnan(v)]
+                        grp_mean.append(np.mean(vals) if vals else "-")
+                    rows.append(grp_mean)
+                    row_colors.append(GROUP_MEAN_BG)
+            else:
+                for _, row in sub.iterrows():
+                    ds = str(row["dataset"]).replace("_with_text", "")
+                    n = int(row["n_samples"]) if pd.notna(row.get("n_samples")) else 0
+                    r: list = [ds, str(n)]
+                    for m in models:
+                        c = f"{m}_{metric_suffix}"
+                        v = (
+                            row[c]
+                            if c in row.index and pd.notna(row[c])
+                            else np.nan
+                        )
+                        r.append(v if not np.isnan(v) else "-")
+                        all_agg_vals[m].append(v)
+                    rows.append(r)
+                    row_colors.append(ALT_ROW_COLORS[len(rows) % 2])
+
+            mean_row: list = ["Overall Mean", ""]
             for m in models:
-                vals = [v for v in agg_vals[m] if not np.isnan(v)]
+                vals = [v for v in all_agg_vals[m] if not np.isnan(v)]
                 mean_row.append(np.mean(vals) if vals else "-")
             rows.append(mean_row)
+            row_colors.append(OVERALL_MEAN_BG)
 
             ds_w = 0.12
             n_w = 0.03
@@ -698,10 +785,6 @@ def page_detail_tables(
             n_rows = len(rows)
             fig_h = max(8, n_rows * 0.35 + 3)
             fig, ax = plt.subplots(figsize=(18, fig_h))
-
-            row_colors = [ALT_ROW_COLORS[i % 2] for i in range(n_rows - 1)] + [
-                "#e3f2fd"
-            ]
 
             _render_table(
                 ax,
@@ -799,6 +882,116 @@ def run(
     return True
 
 
+def run_combined(
+    results_root: str | Path,
+    summaries_dir: str | Path | None = None,
+    out_path: str | Path | None = None,
+    models: list[str] | None = None,
+) -> bool:
+    """Generate an aggregate PDF combining data from ALL dataset groups.
+
+    Discovers group subdirectories (e.g. fnspid, suite, trading) under
+    *results_root*, loads prediction arrays from each, concatenates them,
+    and produces a single PDF with ELO ratings computed across all groups
+    and context lengths.
+
+    Args:
+        results_root: Top-level results directory containing group subdirs,
+            each with context_<N>/predictions/... layout.
+        summaries_dir: Optional summaries directory for quality filtering.
+        out_path: Output PDF path.  Defaults to
+            ``<results_root>/combined_report/aggregate_summary.pdf``.
+        models: Model keys to include.  Defaults to MODEL_ORDER.
+
+    Returns True on success.
+    """
+    if not HAS_MPL:
+        print("matplotlib is required for aggregate PDF.")
+        return False
+
+    results_root = Path(results_root)
+
+    group_dirs: list[tuple[str, Path]] = []
+    for child in sorted(results_root.iterdir()):
+        if not child.is_dir():
+            continue
+        ctx_children = sorted(child.glob("context_*"))
+        has_preds = any((c / "predictions").is_dir() for c in ctx_children)
+        if has_preds:
+            group_dirs.append((child.name, child))
+
+    if not group_dirs:
+        print(f"No dataset groups with context_*/predictions/ found under {results_root}")
+        return False
+
+    all_dfs: list[pd.DataFrame] = []
+    all_stats: list[pd.DataFrame] = []
+    summaries_str = str(summaries_dir) if summaries_dir else None
+
+    for group_name, group_path in group_dirs:
+        print(f"Loading prediction arrays from {group_path} ...")
+        try:
+            df, stats_df = load_all_data(group_path, summaries_str, models)
+        except RuntimeError as e:
+            print(f"  {e}")
+            continue
+        df["group"] = group_name
+        all_dfs.append(df)
+        if stats_df is not None:
+            stats_df["group"] = group_name
+            all_stats.append(stats_df)
+
+    if not all_dfs:
+        print("No data loaded from any group.")
+        return False
+
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    combined_stats = pd.concat(all_stats, ignore_index=True) if all_stats else None
+
+    avail = available_models(combined_df, models)
+    if not avail:
+        print("No models with data found.")
+        return False
+
+    ctx_lengths = sorted(combined_df["context_length"].unique().tolist())
+    n_datasets = combined_df.groupby("context_length").size().iloc[0] if len(ctx_lengths) > 0 else 0
+    n_matches = len(combined_df)
+
+    groups_str = ", ".join(g for g, _ in group_dirs)
+    print(f"  Groups: {groups_str}")
+    print(f"  Models: {', '.join(get_display_name(m) for m in avail)}")
+    print(f"  Context lengths: {ctx_lengths}")
+    print(f"  Total settings: {n_matches} ({n_datasets} datasets × {len(ctx_lengths)} contexts)")
+
+    if out_path is None:
+        out_dir = results_root / "combined_report"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "aggregate_summary.pdf"
+    else:
+        out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with PdfPages(str(out_path)) as pdf:
+        if combined_stats is not None and not combined_stats.empty:
+            print("  Page: summary quality stats ...")
+            page_summary_quality(pdf, combined_stats)
+
+        print("  Pages: aggregate metrics tables ...")
+        page_aggregate_metrics(pdf, combined_df, avail, ctx_lengths)
+
+        print("  Page: win counts ...")
+        page_win_counts(pdf, combined_df, avail, ctx_lengths)
+
+        print("  Page: Elo ratings ...")
+        page_elo(pdf, combined_df, avail, ctx_lengths)
+
+        print("  Pages: per-context detail tables ...")
+        page_detail_tables(pdf, combined_df, avail, ctx_lengths)
+
+    print(f"Combined aggregate PDF saved to {out_path}")
+    return True
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 
@@ -827,11 +1020,25 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    ok = run(
-        output_dir=args.output_dir,
-        summaries_dir=args.summaries_dir,
-        out_path=args.out_path,
+    output_dir = Path(args.output_dir)
+    has_ctx = any(
+        (d / "predictions").is_dir()
+        for d in output_dir.glob("context_*")
+        if d.is_dir()
     )
+
+    if has_ctx:
+        ok = run(
+            output_dir=args.output_dir,
+            summaries_dir=args.summaries_dir,
+            out_path=args.out_path,
+        )
+    else:
+        ok = run_combined(
+            results_root=args.output_dir,
+            summaries_dir=args.summaries_dir,
+            out_path=args.out_path,
+        )
     return 0 if ok else 1
 
 

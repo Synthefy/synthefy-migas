@@ -7,12 +7,19 @@ When using --qualitative or --all, datasets_dir is read from eval_meta.json (wri
 by the evaluation) if not passed via --datasets_dir.
 
 Usage:
+  # Run on a single dataset group at a specific context length
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64
-  uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --scatter
-  uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --qualitative
+
+  # Run across all context lengths for a single dataset group
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --aggregate
-  uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --all
+
+  # Run on ALL dataset groups under ./results
+  uv run python -m migaseval.scripts.post_eval --results_dir ./results --aggregate
+
+  # Other options
+  uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --scatter
   uv run python -m migaseval.scripts.post_eval --results_dir ./results/suite/context_64 --qualitative --datasets_dir ./data/test
+  uv run python -m migaseval.scripts.post_eval --results_dir ./results --all
 """
 
 from __future__ import annotations
@@ -23,8 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Repo root used as subprocess working directory.
 _repo_root = Path(__file__).resolve().parents[3]
+
 
 def discover_stats_csv(results_dir: Path) -> Path | None:
     """Find stats_Context_*_allsamples.csv in results_dir."""
@@ -47,6 +54,184 @@ def get_datasets_dir_from_meta(results_dir: Path) -> str | None:
         return None
 
 
+def discover_groups(results_dir: Path) -> list[tuple[str, Path]]:
+    """Discover dataset groups and their context dirs under results_dir.
+
+    Handles three layouts:
+      1. results_dir is a context dir (has stats CSV) -> [("", results_dir)]
+      2. results_dir is a group dir (has context_* children) -> [("", first_context_dir)]
+      3. results_dir is the root (has group dirs with context_* children) -> [(group, ctx_dir), ...]
+
+    Returns list of (group_name, context_dir) tuples. context_dir is the first
+    context dir with a stats CSV (used for bar plots / report); the parent is
+    used for aggregate PDF generation.
+    """
+    # Case 1: results_dir itself is a context dir
+    if discover_stats_csv(results_dir) is not None:
+        return [("", results_dir)]
+
+    # Case 2: results_dir has context_* children directly
+    ctx_children = sorted(results_dir.glob("context_*"))
+    ctx_with_csv = [c for c in ctx_children if discover_stats_csv(c) is not None]
+    if ctx_with_csv:
+        return [("", ctx_with_csv[0])]
+
+    # Case 3: results_dir has group subdirs (suite, fnspid, ...) each with context_*
+    groups = []
+    for child in sorted(results_dir.iterdir()):
+        if not child.is_dir():
+            continue
+        ctx_dirs = sorted(child.glob("context_*"))
+        ctx_with_csv = [c for c in ctx_dirs if discover_stats_csv(c) is not None]
+        if ctx_with_csv:
+            groups.append((child.name, ctx_with_csv[0]))
+    return groups
+
+
+def run_post_eval(
+    results_dir: Path,
+    group_name: str,
+    out_dir: Path,
+    *,
+    do_scatter: bool,
+    do_qualitative: bool,
+    do_aggregate: bool,
+    datasets_dir: str | None,
+    summaries_dir: str | None,
+) -> list[str]:
+    """Run post-eval for a single context dir. Returns report lines."""
+    stats_csv = discover_stats_csv(results_dir)
+    if not stats_csv:
+        print(f"  No stats CSV in {results_dir}, skipping")
+        return []
+
+    label = group_name or results_dir.name
+    print(f"\nUsing stats: {stats_csv}")
+
+    import pandas as pd
+
+    df = pd.read_csv(stats_csv, comment="#")
+    n_datasets = len(df)
+    model_cols_mae = [c for c in df.columns if c.endswith("_mean_mae")]
+    models = [c.replace("_mean_mae", "") for c in model_cols_mae]
+
+    print(f"Models: {models}")
+    print(f"Output: {out_dir}")
+
+    def write_metric_table_csv(df: pd.DataFrame, metric: str, out_path: Path) -> None:
+        suffix = f"_mean_{metric}"
+        cols = [c for c in df.columns if c.endswith(suffix)]
+        if not cols:
+            return
+        table_df = df[["dataset_name"] + cols].copy()
+        table_df.columns = ["dataset_name"] + [c[: -len(suffix)] for c in cols]
+        table_df.to_csv(out_path, index=False, float_format="%.4f", na_rep="—")
+
+    write_metric_table_csv(df, "mae", out_dir / "table_mean_mae.csv")
+    write_metric_table_csv(df, "mse", out_dir / "table_mean_mse.csv")
+
+    report_lines = [
+        f"# Evaluation Report — {label}",
+        "",
+        f"- **Results directory**: `{results_dir}`",
+        f"- **Stats file**: `{stats_csv.name}`",
+        f"- **Datasets**: {n_datasets}",
+        f"- **Models**: {', '.join(models)}",
+        "",
+        "## Outputs",
+        "",
+        "### Tables",
+        "",
+        "- [Mean MAE by dataset and model](table_mean_mae.csv)",
+        "- [Mean MSE by dataset and model](table_mean_mse.csv)",
+        "",
+    ]
+
+    from migaseval.scripts.plot_bars import run as run_plot_bars
+
+    if run_plot_bars(results_dir=results_dir, out_dir=out_dir):
+        report_lines += [
+            "### Bar plots",
+            "",
+            "- [bar_aggregate_mean_mae.png](bar_aggregate_mean_mae.png)",
+            "- [bar_grouped_mean_mae.png](bar_grouped_mean_mae.png)",
+            "- [bar_migas15_win_pct.png](bar_migas15_win_pct.png)",
+            "- [bar_improvement_pct.png](bar_improvement_pct.png)",
+            "- [bar_elo_mean_mae.png](bar_elo_mean_mae.png) (if multielo installed)",
+            "",
+        ]
+    else:
+        report_lines += ["Bar plots failed or skipped.", ""]
+
+    if do_scatter:
+        cmd = [
+            sys.executable, "-m", "migaseval.scripts.plot_scatter",
+            "--results_dir", str(results_dir),
+        ]
+        r = subprocess.run(cmd, cwd=str(_repo_root))
+        if r.returncode == 0:
+            report_lines += [
+                "### Scatter plots", "",
+                "Scatter plots were written under the results directory.",
+                "",
+            ]
+        else:
+            report_lines += ["Scatter plots failed or skipped.", ""]
+
+    if do_qualitative:
+        qual_datasets_dir = datasets_dir
+        if not qual_datasets_dir:
+            qual_datasets_dir = get_datasets_dir_from_meta(results_dir)
+        if not qual_datasets_dir:
+            report_lines += [
+                "Qualitative plots skipped (no datasets_dir available).", "",
+            ]
+        else:
+            qual_out = out_dir / "qualitative_plots"
+            qual_out.mkdir(parents=True, exist_ok=True)
+            cmd = [
+                sys.executable, "-m", "migaseval.scripts.plot_qualitative_forecasts",
+                "--results_dir", str(results_dir),
+                "--datasets_dir", str(qual_datasets_dir),
+                "--output_dir", str(qual_out),
+                "--models_to_plot", ",".join(models),
+            ]
+            r = subprocess.run(cmd, cwd=str(_repo_root))
+            if r.returncode == 0:
+                report_lines += [
+                    "### Qualitative forecast plots", "",
+                    "- [qualitative_plots/](qualitative_plots/)", "",
+                ]
+            else:
+                report_lines += ["Qualitative forecast plots failed or skipped.", ""]
+
+    if do_aggregate:
+        from migaseval.scripts.plot_aggregate import run as run_aggregate
+
+        parent_dir = results_dir.parent
+        agg_pdf = out_dir / "aggregate_summary.pdf"
+
+        agg_summaries = summaries_dir
+        if not agg_summaries:
+            candidate = parent_dir / "summaries"
+            if candidate.is_dir():
+                agg_summaries = str(candidate)
+
+        if run_aggregate(
+            output_dir=parent_dir,
+            summaries_dir=agg_summaries,
+            out_path=agg_pdf,
+        ):
+            report_lines += [
+                "### Aggregate summary", "",
+                "- [aggregate_summary.pdf](aggregate_summary.pdf)", "",
+            ]
+        else:
+            report_lines += ["Aggregate summary failed or skipped.", ""]
+
+    return report_lines
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Post-evaluation: bar plots, optional scatter/qualitative plots, and report",
@@ -56,13 +241,14 @@ def main() -> int:
         "--results_dir",
         type=str,
         required=True,
-        help="Directory containing stats_Context_*_allsamples.csv and outputs/",
+        help="Results root (e.g. ./results), a dataset group dir (e.g. ./results/suite), "
+        "or a specific context dir (e.g. ./results/suite/context_64)",
     )
     parser.add_argument(
         "--out_dir",
         type=str,
         default=None,
-        help="Output directory for report and plots (default: results_dir/report)",
+        help="Output directory for report and plots (default: <context_dir>/report)",
     )
     parser.add_argument(
         "--scatter",
@@ -77,7 +263,7 @@ def main() -> int:
     parser.add_argument(
         "--aggregate",
         action="store_true",
-        help="Generate aggregate PDF across all context lengths in the parent of results_dir",
+        help="Generate aggregate PDF across all context lengths",
     )
     parser.add_argument(
         "--summaries_dir",
@@ -94,7 +280,7 @@ def main() -> int:
         "--datasets_dir",
         type=str,
         default=None,
-        help="Directory containing dataset CSVs for qualitative plots (optional if eval wrote eval_meta.json)",
+        help="Directory containing dataset CSVs for qualitative plots",
     )
     args = parser.parse_args()
 
@@ -103,172 +289,54 @@ def main() -> int:
         print(f"Error: results_dir is not a directory: {results_dir}")
         return 1
 
-    stats_csv = discover_stats_csv(results_dir)
-    if not stats_csv:
-        print(f"Error: no stats_Context_*_allsamples.csv found in {results_dir}")
+    groups = discover_groups(results_dir)
+    if not groups:
+        print(f"Error: no dataset groups with stats CSVs found in {results_dir}")
         return 1
-
-    out_dir = Path(args.out_dir) if args.out_dir else results_dir / "report"
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     do_scatter = args.scatter or args.all
     do_qualitative = args.qualitative or args.all
     do_aggregate = args.aggregate or args.all
-    datasets_dir = args.datasets_dir
-    if do_qualitative:
-        if not datasets_dir:
-            datasets_dir = get_datasets_dir_from_meta(results_dir)
-        if not datasets_dir:
-            print(
-                "Error: datasets_dir needed for qualitative plots. Either run post_eval on results from a recent "
-                "evaluation (which writes eval_meta.json), or pass --datasets_dir /path/to/csvs"
-            )
-            return 1
 
-    # Count datasets and models for report
-    import pandas as pd
+    for group_name, ctx_dir in groups:
+        label = group_name or ctx_dir.name
+        print(f"\n{'=' * 70}")
+        print(f"  Dataset group: {label}")
+        print(f"{'=' * 70}")
 
-    df = pd.read_csv(stats_csv, comment="#")
-    n_datasets = len(df)
-    model_cols_mae = [c for c in df.columns if c.endswith("_mean_mae")]
-    models = [c.replace("_mean_mae", "") for c in model_cols_mae]
+        if args.out_dir:
+            if group_name:
+                out_dir = Path(args.out_dir) / group_name
+            else:
+                out_dir = Path(args.out_dir)
+        else:
+            out_dir = ctx_dir / "report"
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write tables as CSV: rows = datasets, columns = models, values = mean MAE / mean MSE
-    def write_metric_table_csv(df: pd.DataFrame, metric: str, out_path: Path) -> None:
-        suffix = f"_mean_{metric}"
-        cols = [c for c in df.columns if c.endswith(suffix)]
-        if not cols:
-            return
-        # Column names for CSV: dataset_name + model names (without suffix)
-        table_df = df[["dataset_name"] + cols].copy()
-        table_df.columns = ["dataset_name"] + [c[: -len(suffix)] for c in cols]
-        table_df.to_csv(out_path, index=False, float_format="%.4f", na_rep="—")
-
-    write_metric_table_csv(df, "mae", out_dir / "table_mean_mae.csv")
-    write_metric_table_csv(df, "mse", out_dir / "table_mean_mse.csv")
-
-    report_lines = [
-        "# Evaluation Report",
-        "",
-        f"- **Results directory**: `{results_dir}`",
-        f"- **Stats file**: `{stats_csv.name}`",
-        f"- **Datasets**: {n_datasets}",
-        f"- **Models**: {', '.join(models)}",
-        "",
-        "## Outputs",
-        "",
-    ]
-
-    # Tables
-    report_lines.append("### Tables")
-    report_lines.append("")
-    report_lines.append("- [Mean MAE by dataset and model](table_mean_mae.csv)")
-    report_lines.append("- [Mean MSE by dataset and model](table_mean_mse.csv)")
-    report_lines.append("")
-
-    # Bar plots (always run)
-    from migaseval.scripts.plot_bars import run as run_plot_bars
-
-    if run_plot_bars(results_dir=results_dir, out_dir=out_dir):
-        report_lines.append("### Bar plots")
-        report_lines.append("")
-        report_lines.append(
-            "- [bar_aggregate_mean_mae.png](bar_aggregate_mean_mae.png)"
+        report_lines = run_post_eval(
+            ctx_dir,
+            label,
+            out_dir,
+            do_scatter=do_scatter,
+            do_qualitative=do_qualitative,
+            do_aggregate=do_aggregate,
+            datasets_dir=args.datasets_dir,
+            summaries_dir=args.summaries_dir,
         )
-        report_lines.append("- [bar_grouped_mean_mae.png](bar_grouped_mean_mae.png)")
-        report_lines.append("- [bar_migas15_win_pct.png](bar_migas15_win_pct.png)")
-        report_lines.append("- [bar_improvement_pct.png](bar_improvement_pct.png)")
-        report_lines.append(
-            "- [bar_elo_mean_mae.png](bar_elo_mean_mae.png) (if multielo installed)"
-        )
-        report_lines.append("")
-    else:
-        report_lines.append("Bar plots failed or skipped.")
-        report_lines.append("")
 
-    # Scatter plots (optional)
-    if do_scatter:
-        cmd = [
-            sys.executable,
-            "-m",
-            "migaseval.scripts.plot_scatter",
-            "--results_dir",
-            str(results_dir),
-        ]
-        r = subprocess.run(cmd, cwd=str(_repo_root))
-        if r.returncode == 0:
-            report_lines.append("### Scatter plots")
-            report_lines.append("")
-            report_lines.append(
-                "Scatter plots were written under the results directory (e.g. `sample_scatter_plots_migas15_vs_*` and `sample_scatter_summary_*.pdf`)."
-            )
-            report_lines.append("")
-        else:
-            report_lines.append("Scatter plots failed or skipped.")
-            report_lines.append("")
+        if report_lines:
+            report_lines += ["---", "Generated by `python -m migaseval.scripts.post_eval`."]
+            report_path = out_dir / "report.md"
+            report_path.write_text("\n".join(report_lines), encoding="utf-8")
+            print(f"Report written to {report_path}")
 
-    # Qualitative forecast plots (optional)
-    if do_qualitative:
-        qual_out = out_dir / "qualitative_plots"
-        qual_out.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            sys.executable,
-            "-m",
-            "migaseval.scripts.plot_qualitative_forecasts",
-            "--results_dir",
-            str(results_dir),
-            "--datasets_dir",
-            str(datasets_dir),
-            "--output_dir",
-            str(qual_out),
-            "--models_to_plot",
-            ",".join(models),
-        ]
-        r = subprocess.run(cmd, cwd=str(_repo_root))
-        if r.returncode == 0:
-            report_lines.append("### Qualitative forecast plots")
-            report_lines.append("")
-            report_lines.append("- [qualitative_plots/](qualitative_plots/)")
-            report_lines.append("")
-        else:
-            report_lines.append("Qualitative forecast plots failed or skipped.")
-            report_lines.append("")
+    if len(groups) > 1:
+        print(f"\nProcessed {len(groups)} dataset groups: {', '.join(g[0] for g in groups)}")
 
-    # Aggregate PDF across context lengths (optional)
-    if do_aggregate:
-        from migaseval.scripts.plot_aggregate import run as run_aggregate
+        from migaseval.scripts.plot_aggregate import run_combined
 
-        # The parent of results_dir contains context_32/, context_64/, etc.
-        parent_dir = results_dir.parent
-        agg_pdf = out_dir / "aggregate_summary.pdf"
+        run_combined(results_root=results_dir, summaries_dir=args.summaries_dir)
 
-        # Try to find summaries_dir: explicit arg, or <parent>/summaries/
-        agg_summaries = args.summaries_dir
-        if not agg_summaries:
-            candidate = parent_dir / "summaries"
-            if candidate.is_dir():
-                agg_summaries = str(candidate)
-
-        if run_aggregate(
-            output_dir=parent_dir,
-            summaries_dir=agg_summaries,
-            out_path=agg_pdf,
-        ):
-            report_lines.append("### Aggregate summary")
-            report_lines.append("")
-            report_lines.append(
-                "- [aggregate_summary.pdf](aggregate_summary.pdf)"
-            )
-            report_lines.append("")
-        else:
-            report_lines.append("Aggregate summary failed or skipped.")
-            report_lines.append("")
-
-    report_lines.append("---")
-    report_lines.append("Generated by `python -m migaseval.scripts.post_eval`.")
-    report_path = out_dir / "report.md"
-    report_path.write_text("\n".join(report_lines), encoding="utf-8")
-    print(f"Report written to {report_path}")
     return 0
 
 

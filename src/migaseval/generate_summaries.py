@@ -31,16 +31,16 @@ SUMMARIZER_CONTEXT_LEN = 32
 
 DATASET_PRESETS = {
     "fnspid": {
-        "csvs_dir": "/data/ttfm_review/fnspid_0.5_complement_csvs",
-        "summaries_dir": "/data/ttfm_review/fnspid_0.5_complement",
+        "csvs_dir": "/home/sai/synthefy-migas/data/fnspid_prepared/fnspid_migas15/fnspid_0.5_complement_csvs",
+        "summaries_dir": "/home/sai/synthefy-migas/data/fnspid_prepared/fnspid_migas15/fnspid_0.5_complement",
     },
     "trading": {
         "csvs_dir": "/data/ttfm_review/trading_economics_refined_csvs",
         "summaries_dir": "/data/ttfm_review/trading_economics_refined",
     },
     "suite": {
-        "csvs_dir": "/data/ttfm_review/icml_suite_csvs",
-        "summaries_dir": "/data/ttfm_review/icml_suite",
+        "csvs_dir": "/home/sai/synthefy-migas/data/migas_1_5_suite/icml_suite_migas15/icml_suite_csvs",
+        "summaries_dir": "/home/sai/synthefy-migas/data/migas_1_5_suite/icml_suite_migas15/icml_suite",
     },
 }
 
