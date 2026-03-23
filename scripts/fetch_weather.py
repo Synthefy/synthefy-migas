@@ -147,7 +147,7 @@ def fetch_chunk(
         cfg["param_key"]: ",".join(cfg["variables"]),
     }
 
-    if api_key and api_key != "free_tier":
+    if api_key not in (None, "free_tier"):
         params["api_key"] = api_key
         url = "https://customer-api.open-meteo.com/v1/archive"
     else:
@@ -257,8 +257,8 @@ def main():
     )
     args = parser.parse_args()
 
-    api_key = None if args.free else os.getenv("OPENMETEO_API_KEY")
-    if not api_key and not args.free:
+    api_key = os.getenv("OPENMETEO_API_KEY") if not args.free else "free_tier"
+    if not api_key:
         print(
             "Error: OPENMETEO_API_KEY not set. Use --free for free tier or set the env var.",
             file=sys.stderr,
