@@ -25,7 +25,8 @@ def merge_ts_umm(ts_path: Path, umm_path: Path) -> pd.DataFrame:
     umm = pd.read_parquet(umm_path)
 
     # Normalize both to UTC for comparison
-    ts["_ts_utc"] = pd.to_datetime(ts["timestamp"], utc=True)
+    ts_col = "timestamp" if "timestamp" in ts.columns else "date"
+    ts["_ts_utc"] = pd.to_datetime(ts[ts_col], utc=True)
     umm["_start_utc"] = pd.to_datetime(umm["event_start"], utc=True)
     umm["_end_utc"] = pd.to_datetime(umm["event_end"], utc=True)
 
