@@ -294,21 +294,23 @@ def _wins_table(ax, title, row_labels, model_names, counts, totals,
 def pages_wins_summary(pdf, data):
     """Generate win-count summary pages (MAE and MSE)."""
     model_names = list(MODELS.keys())
+    non_uni_modes = [m for m in MODES if m != "univariate"]
 
     for metric_key, metric_short in [("MAE (mean)", "MAE"), ("MSE (mean)", "MSE")]:
         wins = _compute_wins(data, metric_key)
 
+        # ── Page 1: All modes (including univariate) ──
         fig = plt.figure(figsize=(13, 16))
         gs = fig.add_gridspec(5, 1, hspace=0.55, top=0.94, bottom=0.03)
 
-        # --- 1) Overall ---
+        # 1) Overall
         ax0 = fig.add_subplot(gs[0])
         total_possible = len(DATASETS) * len(CTX_LENS) * len(MODES)
         counts_overall = [{m: len(wins[m]) for m in model_names}]
         _wins_table(ax0, f"Overall Wins ({metric_short})",
                     ["All"], model_names, counts_overall, [total_possible])
 
-        # --- 2) By context length ---
+        # 2) By context length
         ax1 = fig.add_subplot(gs[1])
         row_labels_ctx = [f"ctx {c}" for c in CTX_LENS]
         counts_ctx = []
@@ -320,7 +322,7 @@ def pages_wins_summary(pdf, data):
         _wins_table(ax1, f"Wins by Context Length ({metric_short})",
                     row_labels_ctx, model_names, counts_ctx, totals_ctx)
 
-        # --- 3) By leak scenario ---
+        # 3) By leak scenario
         ax2 = fig.add_subplot(gs[2])
         row_labels_mode = [MODE_LABELS[m] for m in MODES]
         counts_mode = []
@@ -335,7 +337,7 @@ def pages_wins_summary(pdf, data):
                     row_labels_mode, model_names, counts_mode, totals_mode,
                     row_colors=row_colors_mode)
 
-        # --- 4) By dataset ---
+        # 4) By dataset
         ax3 = fig.add_subplot(gs[3])
         row_labels_ds = [DS_SHORT[ds] for ds in DATASETS]
         counts_ds = []
@@ -347,7 +349,7 @@ def pages_wins_summary(pdf, data):
         _wins_table(ax3, f"Wins by Dataset ({metric_short})",
                     row_labels_ds, model_names, counts_ds, totals_ds)
 
-        # --- 5) By context length × leak scenario ---
+        # 5) By context length × leak scenario
         ax4 = fig.add_subplot(gs[4])
         row_labels_cx_mode = []
         counts_cx_mode = []
@@ -365,7 +367,7 @@ def pages_wins_summary(pdf, data):
                     row_labels_cx_mode, model_names, counts_cx_mode,
                     totals_cx_mode, row_colors=row_colors_cx)
 
-        fig.suptitle(f"Model Win Counts — {metric_short}",
+        fig.suptitle(f"Model Win Counts — {metric_short} (All Modes)",
                      fontsize=15, fontweight="bold", color="#212121")
         fig.text(0.5, 0.01,
                  "Win = lowest metric value for that cell  |  "
@@ -373,6 +375,94 @@ def pages_wins_summary(pdf, data):
                  ha="center", fontsize=7, color="#757575")
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
+
+        # ── Page 2: Excluding univariate (fairer comparison for Migas-1.5) ──
+        fig2 = plt.figure(figsize=(13, 16))
+        gs2 = fig2.add_gridspec(5, 1, hspace=0.55, top=0.94, bottom=0.03)
+
+        # Filter wins to non-univariate only
+        wins_nu = {m: [(d, c, mo) for d, c, mo in wins[m] if mo != "univariate"]
+                   for m in model_names}
+
+        # 1) Overall (excl. univariate)
+        ax0 = fig2.add_subplot(gs2[0])
+        total_nu = len(DATASETS) * len(CTX_LENS) * len(non_uni_modes)
+        counts_nu = [{m: len(wins_nu[m]) for m in model_names}]
+        _wins_table(ax0, f"Overall Wins excl. Univariate ({metric_short})",
+                    ["All (excl. uni)"], model_names, counts_nu, [total_nu])
+
+        # 2) By context length (excl. univariate)
+        ax1 = fig2.add_subplot(gs2[1])
+        row_labels_ctx = [f"ctx {c}" for c in CTX_LENS]
+        counts_ctx_nu = []
+        totals_ctx_nu = []
+        for ctx in CTX_LENS:
+            c = {m: sum(1 for _, wc, _ in wins_nu[m] if wc == ctx)
+                 for m in model_names}
+            counts_ctx_nu.append(c)
+            totals_ctx_nu.append(len(DATASETS) * len(non_uni_modes))
+        _wins_table(ax1, f"Wins by Context Length excl. Univariate ({metric_short})",
+                    row_labels_ctx, model_names, counts_ctx_nu, totals_ctx_nu)
+
+        # 3) By leak scenario (excl. univariate)
+        ax2 = fig2.add_subplot(gs2[2])
+        row_labels_mode_nu = [MODE_LABELS[m] for m in non_uni_modes]
+        counts_mode_nu = []
+        totals_mode_nu = []
+        row_colors_mode_nu = []
+        for mode in non_uni_modes:
+            c = {m: sum(1 for _, _, wm in wins_nu[m] if wm == mode)
+                 for m in model_names}
+            counts_mode_nu.append(c)
+            totals_mode_nu.append(len(DATASETS) * len(CTX_LENS))
+            row_colors_mode_nu.append(MODE_COLORS[mode][0])
+        _wins_table(ax2, f"Wins by Leak Scenario excl. Univariate ({metric_short})",
+                    row_labels_mode_nu, model_names, counts_mode_nu,
+                    totals_mode_nu, row_colors=row_colors_mode_nu)
+
+        # 4) By dataset (excl. univariate)
+        ax3 = fig2.add_subplot(gs2[3])
+        row_labels_ds = [DS_SHORT[ds] for ds in DATASETS]
+        counts_ds_nu = []
+        totals_ds_nu = []
+        for ds in DATASETS:
+            c = {m: sum(1 for wd, _, _ in wins_nu[m] if wd == ds)
+                 for m in model_names}
+            counts_ds_nu.append(c)
+            totals_ds_nu.append(len(CTX_LENS) * len(non_uni_modes))
+        _wins_table(ax3, f"Wins by Dataset excl. Univariate ({metric_short})",
+                    row_labels_ds, model_names, counts_ds_nu, totals_ds_nu)
+
+        # 5) By context length × leak scenario (excl. univariate)
+        ax4 = fig2.add_subplot(gs2[4])
+        row_labels_cx_nu = []
+        counts_cx_nu = []
+        totals_cx_nu = []
+        row_colors_cx_nu = []
+        for ctx in CTX_LENS:
+            for mode in non_uni_modes:
+                row_labels_cx_nu.append(f"ctx {ctx} / {MODE_LABELS[mode]}")
+                c = {m: sum(1 for _, wc, wm in wins_nu[m]
+                            if wc == ctx and wm == mode)
+                     for m in model_names}
+                counts_cx_nu.append(c)
+                totals_cx_nu.append(len(DATASETS))
+                row_colors_cx_nu.append(MODE_COLORS[mode][0])
+        _wins_table(ax4,
+                    f"Wins by Ctx × Scenario excl. Univariate ({metric_short})",
+                    row_labels_cx_nu, model_names, counts_cx_nu,
+                    totals_cx_nu, row_colors=row_colors_cx_nu)
+
+        fig2.suptitle(
+            f"Model Win Counts — {metric_short} (Excluding Univariate)",
+            fontsize=15, fontweight="bold", color="#212121")
+        fig2.text(0.5, 0.01,
+                  "Univariate mode excluded for fair comparison "
+                  "(Migas-1.5 has no univariate)  |  "
+                  "Green = most wins in row",
+                  ha="center", fontsize=7, color="#757575")
+        pdf.savefig(fig2, bbox_inches="tight")
+        plt.close(fig2)
 
 
 def page_per_ctx(pdf, data, ctx):
@@ -664,7 +754,7 @@ def main():
         pages_wins_summary(pdf, data)
         for ctx in CTX_LENS:
             page_per_ctx(pdf, data, ctx)
-    n_pages_2 = 2 + len(CTX_LENS) * 2
+    n_pages_2 = 4 + len(CTX_LENS) * 2
     print(f"  {p2.name}  ({n_pages_2} pages)")
 
     # 3) Per model (averaged): ctx rows × scenario cols (4 pages)
