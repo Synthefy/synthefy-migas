@@ -1,4 +1,4 @@
-"""Migas-1.0 rolling backtest via Synthefy forecast API.
+"""Migas-1.0 rolling backtest via local forecast API.
 
 Follows the same rolling-window protocol as the Chronos2/Toto/TabPFN scripts:
 feeds raw values, renormalizes predictions to z-score space for metrics.
@@ -9,13 +9,13 @@ Leakage modes:
     planned_leak   — planned covariates leak_target=True
     all_leak       — all covariates leak_target=True
 
-Requires SYNTHEFY_API_KEY in environment or .env file.
-
 Usage:
     uv run python scripts/migas-1.0-backtest.py
     uv run python scripts/migas-1.0-backtest.py \
         --context-lens 64 128 --stride 16 \
         --files data/NO_1_daily_hydro_reservoir_features.csv
+    uv run python scripts/migas-1.0-backtest.py \
+        --api-url http://localhost:8018/v2/forecast
 """
 
 from __future__ import annotations
@@ -30,9 +30,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import requests
-from dotenv import load_dotenv
 
-MIGAS_API_URL = "https://forecast.synthefy.com/v2/forecast"
+DEFAULT_API_URL = "http://localhost:8018/v2/forecast"
 API_SUB_BATCH_SIZE = 8
 MAX_RETRIES = 3
 RETRY_BACKOFF = 5.0
@@ -49,21 +48,20 @@ LEAK_MODES = {
 }
 
 
-def _call_migas_api(rows: list[list[dict]], headers: dict, timeout: int = 120) -> list[dict]:
+def _call_migas_api(rows: list[list[dict]], api_url: str, timeout: int = 120) -> list[dict]:
     """Send rows to Migas API with retries.
 
     Each row is [target_sample, cov1, cov2, ...].
     Returns target forecast dict for each row.
     """
     payload = {
-        "model": "Migas-latest",
+        "model": "Migas-1.0",
         "samples": rows,
     }
+    headers = {"Content-Type": "application/json"}
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.post(
-                MIGAS_API_URL, json=payload, headers=headers, timeout=timeout,
-            )
+            resp = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
             if resp.status_code == 429:
                 wait = RETRY_BACKOFF * attempt
                 print(f"  Rate-limited (429), retrying in {wait:.0f}s ...")
@@ -157,7 +155,7 @@ def compute_metrics(preds: np.ndarray, gts: np.ndarray, last_ctx: np.ndarray) ->
 
 def run_backtest(
     csv_path: str,
-    headers: dict,
+    api_url: str,
     context_len: int,
     pred_len: int,
     stride: int,
@@ -231,7 +229,7 @@ def run_backtest(
             sub_rows = all_rows[sb_start:sb_end]
 
             try:
-                sub_results = _call_migas_api(sub_rows, headers)
+                sub_results = _call_migas_api(sub_rows, api_url)
             except (requests.HTTPError, RuntimeError) as exc:
                 print(f"  [{mode_name}] API error at windows {sb_start}-{sb_end}: {exc}")
                 sub_results = []
@@ -270,9 +268,7 @@ def run_backtest(
 
 
 def main():
-    load_dotenv()
-
-    parser = argparse.ArgumentParser(description="Migas-1.0 rolling backtest via Synthefy API")
+    parser = argparse.ArgumentParser(description="Migas-1.0 rolling backtest via local API")
     parser.add_argument(
         "--context-lens", type=int, nargs="+",
         default=[32, 64, 128, 256, 384, 512],
@@ -281,19 +277,8 @@ def main():
     parser.add_argument("--pred-len", type=int, default=16)
     parser.add_argument("--files", nargs="+", default=None)
     parser.add_argument("--output-dir", type=str, default="results")
+    parser.add_argument("--api-url", type=str, default=DEFAULT_API_URL)
     args = parser.parse_args()
-
-    api_key = os.environ.get("SYNTHEFY_API_KEY")
-    if not api_key:
-        print("ERROR: SYNTHEFY_API_KEY not set in environment or .env")
-        print("Set it via: export SYNTHEFY_API_KEY=your-key")
-        print("Or add SYNTHEFY_API_KEY=... to your .env file")
-        return
-
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": api_key,
-    }
 
     data_dir = Path(__file__).resolve().parent.parent / "data"
     if args.files is None:
@@ -303,7 +288,7 @@ def main():
         print("No feature CSV files found. Run extract_outage_features.py first.")
         return
 
-    print(f"API: {MIGAS_API_URL}")
+    print(f"API: {args.api_url}")
     print(f"Context lengths: {args.context_lens}")
     print(f"Prediction length: {args.pred_len}")
     print(f"Stride: {args.stride}")
@@ -317,7 +302,7 @@ def main():
         all_results[fname] = {}
         for ctx_len in args.context_lens:
             file_results = run_backtest(
-                fpath, headers,
+                fpath, args.api_url,
                 context_len=ctx_len,
                 pred_len=args.pred_len,
                 stride=args.stride,
