@@ -15,8 +15,9 @@ OUT_PATH = RESULTS_DIR / "backtest_results.pdf"
 MODELS = {
     "Chronos-2": "chronos2_mv_stride32.json",
     "Toto": "toto_mv_stride32.json",
-    "TabPFN": "tabpfn_ts_stride32.json",
+    "TabPFN": "tabpfn_ts_stride32_v2.0.json",
     "Migas-1.0": "migas_stride32.json",
+    "Migas-1.5": "migas_1.5_stride32.json",
 }
 
 DATASETS = [
@@ -196,11 +197,11 @@ def page_averaged(pdf, data, metric_key, metric_label):
             row_idx += 1
 
     n_cols = len(col_labels)
-    col_widths = [0.16, 0.12] + [0.18] * len(model_names)
+    col_widths = [0.14, 0.10] + [0.152] * len(model_names)
     total = sum(col_widths)
     col_widths = [w / total for w in col_widths]
 
-    fig, ax = plt.subplots(figsize=(11, 8.5))
+    fig, ax = plt.subplots(figsize=(13, 8.5))
     draw_table(ax, col_labels, rows,
                f"{metric_label} — Averaged Across All Datasets (Normalized)",
                col_widths=col_widths, bold_cols=bold_map)
@@ -208,6 +209,170 @@ def page_averaged(pdf, data, metric_key, metric_label):
     _add_legend(fig)
     pdf.savefig(fig, bbox_inches="tight")
     plt.close(fig)
+
+
+def _compute_wins(data, metric_key):
+    """For each (ds, ctx, mode), find the model with the lowest value.
+
+    Returns a dict mapping each model name to a list of
+    (ds, ctx, mode) tuples it won.
+    """
+    model_names = list(MODELS.keys())
+    wins = {m: [] for m in model_names}
+
+    for ds in DATASETS:
+        for ctx in CTX_LENS:
+            for mode in MODES:
+                vals = {}
+                for m in model_names:
+                    v = get_val(data, m, ds, ctx, mode, metric_key)
+                    if v is not None:
+                        vals[m] = v
+                if vals:
+                    best_model = min(vals, key=vals.get)
+                    wins[best_model].append((ds, ctx, mode))
+    return wins
+
+
+def _wins_table(ax, title, row_labels, model_names, counts, totals,
+                row_colors=None):
+    """Draw a wins table: rows = categories, cols = models, cells = 'W / T'."""
+    col_labels = [""] + model_names
+    col_widths = [0.18] + [0.164] * len(model_names)
+    total = sum(col_widths)
+    col_widths = [w / total for w in col_widths]
+
+    cell_texts = []
+    bold_map = {}
+    for r_idx, label in enumerate(row_labels):
+        row = [label]
+        best_count = -1
+        best_col = None
+        for c_idx, m in enumerate(model_names):
+            w = counts[r_idx][m]
+            t = totals[r_idx]
+            row.append(f"{w} / {t}")
+            if w > best_count:
+                best_count = w
+                best_col = c_idx
+        cell_texts.append(row)
+        if best_col is not None and best_count > 0:
+            bold_map[r_idx] = {best_col + 1}
+
+    ax.set_axis_off()
+    tbl = ax.table(
+        cellText=cell_texts,
+        colLabels=col_labels,
+        cellLoc="center", colLoc="center",
+        loc="upper center",
+        colWidths=col_widths,
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(8)
+
+    for (row, col), cell in tbl.get_celld().items():
+        cell.set_edgecolor("#BDBDBD")
+        cell.set_linewidth(0.5)
+        cell.set_height(0.055)
+        if row == 0:
+            cell.set_facecolor(HEADER_COLOR)
+            cell.set_text_props(color=HEADER_TEXT, fontweight="bold", fontsize=8)
+            cell.set_height(0.065)
+        else:
+            actual_row = row - 1
+            bg = "#F5F5F5" if actual_row % 2 == 0 else "#FFFFFF"
+            if row_colors and actual_row < len(row_colors) and row_colors[actual_row]:
+                bg = row_colors[actual_row]
+            cell.set_facecolor(bg)
+            if actual_row in bold_map and col in bold_map[actual_row]:
+                cell.set_facecolor(BEST_COLOR)
+                cell.set_text_props(fontweight="bold")
+
+    ax.set_title(title, fontsize=12, fontweight="bold", pad=14, color="#212121")
+
+
+def pages_wins_summary(pdf, data):
+    """Generate win-count summary pages (MAE and MSE)."""
+    model_names = list(MODELS.keys())
+
+    for metric_key, metric_short in [("MAE (mean)", "MAE"), ("MSE (mean)", "MSE")]:
+        wins = _compute_wins(data, metric_key)
+
+        fig = plt.figure(figsize=(13, 16))
+        gs = fig.add_gridspec(5, 1, hspace=0.55, top=0.94, bottom=0.03)
+
+        # --- 1) Overall ---
+        ax0 = fig.add_subplot(gs[0])
+        total_possible = len(DATASETS) * len(CTX_LENS) * len(MODES)
+        counts_overall = [{m: len(wins[m]) for m in model_names}]
+        _wins_table(ax0, f"Overall Wins ({metric_short})",
+                    ["All"], model_names, counts_overall, [total_possible])
+
+        # --- 2) By context length ---
+        ax1 = fig.add_subplot(gs[1])
+        row_labels_ctx = [f"ctx {c}" for c in CTX_LENS]
+        counts_ctx = []
+        totals_ctx = []
+        for ctx in CTX_LENS:
+            c = {m: sum(1 for _, wc, _ in wins[m] if wc == ctx) for m in model_names}
+            counts_ctx.append(c)
+            totals_ctx.append(len(DATASETS) * len(MODES))
+        _wins_table(ax1, f"Wins by Context Length ({metric_short})",
+                    row_labels_ctx, model_names, counts_ctx, totals_ctx)
+
+        # --- 3) By leak scenario ---
+        ax2 = fig.add_subplot(gs[2])
+        row_labels_mode = [MODE_LABELS[m] for m in MODES]
+        counts_mode = []
+        totals_mode = []
+        row_colors_mode = []
+        for mode in MODES:
+            c = {m: sum(1 for _, _, wm in wins[m] if wm == mode) for m in model_names}
+            counts_mode.append(c)
+            totals_mode.append(len(DATASETS) * len(CTX_LENS))
+            row_colors_mode.append(MODE_COLORS[mode][0])
+        _wins_table(ax2, f"Wins by Leak Scenario ({metric_short})",
+                    row_labels_mode, model_names, counts_mode, totals_mode,
+                    row_colors=row_colors_mode)
+
+        # --- 4) By dataset ---
+        ax3 = fig.add_subplot(gs[3])
+        row_labels_ds = [DS_SHORT[ds] for ds in DATASETS]
+        counts_ds = []
+        totals_ds = []
+        for ds in DATASETS:
+            c = {m: sum(1 for wd, _, _ in wins[m] if wd == ds) for m in model_names}
+            counts_ds.append(c)
+            totals_ds.append(len(CTX_LENS) * len(MODES))
+        _wins_table(ax3, f"Wins by Dataset ({metric_short})",
+                    row_labels_ds, model_names, counts_ds, totals_ds)
+
+        # --- 5) By context length × leak scenario ---
+        ax4 = fig.add_subplot(gs[4])
+        row_labels_cx_mode = []
+        counts_cx_mode = []
+        totals_cx_mode = []
+        row_colors_cx = []
+        for ctx in CTX_LENS:
+            for mode in MODES:
+                row_labels_cx_mode.append(f"ctx {ctx} / {MODE_LABELS[mode]}")
+                c = {m: sum(1 for _, wc, wm in wins[m] if wc == ctx and wm == mode)
+                     for m in model_names}
+                counts_cx_mode.append(c)
+                totals_cx_mode.append(len(DATASETS))
+                row_colors_cx.append(MODE_COLORS[mode][0])
+        _wins_table(ax4, f"Wins by Context Length × Scenario ({metric_short})",
+                    row_labels_cx_mode, model_names, counts_cx_mode,
+                    totals_cx_mode, row_colors=row_colors_cx)
+
+        fig.suptitle(f"Model Win Counts — {metric_short}",
+                     fontsize=15, fontweight="bold", color="#212121")
+        fig.text(0.5, 0.01,
+                 "Win = lowest metric value for that cell  |  "
+                 "Format: wins / possible  |  Green = most wins in row",
+                 ha="center", fontsize=7, color="#757575")
+        pdf.savefig(fig, bbox_inches="tight")
+        plt.close(fig)
 
 
 def page_per_ctx(pdf, data, ctx):
@@ -250,11 +415,11 @@ def page_per_ctx(pdf, data, ctx):
             rows.append((row_texts, False, mode, len(DATASETS)))
             row_idx += 1
 
-        col_widths = [0.14] + [0.215] * len(model_names)
+        col_widths = [0.12] + [0.176] * len(model_names)
         total = sum(col_widths)
         col_widths = [w / total for w in col_widths]
 
-        fig, ax = plt.subplots(figsize=(11, 8.5))
+        fig, ax = plt.subplots(figsize=(13, 8.5))
         draw_table(ax, col_labels, rows,
                    f"{metric_short} by Dataset — Context Length {ctx}",
                    col_widths=col_widths, bold_cols=bold_map)
@@ -268,6 +433,7 @@ MODEL_BG = {
     "Toto":      ("#E3F2FD", "#BBDEFB"),
     "TabPFN":    ("#FFF3E0", "#FFE0B2"),
     "Migas-1.0": ("#F3E5F5", "#E1BEE7"),
+    "Migas-1.5": ("#E0F7FA", "#B2EBF2"),
 }
 
 
@@ -492,12 +658,14 @@ def main():
         page_averaged(pdf, data, "MSE (mean)", "MSE (Mean)")
     print(f"  {p1.name}  ({2} pages)")
 
-    # 2) Per context length: scenario→dataset breakdown (12 pages)
+    # 2) Per context length: wins summary + scenario→dataset breakdown
     p2 = RESULTS_DIR / "2_per_context_length.pdf"
     with PdfPages(str(p2)) as pdf:
+        pages_wins_summary(pdf, data)
         for ctx in CTX_LENS:
             page_per_ctx(pdf, data, ctx)
-    print(f"  {p2.name}  ({len(CTX_LENS) * 2} pages)")
+    n_pages_2 = 2 + len(CTX_LENS) * 2
+    print(f"  {p2.name}  ({n_pages_2} pages)")
 
     # 3) Per model (averaged): ctx rows × scenario cols (4 pages)
     p3 = RESULTS_DIR / "3_per_model_averaged.pdf"
