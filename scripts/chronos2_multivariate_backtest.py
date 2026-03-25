@@ -56,13 +56,6 @@ def get_pipeline(device: str):
     return pipeline
 
 
-def _zscore_stats(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    mu = arr.mean(axis=0)
-    sigma = arr.std(axis=0)
-    sigma = np.where(sigma < 1e-8, 1.0, sigma)
-    return mu, sigma
-
-
 def build_frames(
     ctx_values: np.ndarray,
     ctx_covariates: np.ndarray,
@@ -70,7 +63,11 @@ def build_frames(
     pred_len: int,
     leak_cols: list[str] | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, float, float]:
-    """Build normalized context_df and future_df for Chronos-2.
+    """Build raw-scale context_df and future_df for Chronos-2.
+
+    Feeds raw (unscaled) values so the model sees real magnitudes.
+    Returns (context_df, future_df, target_mu, target_sigma) — caller
+    uses mu/sigma to renormalize predictions for metric computation.
 
     leak_cols controls what covariates appear where:
         None  — univariate: no covariates anywhere
@@ -92,13 +89,12 @@ def build_frames(
     ctx_dict: dict = {
         "id": "series_0",
         "timestamp": ctx_dates,
-        TARGET_COL: (ctx_values - target_mu) / target_sigma,
+        TARGET_COL: ctx_values,
     }
 
     if leak_cols is not None:
-        cov_mu, cov_sigma = _zscore_stats(ctx_covariates)
         for i, col in enumerate(ALL_COV_COLS):
-            ctx_dict[col] = (ctx_covariates[:, i] - cov_mu[i]) / cov_sigma[i]
+            ctx_dict[col] = ctx_covariates[:, i]
 
     context_df = pd.DataFrame(ctx_dict)
 
@@ -107,10 +103,9 @@ def build_frames(
         "timestamp": fut_dates,
     }
     if leak_cols is not None and fut_covariates is not None and leak_cols:
-        cov_mu, cov_sigma = _zscore_stats(ctx_covariates)
         for i, col in enumerate(ALL_COV_COLS):
             if col in leak_cols:
-                fut_dict[col] = (fut_covariates[:, i] - cov_mu[i]) / cov_sigma[i]
+                fut_dict[col] = fut_covariates[:, i]
 
     future_df = pd.DataFrame(fut_dict)
     return context_df, future_df, target_mu, target_sigma
@@ -211,11 +206,12 @@ def run_backtest(
                     target=TARGET_COL,
                 )
 
-            forecast = pred_df.sort_values("timestamp")["predictions"].values.astype(np.float32)
+            forecast_raw = pred_df.sort_values("timestamp")["predictions"].values.astype(np.float64)
+            forecast_norm = (forecast_raw - t_mu) / t_sigma
             gt_norm = (gt - t_mu) / t_sigma
 
-            preds_list.append(forecast)
-            gts_list.append(gt_norm)
+            preds_list.append(forecast_norm.astype(np.float32))
+            gts_list.append(gt_norm.astype(np.float32))
             last_ctx_list.append((float(ctx_vals[-1]) - t_mu) / t_sigma)
 
             if (i + 1) % 20 == 0 or i == n_windows - 1:
@@ -240,7 +236,7 @@ def main():
         default=[32, 64, 128, 256, 384, 512],
         help="Context lengths to sweep (default: 32 64 128 256 384 512)",
     )
-    parser.add_argument("--stride", type=int, default=16, help="Stride (default: 16)")
+    parser.add_argument("--stride", type=int, default=32, help="Stride (default: 16)")
     parser.add_argument("--pred-len", type=int, default=16, help="Prediction horizon (default: 16)")
     parser.add_argument("--files", nargs="+", default=None, help="Feature CSV paths")
     parser.add_argument("--device", type=str, default=None, help="Torch device")

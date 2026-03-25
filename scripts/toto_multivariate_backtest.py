@@ -1,6 +1,10 @@
 """Toto multivariate rolling backtest with configurable covariate leakage.
 
+Matches the evaluation approach in eval_utils.py: feeds raw-scale values to
+Toto, then renormalizes predictions back to z-score space for metrics.
+
 Leakage modes:
+    univariate     — pure univariate, no covariates (matches reference)
     no_leak        — covariates in context only, no future exogenous
     planned_leak   — planned_count + planned_mw leaked as future exogenous
     all_leak       — all 4 covariates leaked as future exogenous
@@ -26,10 +30,10 @@ import torch
 
 ALL_COV_COLS = ["planned_count", "planned_mw", "unplanned_count", "unplanned_mw"]
 PLANNED_COV_COLS = ["planned_count", "planned_mw"]
-UNPLANNED_COV_COLS = ["unplanned_count", "unplanned_mw"]
 TARGET_COL = "y_t"
 
 LEAK_MODES = {
+    "univariate": None,
     "no_leak": [],
     "planned_leak": PLANNED_COV_COLS,
     "all_leak": ALL_COV_COLS,
@@ -109,13 +113,13 @@ def run_backtest(
     for col in ALL_COV_COLS:
         df[col] = df[col].fillna(0.0)
 
-    target = df[TARGET_COL].values.astype(np.float32)
-    covariates_df = df[ALL_COV_COLS].copy()
+    target = df[TARGET_COL].values.astype(np.float64)
+    covariates = df[ALL_COV_COLS].values.astype(np.float64)
 
     valid_mask = ~np.isnan(target)
     first_valid = int(np.argmax(valid_mask))
     target = target[first_valid:]
-    covariates_df = covariates_df.iloc[first_valid:].reset_index(drop=True)
+    covariates = covariates[first_valid:]
 
     n_total = len(target)
     n_windows = (n_total - context_len - pred_len) // stride + 1
@@ -129,10 +133,13 @@ def run_backtest(
 
     results = {}
     for mode_name, leak_cols in LEAK_MODES.items():
-        n_exog = len(leak_cols)
-        col_order = _build_variate_order(leak_cols)
-        col_indices = [ALL_COV_COLS.index(c) for c in col_order]
-        leaked_indices = [ALL_COV_COLS.index(c) for c in leak_cols]
+        is_univariate = leak_cols is None
+        n_exog = 0 if is_univariate else len(leak_cols)
+
+        if not is_univariate:
+            col_order = _build_variate_order(leak_cols)
+            col_indices = [ALL_COV_COLS.index(c) for c in col_order]
+            leaked_indices = [ALL_COV_COLS.index(c) for c in leak_cols]
 
         preds_list = []
         gts_list = []
@@ -147,34 +154,44 @@ def run_backtest(
             if len(gt) < pred_len:
                 break
 
-            ctx_covs_raw = covariates_df.iloc[start:end][ALL_COV_COLS].values.astype(np.float32)
-
             target_mu = float(ctx_vals.mean())
             target_sigma = float(ctx_vals.std())
             if target_sigma < 1e-8:
                 target_sigma = 1.0
 
-            cov_mu, cov_sigma = _zscore_stats(ctx_covs_raw)
+            if is_univariate:
+                # Raw values for univariate (matches reference eval_utils.py)
+                series = ctx_vals[np.newaxis, :]  # (1, context_len)
+                n_variates = 1
+            else:
+                # Per-variate z-score normalization for multivariate to avoid
+                # scale mismatch (target ~654, counts ~1, MW ~100)
+                ctx_covs = covariates[start:end]
+                cov_mu, cov_sigma = _zscore_stats(ctx_covs)
 
-            ctx_vals_norm = (ctx_vals - target_mu) / target_sigma
-            ctx_covs_norm = (ctx_covs_raw - cov_mu) / cov_sigma
+                ctx_vals_norm = (ctx_vals - target_mu) / target_sigma
+                ctx_covs_norm = (ctx_covs - cov_mu) / cov_sigma
+                ctx_covs_ordered = ctx_covs_norm[:, col_indices]  # (context_len, 4)
 
-            ctx_covs_ordered = ctx_covs_norm[:, col_indices]  # (context_len, 4)
+                series = np.concatenate(
+                    [ctx_vals_norm[np.newaxis, :], ctx_covs_ordered.T],
+                    axis=0,
+                )[np.newaxis, :, :]  # (1, 5, context_len)
+                n_variates = series.shape[1]
 
-            # (1, 1+4, context_len) — target first, then covariates
-            series = np.concatenate(
-                [ctx_vals_norm[np.newaxis, :], ctx_covs_ordered.T],
-                axis=0,
-            )[np.newaxis, :, :]  # (1, 5, context_len)
-
-            n_variates = series.shape[1]
             series_t = torch.tensor(series, dtype=torch.float32, device=device)
             padding_mask = torch.ones_like(series_t, dtype=torch.bool)
             id_mask = torch.zeros_like(series_t)
             ts_seconds = torch.zeros_like(series_t)
-            time_interval = torch.full(
-                (1, n_variates), DAILY_SECONDS, dtype=torch.float32, device=device,
-            )
+
+            if is_univariate:
+                time_interval = torch.full(
+                    (1,), DAILY_SECONDS, dtype=torch.float32, device=device,
+                )
+            else:
+                time_interval = torch.full(
+                    (1, n_variates), DAILY_SECONDS, dtype=torch.float32, device=device,
+                )
 
             inputs = MaskedTimeseries(
                 series=series_t,
@@ -187,8 +204,8 @@ def run_backtest(
 
             fut_exog = None
             if n_exog > 0:
-                fut_covs_raw = covariates_df.iloc[end: end + pred_len][ALL_COV_COLS].values.astype(np.float32)
-                fut_covs_norm = (fut_covs_raw - cov_mu) / cov_sigma
+                fut_covs = covariates[end: end + pred_len]
+                fut_covs_norm = (fut_covs - cov_mu) / cov_sigma
                 fut_leaked = fut_covs_norm[:, leaked_indices]  # (pred_len, n_exog)
                 fut_exog = torch.tensor(
                     fut_leaked.T[np.newaxis, :, :],  # (1, n_exog, pred_len)
@@ -206,24 +223,31 @@ def run_backtest(
 
             median = forecast_result.median
             if median.dim() == 3:
-                forecast = median[0, 0, :pred_len].cpu().numpy()
+                forecast_out = median[0, 0, :pred_len].cpu().numpy()
             elif median.dim() == 2:
-                forecast = median[0, :pred_len].cpu().numpy()
+                forecast_out = median[0, :pred_len].cpu().numpy()
             else:
-                forecast = median[:pred_len].cpu().numpy()
+                forecast_out = median[:pred_len].cpu().numpy()
+
+            if is_univariate:
+                # Univariate: model predicted in raw space, renormalize
+                forecast_norm = (forecast_out - target_mu) / target_sigma
+            else:
+                # Multivariate: model predicted in normalized space already
+                forecast_norm = forecast_out
 
             gt_norm = (gt - target_mu) / target_sigma
 
-            preds_list.append(forecast.astype(np.float32))
-            gts_list.append(gt_norm)
-            last_ctx_list.append(ctx_vals_norm[-1])
+            preds_list.append(forecast_norm.astype(np.float32))
+            gts_list.append(gt_norm.astype(np.float32))
+            last_ctx_list.append((float(ctx_vals[-1]) - target_mu) / target_sigma)
 
             if (i + 1) % 20 == 0 or i == n_windows - 1:
                 print(f"  [{mode_name}] Window {i + 1}/{n_windows}")
 
         preds_arr = np.stack(preds_list)
         gts_arr = np.stack(gts_list)
-        last_ctx_arr = np.array(last_ctx_list)
+        last_ctx_arr = np.array(last_ctx_list, dtype=np.float32)
 
         metrics = compute_metrics(preds_arr, gts_arr, last_ctx_arr)
         results[mode_name] = metrics
@@ -239,7 +263,7 @@ def main():
         "--context-lens", type=int, nargs="+",
         default=[32, 64, 128, 256, 384, 512],
     )
-    parser.add_argument("--stride", type=int, default=16)
+    parser.add_argument("--stride", type=int, default=32)
     parser.add_argument("--pred-len", type=int, default=16)
     parser.add_argument("--num-samples", type=int, default=256, help="Toto forecast samples")
     parser.add_argument("--files", nargs="+", default=None)

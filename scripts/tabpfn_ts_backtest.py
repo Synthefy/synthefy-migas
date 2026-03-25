@@ -1,7 +1,11 @@
 """TabPFN-TS univariate rolling backtest with future-leaked covariates.
 
+Matches the evaluation approach in eval_utils.py: feeds raw-scale values to
+TabPFN, then renormalizes predictions back to z-score space for metrics.
+
 Leakage modes:
-    no_leak        — no covariates (pure univariate)
+    univariate     — no covariates (pure univariate, same as no_leak for TabPFN)
+    no_leak        — no covariates (TabPFN can't use past-only covariates)
     planned_leak   — planned_count + planned_mw as tabular features
     all_leak       — all 4 covariates as tabular features
 
@@ -28,70 +32,11 @@ PLANNED_COV_COLS = ["planned_count", "planned_mw"]
 TARGET_COL = "y_t"
 
 LEAK_MODES = {
+    "univariate": None,
     "no_leak": [],
     "planned_leak": PLANNED_COV_COLS,
     "all_leak": ALL_COV_COLS,
 }
-
-
-def _zscore_stats(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    mu = arr.mean(axis=0)
-    sigma = arr.std(axis=0)
-    sigma = np.where(sigma < 1e-8, 1.0, sigma)
-    return mu, sigma
-
-
-def build_tsdfs(
-    ctx_vals: np.ndarray,
-    ctx_covs: np.ndarray,
-    fut_covs: np.ndarray | None,
-    pred_len: int,
-    leak_cols: list[str],
-):
-    """Build train/test TimeSeriesDataFrames with z-score normalization.
-
-    Returns (train_tsdf, test_tsdf, target_mu, target_sigma).
-    """
-    from tabpfn_time_series import TimeSeriesDataFrame
-
-    seq_len = len(ctx_vals)
-    ctx_end = pd.Timestamp("2024-01-01") + pd.Timedelta(days=seq_len - 1)
-    ctx_dates = pd.date_range(end=ctx_end, periods=seq_len, freq="D")
-    fut_dates = pd.date_range(
-        start=ctx_end + pd.Timedelta(days=1), periods=pred_len, freq="D",
-    )
-
-    target_mu = float(ctx_vals.mean())
-    target_sigma = float(ctx_vals.std())
-    if target_sigma < 1e-8:
-        target_sigma = 1.0
-
-    train_dict: dict = {
-        "item_id": "series_0",
-        "timestamp": ctx_dates,
-        "target": (ctx_vals - target_mu) / target_sigma,
-    }
-
-    test_dict: dict = {
-        "item_id": "series_0",
-        "timestamp": fut_dates,
-        "target": np.full(pred_len, np.nan),
-    }
-
-    if leak_cols:
-        cov_mu, cov_sigma = _zscore_stats(ctx_covs)
-        for i, col in enumerate(ALL_COV_COLS):
-            if col in leak_cols:
-                train_dict[col] = (ctx_covs[:, i] - cov_mu[i]) / cov_sigma[i]
-                if fut_covs is not None:
-                    test_dict[col] = (fut_covs[:, i] - cov_mu[i]) / cov_sigma[i]
-                else:
-                    test_dict[col] = np.zeros(pred_len)
-
-    train_tsdf = TimeSeriesDataFrame.from_data_frame(pd.DataFrame(train_dict))
-    test_tsdf = TimeSeriesDataFrame.from_data_frame(pd.DataFrame(test_dict))
-
-    return train_tsdf, test_tsdf, target_mu, target_sigma
 
 
 def compute_metrics(preds: np.ndarray, gts: np.ndarray, last_ctx: np.ndarray) -> dict:
@@ -124,10 +69,7 @@ def load_predictor():
     from tabpfn_time_series import TabPFNTimeSeriesPredictor, TabPFNMode
 
     print("Loading TabPFN-TS (LOCAL mode) ...")
-    predictor = TabPFNTimeSeriesPredictor(
-        tabpfn_mode=TabPFNMode.LOCAL,
-        tabpfn_output_selection="mean",
-    )
+    predictor = TabPFNTimeSeriesPredictor(tabpfn_mode=TabPFNMode.LOCAL)
     return predictor
 
 
@@ -137,10 +79,13 @@ def run_backtest(
     context_len: int,
     pred_len: int,
     stride: int,
+    batch_size: int = 32,
 ) -> dict:
     """Run all leakage modes for one CSV at one context length."""
-    from tabpfn_time_series import FeatureTransformer
-    from tabpfn_time_series.features import RunningIndexFeature
+    from tabpfn_time_series import TimeSeriesDataFrame, FeatureTransformer
+    from tabpfn_time_series.features import (
+        RunningIndexFeature, CalendarFeature, AutoSeasonalFeature,
+    )
 
     df = pd.read_csv(csv_path)
     fname = Path(csv_path).stem
@@ -148,8 +93,8 @@ def run_backtest(
     for col in ALL_COV_COLS:
         df[col] = df[col].fillna(0.0)
 
-    target = df[TARGET_COL].values.astype(np.float32)
-    covariates = df[ALL_COV_COLS].values.astype(np.float32)
+    target = df[TARGET_COL].values.astype(np.float64)
+    covariates = df[ALL_COV_COLS].values.astype(np.float64)
 
     valid_mask = ~np.isnan(target)
     first_valid = int(np.argmax(valid_mask))
@@ -166,7 +111,12 @@ def run_backtest(
     print(f"  {fname}  |  ctx={context_len}  |  stride={stride}  |  {n_windows} windows")
     print(f"{'='*60}")
 
-    ft = FeatureTransformer([RunningIndexFeature()])
+    base_features = [RunningIndexFeature(), CalendarFeature(), AutoSeasonalFeature()]
+    context_end = pd.Timestamp.today().normalize()
+    context_range = pd.date_range(end=context_end, periods=context_len, freq="D")
+    fut_range = pd.date_range(
+        start=context_end + pd.Timedelta(days=1), periods=pred_len, freq="D",
+    )
 
     results = {}
     for mode_name, leak_cols in LEAK_MODES.items():
@@ -174,40 +124,89 @@ def run_backtest(
         gts_list = []
         last_ctx_list = []
 
-        for i in range(n_windows):
-            start = i * stride
-            end = start + context_len
+        num_batches = (n_windows + batch_size - 1) // batch_size
 
-            ctx_vals = target[start:end]
-            ctx_covs = covariates[start:end]
-            gt = target[end: end + pred_len]
+        for bi in range(num_batches):
+            w_start = bi * batch_size
+            w_end = min((bi + 1) * batch_size, n_windows)
+            bs = w_end - w_start
 
-            if len(gt) < pred_len:
-                break
+            train_records = []
+            test_records = []
+            mus = np.empty(bs, dtype=np.float64)
+            sigmas = np.empty(bs, dtype=np.float64)
+            batch_gts = []
+            batch_last_ctx = []
 
-            fut_covs = covariates[end: end + pred_len] if leak_cols else None
+            for j in range(bs):
+                wi = w_start + j
+                start = wi * stride
+                end = start + context_len
 
-            train_tsdf, test_tsdf, t_mu, t_sigma = build_tsdfs(
-                ctx_vals, ctx_covs, fut_covs, pred_len, leak_cols,
-            )
+                ctx_vals = target[start:end]
+                gt = target[end: end + pred_len]
 
-            train_ft, test_ft = ft.transform(train_tsdf, test_tsdf)
+                mu = float(ctx_vals.mean())
+                sigma = float(ctx_vals.std())
+                if sigma < 1e-8:
+                    sigma = 1.0
+                mus[j] = mu
+                sigmas[j] = sigma
 
-            result = predictor.predict(train_ft, test_ft)
-            forecast = result["target"].values.astype(np.float32)
+                gt_norm = (gt - mu) / sigma
+                batch_gts.append(gt_norm)
+                batch_last_ctx.append((float(ctx_vals[-1]) - mu) / sigma)
 
-            gt_norm = (gt - t_mu) / t_sigma
+                item_id = f"w{wi}"
 
-            preds_list.append(forecast)
-            gts_list.append(gt_norm)
-            last_ctx_list.append((float(ctx_vals[-1]) - t_mu) / t_sigma)
+                for t_idx, ts in enumerate(context_range):
+                    rec = {"item_id": item_id, "timestamp": ts,
+                           "target": float(ctx_vals[t_idx])}
+                    if leak_cols:
+                        ctx_covs = covariates[start:end]
+                        for col in leak_cols:
+                            ci = ALL_COV_COLS.index(col)
+                            rec[col] = float(ctx_covs[t_idx, ci])
+                    train_records.append(rec)
 
-            if (i + 1) % 20 == 0 or i == n_windows - 1:
-                print(f"  [{mode_name}] Window {i + 1}/{n_windows}")
+                for t_idx, ts in enumerate(fut_range):
+                    rec = {"item_id": item_id, "timestamp": ts,
+                           "target": np.nan}
+                    if leak_cols:
+                        fut_covs = covariates[end: end + pred_len]
+                        for col in leak_cols:
+                            ci = ALL_COV_COLS.index(col)
+                            rec[col] = float(fut_covs[t_idx, ci])
+                    test_records.append(rec)
+
+            train_df = pd.DataFrame(train_records).set_index(["item_id", "timestamp"])
+            test_df = pd.DataFrame(test_records).set_index(["item_id", "timestamp"])
+            train_tsdf = TimeSeriesDataFrame(train_df)
+            test_tsdf = TimeSeriesDataFrame(test_df)
+
+            ft = FeatureTransformer(base_features)
+            train_t, test_t = ft.transform(train_tsdf, test_tsdf)
+
+            pred_df = predictor.predict(train_t, test_t)
+
+            for j in range(bs):
+                wi = w_start + j
+                item_id = f"w{wi}"
+                raw_pred = pred_df.loc[item_id]["target"].values[:pred_len].astype(np.float64)
+
+                pred_norm = (raw_pred - mus[j]) / sigmas[j]
+
+                preds_list.append(pred_norm.astype(np.float32))
+                gts_list.append(batch_gts[j].astype(np.float32))
+                last_ctx_list.append(batch_last_ctx[j])
+
+            done = w_end
+            if done % 20 == 0 or done == n_windows:
+                print(f"  [{mode_name}] Window {done}/{n_windows}")
 
         preds_arr = np.stack(preds_list)
         gts_arr = np.stack(gts_list)
-        last_ctx_arr = np.array(last_ctx_list)
+        last_ctx_arr = np.array(last_ctx_list, dtype=np.float32)
 
         metrics = compute_metrics(preds_arr, gts_arr, last_ctx_arr)
         results[mode_name] = metrics
@@ -225,6 +224,7 @@ def main():
     )
     parser.add_argument("--stride", type=int, default=16)
     parser.add_argument("--pred-len", type=int, default=16)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--files", nargs="+", default=None)
     parser.add_argument("--output-dir", type=str, default="results")
     args = parser.parse_args()
@@ -240,6 +240,7 @@ def main():
     print(f"Context lengths: {args.context_lens}")
     print(f"Prediction length: {args.pred_len}")
     print(f"Stride: {args.stride}")
+    print(f"Batch size: {args.batch_size}")
     print(f"Leak modes: {list(LEAK_MODES.keys())}")
     print(f"Files: {[Path(f).name for f in args.files]}")
 
@@ -256,6 +257,7 @@ def main():
                 context_len=ctx_len,
                 pred_len=args.pred_len,
                 stride=args.stride,
+                batch_size=args.batch_size,
             )
             if file_results:
                 all_results[fname][str(ctx_len)] = file_results
