@@ -12,8 +12,8 @@ Two modes:
     python -m migaseval.evaluation --datasets_dir ./data/test
 
     # Context length sweeping with baselines
-    python -m migaseval.evaluation --summaries_dir ./results/test/context_64 \
-        --context_lengths 32 64 128 256 384 --eval_timesfm --eval_prophet
+    `python -m migaseval.evaluation --summaries_dir ./results/test/context_64 \
+        --context_lengths 32 64 128 256 384 --eval_timesfm --eval_prophet`
 """
 
 import csv as csv_mod
@@ -101,6 +101,19 @@ def main():
         action="store_true",
         help="Also evaluate Prophet baseline",
     )
+    parser.add_argument(
+        "--forecast_mode",
+        default=None,
+        choices=["none", "planned", "all"],
+        help=(
+            "Forecast text mode for hydropower evaluation. "
+            "Appends a suffix to --summaries_dir and --output_dir: "
+            "'none' -> *_no_forecast, "
+            "'planned' -> *_planned_forecast, "
+            "'all' -> *_all_forecast. "
+            "If not set, uses --summaries_dir and --output_dir as-is."
+        ),
+    )
     parser.add_argument("--llm_base_url", default="http://localhost:8004/v1")
     parser.add_argument("--llm_model", default="openai/gpt-oss-120b")
     args = parser.parse_args()
@@ -108,6 +121,20 @@ def main():
     # ── Resolve summaries directory ───────────────────────────────────────
     if args.summaries_dir is None and args.datasets_dir is None:
         parser.error("At least one of --summaries_dir or --datasets_dir is required.")
+
+    _forecast_suffixes = {
+        "none": "_no_forecast",
+        "planned": "_planned_forecast",
+        "all": "_all_forecast",
+    }
+    if args.forecast_mode is not None:
+        suffix = _forecast_suffixes[args.forecast_mode]
+        if args.summaries_dir is not None:
+            args.summaries_dir = args.summaries_dir.rstrip("/") + suffix
+        args.output_dir = args.output_dir.rstrip("/") + suffix
+        print(f"Forecast mode: {args.forecast_mode}")
+        print(f"  Summaries dir: {args.summaries_dir}")
+        print(f"  Output dir:    {args.output_dir}\n")
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -171,7 +198,34 @@ def main():
         if cached is None:
             print(f"  Skipped {ds_name} (no summaries)")
             continue
-        all_datasets[ds_name] = cached  # (summaries, historic, forecast, means, stds)
+
+        summaries_loaded, historic, forecast, means, stds = cached
+        hist_arr_check = np.array(historic)
+        fcast_arr_check = np.array(forecast)
+        means_arr_check = np.array(means)
+
+        valid_mask = (
+            ~np.isnan(hist_arr_check).any(axis=1)
+            & ~np.isnan(fcast_arr_check).any(axis=1)
+            & ~np.isnan(means_arr_check)
+        )
+        n_total = len(historic)
+        n_valid = int(valid_mask.sum())
+
+        if n_valid == 0:
+            print(f"  Skipped {ds_name} (all {n_total} windows contain NaN)")
+            continue
+
+        if n_valid < n_total:
+            print(f"  {ds_name}: dropped {n_total - n_valid}/{n_total} NaN windows")
+            idx = np.where(valid_mask)[0]
+            summaries_loaded = [summaries_loaded[i] for i in idx]
+            historic = [historic[i] for i in idx]
+            forecast = [forecast[i] for i in idx]
+            means = [means[i] for i in idx]
+            stds = [stds[i] for i in idx]
+
+        all_datasets[ds_name] = (summaries_loaded, historic, forecast, means, stds)
 
     print(f"Loaded {len(all_datasets)} datasets with summaries\n")
 
@@ -218,18 +272,21 @@ def main():
             means_arr = np.array(ctx_means, dtype=np.float64)
             stds_arr = np.array(ctx_stds, dtype=np.float64)
 
+            n_samples = gt_arr.shape[0]
+
             # ── helper to run-or-load a single model ─────────────────
             def _get_model_preds(model_key, run_fn):
                 """Return predictions array. Load from cache or run and save."""
                 cached_data = _load_preds(ctx_dir, ds_name, model_key)
                 if cached_data is not None:
-                    print(f"  {ds_name}/{model_key}: loaded from cache")
                     preds = cached_data["predictions"]
-                    assert preds.shape[0] == n_samples, (
-                        f"{ds_name}/{model_key}: cached predictions have "
-                        f"{preds.shape[0]} samples but expected {n_samples}"
+                    if preds.shape[0] == n_samples:
+                        print(f"  {ds_name}/{model_key}: loaded from cache")
+                        return preds
+                    print(
+                        f"  {ds_name}/{model_key}: cache has {preds.shape[0]} samples "
+                        f"but need {n_samples}, recomputing"
                     )
-                    return preds
                 preds = run_fn()
                 _save_preds(
                     ctx_dir,
@@ -264,47 +321,43 @@ def main():
                     res["gt"].numpy(),
                 )
 
+            _core_valid = True
             if _has_preds(ctx_dir, ds_name, "migas15") and _has_preds(
                 ctx_dir, ds_name, "chronos"
             ):
                 _migas_cached = _load_preds(ctx_dir, ds_name, "migas15")
                 _chronos_cached = _load_preds(ctx_dir, ds_name, "chronos")
                 if _migas_cached is None or _chronos_cached is None:
-                    print(f"  {ds_name}: cache corrupt, recomputing")
-                    migas_preds, chronos_preds, gt = _run_core()
-                    _save_preds(
-                        ctx_dir, ds_name, "migas15",
-                        hist_arr, migas_preds, gt, means_arr, stds_arr,
+                    _core_valid = False
+                elif (
+                    _migas_cached["predictions"].shape[0] != n_samples
+                    or _chronos_cached["predictions"].shape[0] != n_samples
+                ):
+                    print(
+                        f"  {ds_name}: cached core has "
+                        f"{_migas_cached['predictions'].shape[0]} samples "
+                        f"but need {n_samples}, recomputing"
                     )
-                    _save_preds(
-                        ctx_dir, ds_name, "chronos",
-                        hist_arr, chronos_preds, gt, means_arr, stds_arr,
-                    )
+                    _core_valid = False
                 else:
                     migas_preds = _migas_cached["predictions"]
                     chronos_preds = _chronos_cached["predictions"]
-                    gt = _migas_cached["gt"]
-                    assert migas_preds.shape[0] == gt.shape[0], (
-                        f"{ds_name}/migas15: predictions ({migas_preds.shape[0]}) "
-                        f"vs gt ({gt.shape[0]}) sample count mismatch"
-                    )
-                    assert chronos_preds.shape[0] == gt.shape[0], (
-                        f"{ds_name}/chronos: predictions ({chronos_preds.shape[0]}) "
-                        f"vs gt ({gt.shape[0]}) sample count mismatch"
-                    )
                     print(f"  {ds_name}: core cached")
             else:
-                migas_preds, chronos_preds, gt = _run_core()
+                _core_valid = False
+
+            if not _core_valid:
+                migas_preds, chronos_preds, _gt = _run_core()
                 _save_preds(
                     ctx_dir, ds_name, "migas15",
-                    hist_arr, migas_preds, gt, means_arr, stds_arr,
+                    hist_arr, migas_preds, gt_arr, means_arr, stds_arr,
                 )
                 _save_preds(
                     ctx_dir, ds_name, "chronos",
-                    hist_arr, chronos_preds, gt, means_arr, stds_arr,
+                    hist_arr, chronos_preds, gt_arr, means_arr, stds_arr,
                 )
 
-            n_samples = gt.shape[0]
+            gt = gt_arr
             migas_m = compute_metrics(migas_preds, gt)
             chro_m = compute_metrics(chronos_preds, gt)
 

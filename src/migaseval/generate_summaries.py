@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from migaseval.dataset import LateFusionDataset, collate_fn as late_fusion_collate, list_data_files as list_csv_files
 from migaseval.model.util import ContextSummarizer
 
-SEQ_LEN = 384
+SEQ_LEN = 512
 PRED_LEN = 16
 BATCH_SIZE = 128
 LLM_BASE_URL = "http://localhost:8004/v1"
@@ -42,6 +42,10 @@ DATASET_PRESETS = {
         "csvs_dir": "/data/ttfm_review/icml_suite_csvs",
         "summaries_dir": "/data/ttfm_review/icml_suite",
     },
+    "hydropower":{
+        "csvs_dir": "/data/ttfm_review/hydropower_csvs",
+        "summaries_dir": "/data/ttfm_review/hydropower",
+    }
 }
 
 

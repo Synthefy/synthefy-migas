@@ -717,6 +717,250 @@ def page_detail_tables(
             plt.close(fig)
 
 
+# ── Forecast mode comparison ─────────────────────────────────────────────────
+
+FORECAST_MODE_LABELS = {
+    "none": "No Forecast Text",
+    "planned": "Planned Outages Only",
+    "all": "All Outages (Planned + Unplanned)",
+}
+
+FORECAST_MODE_SUFFIXES = {
+    "none": "_no_forecast",
+    "planned": "_planned_forecast",
+    "all": "_all_forecast",
+}
+
+FORECAST_MODE_COLORS = {
+    "none": "#f3f4f6",
+    "planned": "#dbeafe",
+    "all": "#fef3c7",
+}
+
+
+def page_forecast_comparison(
+    pdf: "PdfPages",
+    mode_dfs: dict[str, pd.DataFrame],
+    models: list[str],
+    ctx_lengths: list[int],
+):
+    """Tables comparing MAE/MSE across forecast modes, grouped by mode."""
+    modes = [m for m in ("none", "planned", "all") if m in mode_dfs]
+    model_labels = [get_display_name(m) for m in models]
+    n_model = len(models)
+
+    for metric_suffix, metric_name in [("mean_mae", "MAE"), ("mean_mse", "MSE")]:
+        col_labels = ["Forecast Mode", "Ctx"] + model_labels
+        rows = []
+        row_colors = []
+
+        for mode in modes:
+            df = mode_dfs[mode]
+            mode_label = FORECAST_MODE_LABELS.get(mode, mode)
+            bg = FORECAST_MODE_COLORS.get(mode, ALT_ROW_COLORS[0])
+
+            for ctx in ctx_lengths:
+                sub = df[df["context_length"] == ctx]
+                if sub.empty:
+                    continue
+                row: list = [mode_label, str(ctx)]
+                for m in models:
+                    col = f"{m}_{metric_suffix}"
+                    row.append(sub[col].mean() if col in sub.columns and sub[col].notna().any() else "")
+                rows.append(row)
+                row_colors.append(bg)
+
+        if not rows:
+            continue
+
+        mode_w = 0.16
+        ctx_w = 0.04
+        metric_w = (1.0 - mode_w - ctx_w) / n_model
+        col_widths = [mode_w, ctx_w] + [metric_w] * n_model
+        highlight = [list(range(2, 2 + n_model))]
+
+        fig_h = max(8, len(rows) * 0.40 + 3)
+        fig, ax = plt.subplots(figsize=(20, fig_h))
+        _render_table(
+            ax,
+            col_labels,
+            rows,
+            f"Forecast Mode Comparison — Aggregate {metric_name}",
+            row_colors=row_colors,
+            col_widths=col_widths,
+            fontsize=9,
+            highlight_groups=highlight,
+        )
+        pdf.savefig(fig, bbox_inches="tight")
+        plt.close(fig)
+
+
+def page_forecast_detail(
+    pdf: "PdfPages",
+    mode_dfs: dict[str, pd.DataFrame],
+    models: list[str],
+    ctx_lengths: list[int],
+):
+    """Per context-length detail tables with datasets grouped by forecast mode."""
+    modes = [m for m in ("none", "planned", "all") if m in mode_dfs]
+    model_labels = [get_display_name(m) for m in models]
+    n_model = len(models)
+
+    for ctx in ctx_lengths:
+        for metric_suffix, metric_name in [("mean_mae", "MAE"), ("mean_mse", "MSE")]:
+            col_labels = ["Dataset", "N"] + model_labels
+            rows = []
+            row_colors = []
+
+            overall_vals: dict[str, list[float]] = {m: [] for m in models}
+
+            for mode in modes:
+                df = mode_dfs[mode]
+                sub = df[df["context_length"] == ctx]
+                if sub.empty:
+                    continue
+
+                mode_label = FORECAST_MODE_LABELS.get(mode, mode)
+                bg = FORECAST_MODE_COLORS.get(mode, ALT_ROW_COLORS[0])
+
+                rows.append([f"── {mode_label} ──", ""] + [""] * n_model)
+                row_colors.append("#d1d5db")
+
+                mode_vals: dict[str, list[float]] = {m: [] for m in models}
+                for _, row_data in sub.iterrows():
+                    ds = str(row_data["dataset"]).replace("_with_text", "")
+                    n = int(row_data["n_samples"]) if pd.notna(row_data.get("n_samples")) else 0
+                    r: list = [ds, str(n)]
+                    for m in models:
+                        c = f"{m}_{metric_suffix}"
+                        v = row_data[c] if c in row_data.index and pd.notna(row_data[c]) else np.nan
+                        r.append(v if not np.isnan(v) else "-")
+                        mode_vals[m].append(v)
+                        overall_vals[m].append(v)
+                    rows.append(r)
+                    row_colors.append(bg)
+
+                mean_row: list = [f"  Mean ({mode_label})", ""]
+                for m in models:
+                    vals = [v for v in mode_vals[m] if not np.isnan(v)]
+                    mean_row.append(np.mean(vals) if vals else "-")
+                rows.append(mean_row)
+                row_colors.append("#e5e7eb")
+
+            overall_row: list = ["Overall Mean", ""]
+            for m in models:
+                vals = [v for v in overall_vals[m] if not np.isnan(v)]
+                overall_row.append(np.mean(vals) if vals else "-")
+            rows.append(overall_row)
+            row_colors.append("#e3f2fd")
+
+            ds_w = 0.16
+            n_w = 0.03
+            metric_w = (1.0 - ds_w - n_w) / n_model
+            col_widths = [ds_w, n_w] + [metric_w] * n_model
+            highlight = [list(range(2, 2 + n_model))]
+
+            fig_h = max(8, len(rows) * 0.35 + 3)
+            fig, ax = plt.subplots(figsize=(20, fig_h))
+            _render_table(
+                ax,
+                col_labels,
+                rows,
+                f"Context {ctx} — {metric_name} — By Forecast Mode",
+                row_colors=row_colors,
+                col_widths=col_widths,
+                fontsize=8,
+                highlight_groups=highlight,
+            )
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+
+
+def run_forecast_comparison(
+    results_base: str | Path,
+    summaries_base: str | Path | None = None,
+    out_path: str | Path | None = None,
+    models: list[str] | None = None,
+) -> bool:
+    """Generate a comparison PDF across the three forecast modes.
+
+    Expects result directories at:
+        <results_base>_no_forecast/
+        <results_base>_planned_forecast/
+        <results_base>_all_forecast/
+
+    Args:
+        results_base: Base path (without suffix), e.g. ./results/hydropower
+        summaries_base: Optional base summaries path (without suffix).
+        out_path: Output PDF. Defaults to <results_base>_forecast_comparison.pdf
+        models: Model keys. Defaults to MODEL_ORDER.
+    """
+    if not HAS_MPL:
+        print("matplotlib is required.  Install with: pip install matplotlib")
+        return False
+
+    results_base = Path(str(results_base).rstrip("/"))
+    if out_path is None:
+        out_path = results_base.parent / f"{results_base.name}_forecast_comparison.pdf"
+    else:
+        out_path = Path(out_path)
+
+    mode_dfs: dict[str, pd.DataFrame] = {}
+    for mode, suffix in FORECAST_MODE_SUFFIXES.items():
+        result_dir = Path(str(results_base) + suffix)
+        if not result_dir.is_dir():
+            print(f"  Skipping mode '{mode}': {result_dir} not found")
+            continue
+
+        summaries_str = None
+        if summaries_base:
+            s = Path(str(summaries_base).rstrip("/") + suffix)
+            if s.is_dir():
+                summaries_str = str(s)
+
+        print(f"  Loading '{mode}' from {result_dir} ...")
+        try:
+            df, _ = load_all_data(result_dir, summaries_str, models)
+            mode_dfs[mode] = df
+            print(f"    {len(df)} dataset-context rows")
+        except RuntimeError as e:
+            print(f"    {e}")
+
+    if not mode_dfs:
+        print("No forecast mode data found.")
+        return False
+
+    all_models_set: set[str] = set()
+    for df in mode_dfs.values():
+        all_models_set.update(available_models(df, models))
+    avail = [m for m in (models or MODEL_ORDER) if m in all_models_set]
+
+    if not avail:
+        print("No models with data found across any mode.")
+        return False
+
+    all_ctx: set[int] = set()
+    for df in mode_dfs.values():
+        all_ctx.update(df["context_length"].unique().tolist())
+    ctx_lengths = sorted(all_ctx)
+
+    print(f"  Models: {', '.join(get_display_name(m) for m in avail)}")
+    print(f"  Context lengths: {ctx_lengths}")
+    print(f"  Modes loaded: {', '.join(mode_dfs.keys())}")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with PdfPages(str(out_path)) as pdf:
+        print("  Pages: forecast mode comparison tables ...")
+        page_forecast_comparison(pdf, mode_dfs, avail, ctx_lengths)
+
+        print("  Pages: per-context detail tables by mode ...")
+        page_forecast_detail(pdf, mode_dfs, avail, ctx_lengths)
+
+    print(f"Forecast comparison PDF saved to {out_path}")
+    return True
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -825,13 +1069,30 @@ def main() -> int:
         default=None,
         help="Output PDF path (default: <output_dir>/aggregate_summary.pdf)",
     )
+    parser.add_argument(
+        "--forecast_comparison",
+        action="store_true",
+        help=(
+            "Generate a comparison PDF across all three forecast modes "
+            "(none, planned, all). --output_dir is used as the base path; "
+            "the script looks for <output_dir>_no_forecast, "
+            "<output_dir>_planned_forecast, <output_dir>_all_forecast."
+        ),
+    )
     args = parser.parse_args()
 
-    ok = run(
-        output_dir=args.output_dir,
-        summaries_dir=args.summaries_dir,
-        out_path=args.out_path,
-    )
+    if args.forecast_comparison:
+        ok = run_forecast_comparison(
+            results_base=args.output_dir,
+            summaries_base=args.summaries_dir,
+            out_path=args.out_path,
+        )
+    else:
+        ok = run(
+            output_dir=args.output_dir,
+            summaries_dir=args.summaries_dir,
+            out_path=args.out_path,
+        )
     return 0 if ok else 1
 
 

@@ -363,3 +363,248 @@ PREDICTIVE SIGNALS:
             return asyncio.run(
                 self._summarize_batch_async(text_batch, values_batch, timestamps_batch)
             )
+
+
+# ============================================================================
+# Hydro Specific Context Summarization (for Migas-1.5)
+# ============================================================================
+
+
+class HydroContextSummarizer:
+    """LLM-based context summarizer: turns time-series text context into FACTUAL SUMMARY / PREDICTIVE SIGNALS."""
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8004/v1",
+        model_name: str = "openai/gpt-oss-120b",
+        max_concurrent: int = 64,
+        max_tokens: int = 10000,
+        temperature: float = 0.0,
+    ):
+        """Args: base_url: OpenAI-compatible API URL. model_name: Model name. max_concurrent: Concurrency limit. max_tokens: Max tokens per reply. temperature: Sampling temperature. Defaults to 0.0."""
+        self.base_url = base_url
+        self.model_name = model_name
+        self.max_concurrent = max_concurrent
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.client = AsyncOpenAI(base_url=base_url, api_key="dummy")
+
+    def _create_prompt(
+        self,
+        timestamps: Optional[List[str]],
+        text_list: List[str],
+        values: Optional[List[float]],
+        meta_context: Optional[str] = None,
+        forecast_text: Optional[List[str]] = None,
+        forecast_timestamps: Optional[List[str]] = None,
+    ) -> str:
+        context_len = len(text_list)
+
+        if timestamps is not None:
+            context_timestamps = timestamps[:context_len]
+            prediction_timestamps = (
+                timestamps[context_len:] if len(timestamps) > context_len else []
+            )
+
+            if values is not None:
+                combined_text = "\n---\n".join(
+                    [
+                        f"[{ts}] (value: {values[idx]:.4f}): {text}"
+                        if text
+                        else f"[{ts}] (value: {values[idx]:.4f}): No text"
+                        for idx, (ts, text) in enumerate(
+                            zip(context_timestamps, text_list)
+                        )
+                    ]
+                )
+            else:
+                combined_text = "\n---\n".join(
+                    [
+                        f"[{ts}]: {text}" if text else f"[{ts}]: No text"
+                        for ts, text in zip(context_timestamps, text_list)
+                    ]
+                )
+            pred_period = (
+                f"from {prediction_timestamps[0]} to {prediction_timestamps[-1]} ({len(prediction_timestamps)} timesteps)"
+                if prediction_timestamps
+                else "the immediate future"
+            )
+        else:
+            if values is not None:
+                combined_text = "\n---\n".join(
+                    [
+                        f"Timestep {i + 1} (value: {values[i]:.4f}): {text}"
+                        if text
+                        else f"Timestep {i + 1} (value: {values[i]:.4f}): No text"
+                        for i, text in enumerate(text_list)
+                    ]
+                )
+            else:
+                combined_text = "\n---\n".join(
+                    [
+                        f"Context {i + 1}: {text}"
+                        if text
+                        else f"Context {i + 1}: No text"
+                        for i, text in enumerate(text_list)
+                    ]
+                )
+            pred_period = "the immediate future"
+
+        meta_block = ""
+        if meta_context:
+            meta_block = f"\nDOMAIN CONTEXT:\n{meta_context}\n"
+
+        forecast_block = ""
+        if forecast_text:
+            fts = forecast_timestamps or [None] * len(forecast_text)
+            forecast_entries = []
+            has_any = False
+            for i, (ft, ts) in enumerate(zip(forecast_text, fts)):
+                if ts and ft:
+                    forecast_entries.append(f"[{ts}]: {ft}")
+                    has_any = True
+                elif ts:
+                    forecast_entries.append(f"[{ts}]: No scheduled maintenance")
+                elif ft:
+                    forecast_entries.append(f"Forecast day {i + 1}: {ft}")
+                    has_any = True
+                else:
+                    forecast_entries.append(f"Forecast day {i + 1}: No scheduled maintenance")
+            if has_any:
+                forecast_block = (
+                    "\n\nFORECAST PERIOD — PLANNED OUTAGES ONLY (unplanned outages are excluded as they cannot be known in advance):\n"
+                    + "\n---\n".join(forecast_entries)
+                )
+
+        return f"""You are analyzing a hydropower reservoir time series with text annotations describing power plant outages. Each annotation has two sections: PLANNED (scheduled maintenance) and UNPLANNED (forced/unexpected outages). Extract information to help forecast future generation values.
+{meta_block}
+HISTORICAL DATA (timestamps, generation values in MW, and outage summaries with PLANNED/UNPLANNED breakdown):
+{combined_text}
+
+PREDICTION PERIOD: {pred_period}
+{forecast_block}
+
+Provide TWO sections:
+
+SECTION 1 - FACTUAL SUMMARY:
+Summarize observed generation trends. Separately describe planned outages (scheduled maintenance, MW impact, assets) and unplanned outages (failures, forced shutdowns, MW impact). Reference specific dates and values. (2-3 sentences)
+
+SECTION 2 - PREDICTIVE SIGNALS:
+Based on the domain context, historical outage patterns, AND the forecast period planned outages, identify signals for how generation will behave in the prediction period. Consider: (a) scheduled maintenance continuing or starting in the forecast window and its MW impact, (b) lagged effects from recent unplanned outages (impacts typically manifest over 3-5 days), (c) whether ongoing unplanned outages from the historical period are likely to persist or resolve, and (d) seasonal inflow patterns. Note: only planned outages are known for the forecast period — unplanned outages cannot be anticipated. (2-3 sentences)
+
+Format:
+FACTUAL SUMMARY:
+[Your factual summary]
+
+PREDICTIVE SIGNALS:
+[Your predictive signals]"""
+
+    async def _summarize_one(
+        self,
+        text_list: List[str],
+        values: Optional[List[float]],
+        timestamps: Optional[List[str]],
+        meta_context: Optional[str],
+        semaphore: asyncio.Semaphore,
+        forecast_text: Optional[List[str]] = None,
+        forecast_timestamps: Optional[List[str]] = None,
+    ) -> str:
+        async with semaphore:
+            prompt = self._create_prompt(
+                timestamps, text_list, values, meta_context,
+                forecast_text=forecast_text, forecast_timestamps=forecast_timestamps,
+            )
+            last_error = None
+            for attempt in range(3):
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                    )
+                    content = response.choices[0].message.content
+                    return (
+                        content or ""
+                    ).strip() or "Error: Could not generate summary."
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e).lower()
+                    is_retryable = (
+                        "connection" in err_str
+                        or "timeout" in err_str
+                        or "connection" in type(e).__name__.lower()
+                    )
+                    if is_retryable and attempt < 2:
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                        continue
+                    print(f"Summarization error: {e}")
+                    return "Error: Could not generate summary."
+            print(f"Summarization error: {last_error}")
+            return "Error: Could not generate summary."
+
+    async def _summarize_batch_async(
+        self,
+        text_batch: List[List[str]],
+        values_batch: Optional[List[List[float]]] = None,
+        timestamps_batch: Optional[List[List[str]]] = None,
+        meta_context: Optional[str] = None,
+        forecast_text_batch: Optional[List[List[str]]] = None,
+        forecast_timestamps_batch: Optional[List[List[str]]] = None,
+    ) -> List[str]:
+        semaphore = asyncio.Semaphore(self.max_concurrent)
+        tasks = []
+        for i in range(len(text_batch)):
+            text_list = text_batch[i]
+            values = values_batch[i] if values_batch else None
+            timestamps = timestamps_batch[i] if timestamps_batch else None
+            ft = forecast_text_batch[i] if forecast_text_batch else None
+            fts = forecast_timestamps_batch[i] if forecast_timestamps_batch else None
+            tasks.append(
+                self._summarize_one(
+                    text_list, values, timestamps, meta_context, semaphore,
+                    forecast_text=ft, forecast_timestamps=fts,
+                )
+            )
+        return await asyncio.gather(*tasks)
+
+    def summarize_batch(
+        self,
+        text_batch: List[List[str]],
+        values_batch: Optional[List[List[float]]] = None,
+        timestamps_batch: Optional[List[List[str]]] = None,
+        meta_context: Optional[str] = None,
+        forecast_text_batch: Optional[List[List[str]]] = None,
+        forecast_timestamps_batch: Optional[List[List[str]]] = None,
+    ) -> List[str]:
+        """Summarize each sample's text (and optional values/timestamps) into FACTUAL + PREDICTIVE sections.
+
+        Args:
+            text_batch: Per-sample list of per-timestep text strings.
+            values_batch: Optional per-sample list of values for context. Defaults to None.
+            timestamps_batch: Optional per-sample list of timestamps. Defaults to None.
+            meta_context: Optional domain-level context string injected into every prompt.
+            forecast_text_batch: Optional per-sample list of forecast-period text strings.
+            forecast_timestamps_batch: Optional per-sample list of forecast-period timestamps.
+
+        Returns:
+            List of summary strings, one per sample.
+        """
+        try:
+            asyncio.get_running_loop()
+            import nest_asyncio
+
+            nest_asyncio.apply()
+            return asyncio.run(
+                self._summarize_batch_async(
+                    text_batch, values_batch, timestamps_batch, meta_context,
+                    forecast_text_batch, forecast_timestamps_batch,
+                )
+            )
+        except RuntimeError:
+            return asyncio.run(
+                self._summarize_batch_async(
+                    text_batch, values_batch, timestamps_batch, meta_context,
+                    forecast_text_batch, forecast_timestamps_batch,
+                )
+            )

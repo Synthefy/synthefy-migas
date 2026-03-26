@@ -16,7 +16,7 @@ fi
 # Configuration — edit as needed
 MODEL="${VLLM_MODEL:-openai/gpt-oss-120b}"
 PORT="${VLLM_PORT:-8004}"
-GPU="${CUDA_VISIBLE_DEVICES:-0}"
+GPU="${CUDA_VISIBLE_DEVICES:-0,1}"
 MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
 # GPU memory fraction (0.9 can fail when free < 90% of total; 0.85 is safer)
 GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.60}"
