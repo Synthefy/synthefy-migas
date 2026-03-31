@@ -17,11 +17,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import warnings
 from glob import glob
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+warnings.filterwarnings("ignore", category=FutureWarning, module="tabpfn_time_series")
 
 TABPFN_2_5_CHECKPOINT = "tabpfn-v2.5-regressor-v2.5_default.ckpt"
 TABPFN_WEIGHTS_DIR = "/tmp/tabpfn"
