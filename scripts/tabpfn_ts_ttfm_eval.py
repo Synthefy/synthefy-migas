@@ -92,7 +92,8 @@ def build_tsdfs(
     ctx_vals: np.ndarray,
     ctx_covs: np.ndarray,
     fut_covs: np.ndarray | None,
-    pred_len: int,
+    ctx_dates: pd.DatetimeIndex,
+    fut_dates: pd.DatetimeIndex,
     leak_cols: list[str],
 ):
     """Build train/test TimeSeriesDataFrames with per-window z-score normalisation.
@@ -101,12 +102,7 @@ def build_tsdfs(
     """
     from tabpfn_time_series import TimeSeriesDataFrame
 
-    seq_len = len(ctx_vals)
-    ctx_end = pd.Timestamp("2024-01-01") + pd.Timedelta(days=seq_len - 1)
-    ctx_dates = pd.date_range(end=ctx_end, periods=seq_len, freq="D")
-    fut_dates = pd.date_range(
-        start=ctx_end + pd.Timedelta(days=1), periods=pred_len, freq="D"
-    )
+    pred_len = len(fut_dates)
 
     target_mu = float(ctx_vals.mean())
     target_sigma = float(ctx_vals.std())
@@ -159,12 +155,12 @@ def window_id_from_path(csv_path: Path) -> int:
 
 
 def load_window_csv(csv_path: Path, context_len: int, pred_len: int):
-    """Load one window CSV; return (ctx_vals, ctx_covs, gt_vals, fut_covs).
+    """Load one window CSV; return (ctx_vals, ctx_covs, gt_vals, fut_covs, ctx_dates, fut_dates).
 
     The CSV must have at least context_len + pred_len rows.
     Missing covariate columns are filled with 0.
     """
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, parse_dates=["t"])
 
     for col in ALL_COV_COLS:
         if col not in df.columns:
@@ -183,8 +179,10 @@ def load_window_csv(csv_path: Path, context_len: int, pred_len: int):
     ctx_covs = df[ALL_COV_COLS].values[:context_len].astype(np.float32)
     gt_vals = df[TARGET_COL].values[context_len: context_len + pred_len].astype(np.float32)
     fut_covs = df[ALL_COV_COLS].values[context_len: context_len + pred_len].astype(np.float32)
+    ctx_dates = pd.DatetimeIndex(df["t"].values[:context_len])
+    fut_dates = pd.DatetimeIndex(df["t"].values[context_len: context_len + pred_len])
 
-    return ctx_vals, ctx_covs, gt_vals, fut_covs
+    return ctx_vals, ctx_covs, gt_vals, fut_covs, ctx_dates, fut_dates
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +208,6 @@ def evaluate_series(
         print(f"  [SKIP] no CSVs in {series_dir}")
         return
 
-    ft = FeatureTransformer([RunningIndexFeature()])
-
     # Accumulators per mode
     acc: dict[str, dict[str, list]] = {
         m: {
@@ -229,15 +225,16 @@ def evaluate_series(
             print(f"  [WARN] {csv_path.name}: insufficient rows, skipping")
             continue
 
-        ctx_vals, ctx_covs, gt_vals, fut_covs = window_data
+        ctx_vals, ctx_covs, gt_vals, fut_covs, ctx_dates, fut_dates = window_data
         win_id = window_id_from_path(csv_path)
 
         for mode_name, leak_cols in modes.items():
             fut = fut_covs if leak_cols else None
 
             train_tsdf, test_tsdf, t_mu, t_sigma = build_tsdfs(
-                ctx_vals, ctx_covs, fut, PRED_LEN, leak_cols
+                ctx_vals, ctx_covs, fut, ctx_dates, fut_dates, leak_cols
             )
+            ft = FeatureTransformer([RunningIndexFeature()])
             train_ft, test_ft = ft.transform(train_tsdf, test_tsdf)
 
             result = predictor.predict(train_ft, test_ft)
