@@ -23,6 +23,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+TABPFN_2_5_CHECKPOINT = "tabpfn-v2.5-regressor-v2.5_default.ckpt"
+TABPFN_WEIGHTS_DIR = "/tmp/tabpfn"
+TABPFN_CONFIG = {"model_path": f"{TABPFN_WEIGHTS_DIR}/{TABPFN_2_5_CHECKPOINT}"}
+
 ALL_COV_COLS = ["planned_count", "planned_mw", "unplanned_count", "unplanned_mw"]
 PLANNED_COV_COLS = ["planned_count", "planned_mw"]
 TARGET_COL = "y_t"
@@ -123,9 +127,10 @@ def compute_metrics(preds: np.ndarray, gts: np.ndarray, last_ctx: np.ndarray) ->
 def load_predictor():
     from tabpfn_time_series import TabPFNTimeSeriesPredictor, TabPFNMode
 
-    print("Loading TabPFN-TS (LOCAL mode) ...")
+    print("Loading TabPFN-TS 2.5 (LOCAL mode) ...")
     predictor = TabPFNTimeSeriesPredictor(
         tabpfn_mode=TabPFNMode.LOCAL,
+        tabpfn_config=TABPFN_CONFIG,
         tabpfn_output_selection="mean",
     )
     return predictor
