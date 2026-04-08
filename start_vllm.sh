@@ -14,12 +14,12 @@ if ! uv run python -c "import vllm" >/dev/null 2>&1; then
 fi
 
 # Configuration — edit as needed
-MODEL="${VLLM_MODEL:-openai/gpt-oss-120b}"
+MODEL="${VLLM_MODEL:-Qwen/Qwen3-30B-A3B-Instruct-2507}"
 PORT="${VLLM_PORT:-8004}"
-GPU="${CUDA_VISIBLE_DEVICES:-0}"
+GPU="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
 MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
 # GPU memory fraction (0.9 can fail when free < 90% of total; 0.85 is safer)
-GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.60}"
+GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
 # Number of GPUs to use for tensor parallelism (default: all in CUDA_VISIBLE_DEVICES)
 # Large models (e.g. 120B) must be sharded across multiple GPUs or they OOM on one.
 if [[ -n "${VLLM_TENSOR_PARALLEL_SIZE:-}" ]]; then

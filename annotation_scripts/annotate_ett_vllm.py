@@ -106,10 +106,17 @@ def select_series(
     output_dir: str,
     seed: Optional[int] = None,
     min_rows: int = 400,
+    shard_index: Optional[int] = None,
+    num_shards: Optional[int] = None,
 ) -> List[str]:
     """Select up to num_series that haven't been annotated yet."""
     candidates = list_series(data_path, min_rows)
-    if seed is not None:
+
+    if shard_index is not None and num_shards is not None:
+        candidates = sorted(candidates)
+        candidates = candidates[shard_index::num_shards]
+        print(f"Shard {shard_index}/{num_shards}: {len(candidates)} candidates")
+    elif seed is not None:
         random.Random(seed).shuffle(candidates)
     else:
         random.shuffle(candidates)
@@ -298,11 +305,15 @@ async def annotate_ett(
     data_path: str,
     output_dir: str,
     seed: Optional[int] = None,
+    shard_index: Optional[int] = None,
+    num_shards: Optional[int] = None,
 ) -> None:
     os.makedirs(output_dir, exist_ok=True)
     meta = load_metadata(data_path)
 
-    selected = select_series(data_path, num_series, output_dir, seed)
+    selected = select_series(
+        data_path, num_series, output_dir, seed,
+        shard_index=shard_index, num_shards=num_shards)
     if not selected:
         print("No series to process!")
         return
@@ -457,7 +468,7 @@ async def main_async():
     parser.add_argument("--dataset_batch_size", type=int, default=26,
                         help="Series per parallel batch")
     parser.add_argument("--llm_base_url", type=str,
-                        default="http://localhost:8006/v1")
+                        default="http://localhost:8004/v1")
     parser.add_argument("--llm_model", type=str,
                         default="Qwen/Qwen3-30B-A3B-Instruct-2507")
     parser.add_argument("--temperature", type=float, default=0.7)
@@ -465,9 +476,13 @@ async def main_async():
                         help="Data points per annotation window")
     parser.add_argument("--concurrent_batches", type=int, default=256)
     parser.add_argument("--data_path", type=str,
-                        default="/data/byof_datasets/ett_small")
+                        default="/data/migas2_training/byof_datasets/ett_small")
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--shard_index", type=int, default=None,
+                        help="Shard index for distributed runs (0-based)")
+    parser.add_argument("--num_shards", type=int, default=None,
+                        help="Total number of shards for distributed runs")
     args = parser.parse_args()
 
     if args.output_dir is None:
@@ -487,6 +502,8 @@ async def main_async():
     print(f"Concurrent batches: {args.concurrent_batches}")
     print(f"Data path: {args.data_path}")
     print(f"Output directory: {output_dir}")
+    if args.shard_index is not None:
+        print(f"Shard: {args.shard_index}/{args.num_shards}")
     print(f"{'='*70}\n")
 
     llm_client = AsyncLLMClient(
@@ -500,6 +517,8 @@ async def main_async():
         args.data_path,
         output_dir,
         args.seed,
+        shard_index=args.shard_index,
+        num_shards=args.num_shards,
     )
 
 
