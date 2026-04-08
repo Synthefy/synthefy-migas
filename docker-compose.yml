@@ -10,6 +10,7 @@ services:
       - MIGAS_MODEL=${MIGAS_MODEL:-Synthefy/migas-1.5}
       - VLLM_BASE_URL=${VLLM_BASE_URL:-http://localhost:8004/v1}
       - VLLM_MODEL=${VLLM_MODEL:-openai/gpt-oss-120b}
+      - NVIDIA_VISIBLE_DEVICES=${MIGAS_GPU:-0}
     volumes:
       - model-cache:/app/.cache/huggingface
     deploy:

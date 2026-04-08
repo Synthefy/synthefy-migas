@@ -1,10 +1,10 @@
 # Overlay: adds a vLLM sidecar for self-contained summary generation.
 #
-# Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
+# GPU assignment (default: Migas on GPU 0, vLLM on GPU 1+):
+#   MIGAS_GPU=0  VLLM_GPUS=1,2  docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 #
-# The vLLM server downloads the model on first start (~60-240 GB depending on
-# the model). Use the vllm-cache volume to persist it across restarts.
+# Single GPU (shared — set memory utilization low):
+#   MIGAS_GPU=0  VLLM_GPUS=0  VLLM_GPU_MEMORY_UTILIZATION=0.40  docker compose ...
 
 services:
   migas:
@@ -22,6 +22,7 @@ services:
     environment:
       - VLLM_MODEL=${VLLM_MODEL:-openai/gpt-oss-120b}
       - HF_TOKEN=${HF_TOKEN:-}
+      - NVIDIA_VISIBLE_DEVICES=${VLLM_GPUS:-1}
     command: >
       --model ${VLLM_MODEL:-openai/gpt-oss-120b}
       --port 8004
