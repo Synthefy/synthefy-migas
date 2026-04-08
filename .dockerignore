@@ -12,4 +12,5 @@ entsoe
 .env
 docs
 *.md
+!README.md
 !pyproject.toml
