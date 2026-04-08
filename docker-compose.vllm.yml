@@ -1,0 +1,54 @@
+# Overlay: adds a vLLM sidecar for self-contained summary generation.
+#
+# GPU assignment (default: Migas on GPU 0, vLLM on GPUs 1-4 with TP=4):
+#   MIGAS_GPU=0  VLLM_GPUS=1,2,3,4  VLLM_TENSOR_PARALLEL_SIZE=4  docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
+#
+# Two-GPU setup:
+#   MIGAS_GPU=0  VLLM_GPUS=1,2  VLLM_TENSOR_PARALLEL_SIZE=2  docker compose ...
+#
+# IMPORTANT: VLLM_TENSOR_PARALLEL_SIZE must match the number of GPUs in VLLM_GPUS.
+
+services:
+  migas:
+    depends_on:
+      vllm:
+        condition: service_healthy
+    environment:
+      - LLM_PROVIDER=openai
+      - LLM_MODEL=${VLLM_MODEL:-openai/gpt-oss-120b}
+      - LLM_BASE_URL=http://vllm:8004/v1
+      - LLM_API_KEY=dummy
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8004:8004"
+    environment:
+      - VLLM_MODEL=${VLLM_MODEL:-openai/gpt-oss-120b}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - NVIDIA_VISIBLE_DEVICES=${VLLM_GPUS:-1}
+    command: >
+      --model ${VLLM_MODEL:-openai/gpt-oss-120b}
+      --port 8004
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-32768}
+      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-4}
+      --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION:-0.60}
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 300s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  vllm-cache:

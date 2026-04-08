@@ -1,0 +1,53 @@
+model_name: migas-1.5
+
+# ---------------------------------------------------------------------------
+# Python & system
+# ---------------------------------------------------------------------------
+python_version: py312
+system_packages:
+  - git  # needed for timesfm git dependency
+
+# ---------------------------------------------------------------------------
+# Dependencies (inference-only — no evaluation baselines)
+# ---------------------------------------------------------------------------
+requirements:
+  - torch
+  - chronos-forecasting
+  - sentence-transformers>=5.1.1
+  - numpy
+  - pandas
+  - pyarrow
+  - openai>=1.0.0
+  - huggingface-hub>=0.36.1
+  - requests>=2.32.5
+  - nest-asyncio>=1.5.0
+  - tqdm
+  - timesfm[torch] @ git+https://github.com/google-research/timesfm.git@bf88c5dc88f6275b7071ebcd9051406c11435c0c
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+resources:
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: true
+  accelerator: T4
+
+# ---------------------------------------------------------------------------
+# Secrets (set in Baseten dashboard)
+# ---------------------------------------------------------------------------
+secrets:
+  baseten_api_key: null
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
+environment_variables:
+  MIGAS_MODEL: "Synthefy/migas-1.5"
+  LLM_MODEL: "openai/gpt-oss-120b"
+
+# ---------------------------------------------------------------------------
+# Bundled source code — the migaseval package
+# ---------------------------------------------------------------------------
+external_package_dirs:
+  - ../src

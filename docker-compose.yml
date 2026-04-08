@@ -1,0 +1,28 @@
+services:
+  migas:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - MIGAS_DEVICE=${MIGAS_DEVICE:-auto}
+      - MIGAS_MODEL=${MIGAS_MODEL:-Synthefy/migas-1.5}
+      - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
+      - LLM_MODEL=${LLM_MODEL:-anthropic.claude-3-5-haiku-20241022-v1:0}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - NVIDIA_VISIBLE_DEVICES=${MIGAS_GPU:-0}
+    volumes:
+      - model-cache:/app/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  model-cache:
