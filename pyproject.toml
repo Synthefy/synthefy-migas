@@ -11,23 +11,12 @@ dependencies = [
     "pandas",
     "pyarrow",
     "torch",
-    "tabulate",
     "tqdm",
     "sentence-transformers>=5.1.1",
     "timesfm[torch]",
-    "tabpfn>=6.3.1",
-    "tabpfn-time-series>=1.0.7",
-    "pmdarima",
-    "prophet>=1.2.2",
     "requests>=2.32.5",
     "nest-asyncio>=1.5.0",
     "huggingface-hub[cli]>=0.36.1",
-    "polars>=1.38.1",
-    "yfinance>=0.2",
-    "anthropic>=0.84.0",
-    "ipykernel>=7.2.0",
-    "ipython>=9.10.0",
-    "truss>=0.15.10",
 ]
 
 [tool.uv.sources]
@@ -36,6 +25,18 @@ dependencies = [
 timesfm = { git = "https://github.com/google-research/timesfm.git", rev = "bf88c5dc88f6275b7071ebcd9051406c11435c0c" }
 
 [project.optional-dependencies]
+eval = [
+    "tabulate",
+    "tabpfn>=6.3.1",
+    "tabpfn-time-series>=1.0.7",
+    "pmdarima",
+    "prophet>=1.2.2",
+    "polars>=1.38.1",
+    "yfinance>=0.2",
+    "anthropic>=0.84.0",
+    "ipykernel>=7.2.0",
+    "ipython>=9.10.0",
+]
 api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.30.0"]
 vllm = ["vllm>=0.11.0"]
 # Toto baseline. Conflicts with vllm (transformers version mismatch).
