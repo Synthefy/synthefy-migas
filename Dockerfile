@@ -16,7 +16,10 @@ RUN uv sync --frozen --no-dev --extra api
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-venv libpython3.12 curl && \
+    software-properties-common curl && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 python3.12-venv libpython3.12 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
