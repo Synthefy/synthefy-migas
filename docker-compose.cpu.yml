@@ -1,0 +1,15 @@
+# Overlay: run Migas on CPU only (no GPU reservation).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+#
+# Note: vLLM requires a GPU — this overlay is for Migas-only (no summary generation).
+
+services:
+  migas:
+    environment:
+      - MIGAS_DEVICE=cpu
+    deploy:
+      resources:
+        reservations:
+          devices: []
