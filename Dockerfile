@@ -15,6 +15,7 @@ RUN uv sync --frozen --no-dev --extra api
 # ── Stage 2: runtime ──────────────────────────────────────────
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common curl && \
     add-apt-repository ppa:deadsnakes/ppa && \
