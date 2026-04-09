@@ -1,223 +1,144 @@
 # Deploying Migas-1.5
 
-Migas-1.5 ships as a Docker image with a FastAPI REST API. Two deployment modes:
+Three deployment options:
 
-| Mode | What you get | GPU needed | Summary generation |
-|------|-------------|------------|-------------------|
-| **Migas only** | Forecast API — you provide pre-computed summaries | 1x T4 (16 GB) | No (bring your own) |
-| **Migas + vLLM** | Forecast API + automatic summary generation from text | 1x T4 + 1x A10G+ | Yes (self-contained) |
+| Option | Best for | Summary generation |
+|--------|----------|-------------------|
+| **Baseten (Truss)** | Managed cloud, auto-scaling, no infra to manage | Via Baseten Model APIs |
+| **Docker** | Self-hosting on any cloud or on-prem | Via vLLM sidecar or bring your own |
+| **Docker (CPU)** | Testing without GPU | Pre-computed summaries only |
 
 ---
 
-## Mode 1: Migas only (no vLLM)
-
-Best for: production pipelines where summaries are pre-computed upstream, or when you already run a separate LLM server.
-
-### Run
+## Install
 
 ```bash
-# GPU
+# Inference only (base)
+uv sync
+
+# Inference + FastAPI server (Docker)
+uv sync --extra api
+
+# Inference + evaluation baselines (notebooks, metrics)
+uv sync --extra eval
+
+# Everything
+uv sync --extra api --extra eval
+```
+
+Base dependencies are inference-only: torch, chronos-forecasting, sentence-transformers, timesfm, openai, pandas, numpy. Evaluation deps (tabpfn, prophet, pmdarima, yfinance, polars, anthropic, etc.) are in the `eval` extra and are **not** installed in Docker or Baseten.
+
+---
+
+## Option 1: Baseten (recommended for production)
+
+Baseten manages GPU provisioning, scaling, and serving. You deploy via the Truss CLI.
+
+### Setup
+
+```bash
+pip install truss
+truss login  # paste your Baseten API key
+```
+
+### Set secrets
+
+In the Baseten dashboard under **Settings → Secrets**, add:
+
+| Secret | Value |
+|--------|-------|
+| `baseten_api_key` | Your Baseten API key (for calling managed LLM endpoints) |
+
+### Deploy
+
+```bash
+cd truss
+truss push
+```
+
+Baseten builds the container, provisions a T4 GPU, downloads model weights, and gives you an endpoint.
+
+### Test
+
+**Mode 1 — text in, LLM generates summaries:**
+```bash
+curl -X POST https://model-XXXX.api.baseten.co/environments/production/predict \
+  -H "Authorization: Api-Key YOUR_BASETEN_KEY" \
+  -H "Content-Type: application/json" \
+  -d @truss/test_mode1.json
+```
+
+**Mode 2 — pre-computed summaries:**
+```bash
+curl -X POST https://model-XXXX.api.baseten.co/environments/production/predict \
+  -H "Authorization: Api-Key YOUR_BASETEN_KEY" \
+  -H "Content-Type: application/json" \
+  -d @truss/test_mode2.json
+```
+
+Summary generation uses Baseten's managed LLM (`openai/gpt-oss-120b` by default) — no separate vLLM deployment needed.
+
+### Cost
+
+- Migas on T4: ~$0.63/hr (scales to zero when idle)
+- LLM calls: per-token pricing via Baseten Model APIs
+
+---
+
+## Option 2: Docker (self-hosted)
+
+### Migas only (no vLLM)
+
+You provide pre-computed summaries or point to your own LLM server.
+
+```bash
 docker compose up -d
-
-# CPU (slower, no GPU required)
-docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ```
 
-### Environment variables
+### Migas + vLLM (self-contained)
 
-| Variable | Default | Required | Description |
-|----------|---------|----------|-------------|
-| `HF_TOKEN` | — | Only for private models | HuggingFace token for model download |
-| `MIGAS_API_KEY` | — | No | If set, all requests must include `X-API-Key` header |
-| `MIGAS_DEVICE` | `auto` | No | `cuda`, `cpu`, or `auto` (auto-detects GPU) |
-| `MIGAS_MODEL` | `Synthefy/migas-1.5` | No | HuggingFace repo ID or local path |
-
-### Wait for the model to load
-
-```bash
-# First start downloads ~1.2 GB of model weights (cached for subsequent restarts)
-curl http://localhost:8080/health
-# {"status":"ok","model_loaded":true,"device":"cuda","version":"1.5.0"}
-```
-
-### Forecast with a pre-computed summary
-
-```bash
-curl -X POST http://localhost:8080/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "dates": [
-      "2024-01-02","2024-01-03","2024-01-04","2024-01-05","2024-01-08",
-      "2024-01-09","2024-01-10","2024-01-11","2024-01-12","2024-01-16",
-      "2024-01-17","2024-01-18","2024-01-19","2024-01-22","2024-01-23",
-      "2024-01-24","2024-01-25","2024-01-26","2024-01-29","2024-01-30"
-    ],
-    "values": [185.3,184.1,182.7,181.9,183.4,185.0,186.2,185.8,186.5,187.1,
-               186.3,188.0,189.2,190.1,191.5,192.0,191.8,192.5,193.0,193.8],
-    "summaries": [
-      "FACTUAL SUMMARY: Apple stock rose from 185.3 to 193.8 over 20 trading days, gaining approximately 4.6%. The rally was driven by strong iPhone 15 demand, record Services revenue, and a Q1 earnings beat on both revenue and EPS. Post-earnings, 14 analysts raised price targets, with Goldman adding Apple to its conviction buy list. China market share improved per Counterpoint data, and TSMC results confirmed healthy chip orders. Apple Vision Pro pre-orders opened to mixed reception. The buyback pace is accelerating per SEC filings.\n\nPREDICTIVE SIGNALS: Momentum is firmly bullish with accelerating buybacks, broad analyst upgrades, and WWDC 2024 as a near-term AI catalyst. Supply chain checks and TSMC results suggest continued production strength. Services revenue trajectory supports margin expansion. Upside bias likely, though Vision Pro reception and China macro remain swing factors that could moderate gains."
-    ],
-    "pred_len": 16
-  }'
-```
-
-**Response:**
-
-```json
-{
-  "forecast": [194.2, 194.8, 195.1, ...],
-  "dates": ["2024-01-31", "2024-02-01", "2024-02-02", ...],
-  "summaries": null,
-  "univariate_forecast": null
-}
-```
-
-### Ensemble averaging
-
-Pass multiple summaries for lower-variance forecasts. The model runs one forward pass per summary and returns the median:
-
-```bash
-curl -X POST http://localhost:8080/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "dates": ["2024-01-02", "..."],
-    "values": [185.3, ...],
-    "summaries": [
-      "FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ...",
-      "FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ...",
-      "FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ..."
-    ],
-    "pred_len": 16
-  }'
-```
-
-### Get the Chronos-2 baseline too
-
-Set `return_univariate: true` to also get the text-free univariate forecast that Migas uses internally as its baseline:
-
-```bash
-curl -X POST http://localhost:8080/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "dates": ["2024-01-02", "..."],
-    "values": [185.3, ...],
-    "summaries": ["FACTUAL SUMMARY: ... PREDICTIVE SIGNALS: ..."],
-    "pred_len": 16,
-    "return_univariate": true
-  }'
-```
-
-```json
-{
-  "forecast": [194.2, ...],
-  "dates": ["2024-01-31", ...],
-  "summaries": null,
-  "univariate_forecast": [194.0, ...]
-}
-```
-
----
-
-## Mode 2: Migas + vLLM (self-contained)
-
-Best for: end-to-end deployment where you pass raw time series with per-timestep text and the system generates summaries automatically. No external API keys needed.
-
-### Run
+Two containers: Migas on one GPU, vLLM on another.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 ```
 
-This starts two containers:
+### CPU only
 
-| Container | Port | GPU | What it does |
-|-----------|------|-----|-------------|
-| `migas` | 8080 | 1x GPU | Loads Migas-1.5, serves `/predict` |
-| `vllm` | 8004 | Remaining GPUs | Runs an LLM for summary generation |
-
-The Migas container waits for vLLM to pass its health check before starting.
+```bash
+docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+```
 
 ### Environment variables
 
-All variables from Mode 1, plus:
-
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `HF_TOKEN` | — | HuggingFace token (if model repo is private) |
+| `MIGAS_API_KEY` | — | If set, requests must include `X-API-Key` header |
+| `MIGAS_DEVICE` | `auto` | `cuda`, `cpu`, or `auto` |
+| `MIGAS_MODEL` | `Synthefy/migas-1.5` | HuggingFace repo ID or local path |
+| `MIGAS_GPU` | `0` | GPU index for Migas container |
 | `VLLM_MODEL` | `openai/gpt-oss-120b` | LLM model for summary generation |
+| `VLLM_GPUS` | `1` | GPU index(es) for vLLM container |
+| `VLLM_TENSOR_PARALLEL_SIZE` | `1` | Number of GPUs for vLLM |
 | `VLLM_MAX_MODEL_LEN` | `32768` | Max context length |
-| `VLLM_TENSOR_PARALLEL_SIZE` | `1` | Number of GPUs for vLLM (increase for large models) |
 | `VLLM_GPU_MEMORY_UTILIZATION` | `0.60` | Fraction of GPU VRAM for vLLM |
 
-### Forecast with per-timestep text (summaries generated automatically)
+### GPU assignment
+
+By default, Migas uses GPU 0 and vLLM uses GPU 1. Override with:
 
 ```bash
-curl -X POST http://localhost:8080/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "series_name": "AAPL",
-    "dates": [
-      "2024-01-02","2024-01-03","2024-01-04","2024-01-05","2024-01-08",
-      "2024-01-09","2024-01-10","2024-01-11","2024-01-12","2024-01-16",
-      "2024-01-17","2024-01-18","2024-01-19","2024-01-22","2024-01-23",
-      "2024-01-24","2024-01-25","2024-01-26","2024-01-29","2024-01-30"
-    ],
-    "values": [185.3,184.1,182.7,181.9,183.4,185.0,186.2,185.8,186.5,187.1,
-               186.3,188.0,189.2,190.1,191.5,192.0,191.8,192.5,193.0,193.8],
-    "text": [
-      "Apple reports strong iPhone 15 demand in holiday quarter",
-      "Tech stocks dip on broader market selloff",
-      "Analysts cut near-term estimates citing China weakness",
-      "Apple Vision Pro pre-orders open, mixed analyst reception",
-      "Positive supply chain checks suggest iPhone production ramp",
-      "Services revenue expected to hit new record",
-      "Apple announces expanded AI research partnership",
-      "Morgan Stanley reiterates overweight, raises PT",
-      "App Store spending up 12% YoY per Sensor Tower",
-      "Martin Luther King Day — markets closed",
-      "Earnings whisper numbers above consensus",
-      "iPad refresh rumors boost accessory supplier stocks",
-      "Apple car project reportedly scaled back to focus on AI",
-      "Strong results from TSMC hint at healthy Apple chip orders",
-      "Q1 earnings beat on revenue and EPS, Services at record",
-      "Post-earnings: 14 analysts raise price targets",
-      "Goldman adds Apple to conviction buy list",
-      "China iPhone market share gains per Counterpoint data",
-      "Buyback pace accelerating per SEC filings",
-      "Apple announces WWDC 2024 date, AI features expected"
-    ],
-    "pred_len": 16,
-    "n_summaries": 5
-  }'
+# 4 GPUs: Migas on GPU 0, vLLM sharded across GPUs 1,2,3
+MIGAS_GPU=0 VLLM_GPUS=1,2,3 VLLM_TENSOR_PARALLEL_SIZE=3 \
+  docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
+
+# Single GPU (shared): both on GPU 0, limit vLLM memory
+MIGAS_GPU=0 VLLM_GPUS=0 VLLM_GPU_MEMORY_UTILIZATION=0.40 \
+  docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 ```
 
-**Response:**
-
-```json
-{
-  "forecast": [194.2, 194.8, 195.1, ...],
-  "dates": ["2024-01-31", "2024-02-01", "2024-02-02", ...],
-  "summaries": [
-    "FACTUAL SUMMARY: Apple stock rose from 185.3 to 193.8 ... PREDICTIVE SIGNALS: Momentum is bullish ...",
-    "FACTUAL SUMMARY: Over the 20-day window ... PREDICTIVE SIGNALS: Near-term catalysts include ...",
-    "FACTUAL SUMMARY: AAPL gained 4.6% ... PREDICTIVE SIGNALS: Analyst consensus shifted ...",
-    "FACTUAL SUMMARY: The period saw ... PREDICTIVE SIGNALS: Forward-looking indicators ...",
-    "FACTUAL SUMMARY: Apple shares ... PREDICTIVE SIGNALS: Key drivers ahead ..."
-  ],
-  "univariate_forecast": null
-}
-```
-
-The generated summaries are returned in the response so you can cache and reuse them (switch to Mode 1 for subsequent calls with the same data).
-
-### Mode 2 also supports pre-computed summaries
-
-Even with vLLM running, you can still pass `summaries` instead of `text` to skip summary generation — the vLLM server is simply not called.
-
----
-
-## Choosing a vLLM model
-
-The default `openai/gpt-oss-120b` requires multi-GPU setups. Smaller alternatives:
+### Choosing a vLLM model
 
 | Model | VRAM needed | Quality | Setup |
 |-------|------------|---------|-------|
@@ -225,57 +146,6 @@ The default `openai/gpt-oss-120b` requires multi-GPU setups. Smaller alternative
 | `Qwen/Qwen3-8B` | ~16 GB (1x A10G) | Good | `VLLM_MODEL=Qwen/Qwen3-8B` |
 | `Qwen/Qwen3-4B` | ~8 GB (1x T4) | Acceptable | `VLLM_MODEL=Qwen/Qwen3-4B` |
 | `microsoft/phi-4` | ~8 GB (1x T4) | Good | `VLLM_MODEL=microsoft/phi-4` |
-
-Override with:
-
-```bash
-VLLM_MODEL=Qwen/Qwen3-8B docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
-```
-
----
-
-## GPU sizing guide
-
-### Mode 1 (Migas only)
-
-Migas-1.5 inference uses ~2 GB VRAM (Chronos-2 + FinBERT + fusion head, all float32).
-
-| Instance | VRAM | Cost | Verdict |
-|----------|------|------|---------|
-| T4 (16 GB) | 16 GB | ~$0.63/hr | Best fit — 8x headroom |
-| L4 (24 GB) | 24 GB | ~$0.85/hr | Overkill |
-| A10G (24 GB) | 24 GB | ~$1.21/hr | Overkill |
-
-**Recommendation: T4**
-
-### Mode 2 (Migas + vLLM)
-
-You need GPUs for both containers. Example setups:
-
-| Setup | Migas GPU | vLLM GPU | vLLM model | Total cost |
-|-------|-----------|----------|------------|------------|
-| Budget | 1x T4 | 1x T4 | Qwen3-4B | ~$1.26/hr |
-| Balanced | 1x T4 | 1x A10G | Qwen3-8B | ~$1.84/hr |
-| Best quality | 1x T4 | 2x A100 | gpt-oss-120b | ~$8.63/hr |
-
----
-
-## Cloud deployment
-
-### Docker (any cloud)
-
-```bash
-# Build and push
-docker build -t your-registry/migas:latest .
-docker push your-registry/migas:latest
-
-# Run on remote host
-docker run -d -p 8080:8080 \
-  -e MIGAS_DEVICE=cuda \
-  -v model-cache:/app/.cache/huggingface \
-  --gpus 1 \
-  your-registry/migas:latest
-```
 
 ### GitHub Container Registry
 
@@ -286,31 +156,33 @@ docker pull ghcr.io/synthefy/migas-1.5:latest
 docker run -d -p 8080:8080 --gpus 1 ghcr.io/synthefy/migas-1.5:latest
 ```
 
-### Baseten
+---
 
-Use Custom Server deployment with your Docker image:
+## GPU sizing guide
 
-```yaml
-# config.yaml
-base_image:
-  image: ghcr.io/synthefy/migas-1.5:latest
-docker_server:
-  start_command: "python3 -m uvicorn migaseval.api.main:app --host 0.0.0.0 --port 8080"
-  server_port: 8080
-  predict_endpoint: /predict
-  readiness_endpoint: /health
-  liveness_endpoint: /health
-resources:
-  instance_type: "T4:4x16"
-```
+### Migas only
+
+Migas-1.5 uses ~2 GB VRAM (Chronos-2 + FinBERT + fusion head, all float32).
+
+| GPU | VRAM | Cost | Verdict |
+|-----|------|------|---------|
+| T4 | 16 GB | ~$0.63/hr | Best fit — 8x headroom |
+| L4 | 24 GB | ~$0.85/hr | Overkill |
+| A10G | 24 GB | ~$1.21/hr | Overkill |
+
+### Migas + vLLM
+
+| Setup | Migas GPU | vLLM GPU | vLLM model | Total cost |
+|-------|-----------|----------|------------|------------|
+| Budget | 1x T4 | 1x T4 | Qwen3-4B | ~$1.26/hr |
+| Balanced | 1x T4 | 1x A10G | Qwen3-8B | ~$1.84/hr |
+| Best quality | 1x T4 | 2x A100 | gpt-oss-120b | ~$8.63/hr |
 
 ---
 
 ## API reference
 
 ### `GET /health`
-
-Returns model load status.
 
 ```json
 {"status": "ok", "model_loaded": true, "device": "cuda", "version": "1.5.0"}
@@ -322,8 +194,8 @@ Returns model load status.
 |-------|------|----------|---------|-------------|
 | `dates` | `list[str]` | Yes | — | Date strings (YYYY-MM-DD) |
 | `values` | `list[float]` | Yes | — | Time series values |
-| `text` | `list[str]` | Mode 1 | — | Per-timestep text. Triggers vLLM summary generation |
-| `summaries` | `list[str] \| str` | Mode 2 | — | Pre-computed summary. Skips vLLM |
+| `text` | `list[str]` | Mode 1 | — | Per-timestep text. Triggers LLM summary generation |
+| `summaries` | `list[str] \| str` | Mode 2 | — | Pre-computed summary. Skips LLM |
 | `series_name` | `str` | No | `"series"` | Name used in summary generation prompt |
 | `pred_len` | `int` | No | `16` | Forecast horizon (1-16) |
 | `seq_len` | `int` | No | all | Use last N rows only |
@@ -351,20 +223,28 @@ Either `text` or `summaries` must be provided. If both are given, `summaries` ta
 
 ## Authentication
 
-Set `MIGAS_API_KEY` to require an API key on all `/predict` requests:
+### Docker
+
+Set `MIGAS_API_KEY` to require an API key:
 
 ```bash
 MIGAS_API_KEY=my-secret-key docker compose up -d
-```
 
-```bash
 curl -X POST http://localhost:8080/predict \
   -H "X-API-Key: my-secret-key" \
   -H "Content-Type: application/json" \
   -d '{ ... }'
 ```
 
-When `MIGAS_API_KEY` is not set, authentication is disabled.
+### Baseten
+
+Authentication is handled by Baseten — pass your API key in the `Authorization` header:
+
+```bash
+curl -X POST https://model-XXXX.api.baseten.co/environments/production/predict \
+  -H "Authorization: Api-Key YOUR_BASETEN_KEY" \
+  -d '{ ... }'
+```
 
 ---
 
