@@ -37,7 +37,7 @@ eval = [
     "ipykernel>=7.2.0",
     "ipython>=9.10.0",
 ]
-api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.30.0"]
+api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.30.0", "boto3>=1.35.0"]
 vllm = ["vllm>=0.11.0"]
 # Toto baseline. Conflicts with vllm (transformers version mismatch).
 # Install manually: uv pip install toto-ts

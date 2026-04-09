@@ -128,8 +128,20 @@ def call_llm(
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
+    elif provider == "bedrock":
+        import boto3
+
+        client = boto3.client("bedrock-runtime", region_name=base_url or "us-east-1")
+        resp = client.converse(
+            modelId=model or "anthropic.claude-3-5-haiku-20241022-v1:0",
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            inferenceConfig={"maxTokens": max_tokens or 2048, "temperature": 0.3},
+        )
+        return resp["output"]["message"]["content"][0]["text"].strip()
     else:
-        raise ValueError(f"Unknown provider {provider!r}. Use 'openai' or 'anthropic'.")
+        raise ValueError(
+            f"Unknown provider {provider!r}. Use 'openai', 'anthropic', or 'bedrock'."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +527,7 @@ def generate_summary(
                       Optionally includes a ``text`` column with per-timestep text
                       (headlines, analyst notes, etc.).
         pred_len:     Forecast horizon length (steps), used only for the prompt text.
-        llm_provider: ``"openai"`` or ``"anthropic"``.
+        llm_provider: ``"openai"``, ``"anthropic"``, or ``"bedrock"``.
         llm_api_key:  API key for the chosen LLM provider.
         llm_base_url: Optional base URL override (e.g. for local vLLM).
         llm_model:    Optional model name override.

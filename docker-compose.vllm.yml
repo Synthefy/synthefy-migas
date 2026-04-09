@@ -14,8 +14,10 @@ services:
       vllm:
         condition: service_healthy
     environment:
-      - VLLM_BASE_URL=http://vllm:8004/v1
-      - VLLM_MODEL=${VLLM_MODEL:-openai/gpt-oss-120b}
+      - LLM_PROVIDER=openai
+      - LLM_MODEL=${VLLM_MODEL:-openai/gpt-oss-120b}
+      - LLM_BASE_URL=http://vllm:8004/v1
+      - LLM_API_KEY=dummy
 
   vllm:
     image: vllm/vllm-openai:latest
