@@ -1,10 +1,12 @@
 # Overlay: adds a vLLM sidecar for self-contained summary generation.
 #
-# GPU assignment (default: Migas on GPU 0, vLLM on GPU 1+):
-#   MIGAS_GPU=0  VLLM_GPUS=1,2  docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
+# GPU assignment (default: Migas on GPU 0, vLLM on GPUs 1-4 with TP=4):
+#   MIGAS_GPU=0  VLLM_GPUS=1,2,3,4  VLLM_TENSOR_PARALLEL_SIZE=4  docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 #
-# Single GPU (shared — set memory utilization low):
-#   MIGAS_GPU=0  VLLM_GPUS=0  VLLM_GPU_MEMORY_UTILIZATION=0.40  docker compose ...
+# Two-GPU setup:
+#   MIGAS_GPU=0  VLLM_GPUS=1,2  VLLM_TENSOR_PARALLEL_SIZE=2  docker compose ...
+#
+# IMPORTANT: VLLM_TENSOR_PARALLEL_SIZE must match the number of GPUs in VLLM_GPUS.
 
 services:
   migas:
@@ -27,7 +29,7 @@ services:
       --model ${VLLM_MODEL:-openai/gpt-oss-120b}
       --port 8004
       --max-model-len ${VLLM_MAX_MODEL_LEN:-32768}
-      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-1}
+      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-4}
       --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION:-0.60}
     volumes:
       - vllm-cache:/root/.cache/huggingface

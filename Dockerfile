@@ -29,7 +29,12 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
 COPY --from=builder /app/pyproject.toml /app/pyproject.toml
 
+# Fix venv symlink: builder has python at /usr/local/bin/python3,
+# but runtime (deadsnakes) has it at /usr/bin/python3.12
+RUN ln -sf /usr/bin/python3.12 /app/.venv/bin/python
+
 ENV PATH="/app/.venv/bin:$PATH"
+ENV VIRTUAL_ENV="/app/.venv"
 ENV HF_HOME="/app/.cache/huggingface"
 
 EXPOSE 8080
@@ -37,4 +42,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1
 
-CMD ["python3", "-m", "uvicorn", "migaseval.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "uvicorn", "migaseval.api.main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -5,7 +5,6 @@ services:
       - "8080:8080"
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
-      - MIGAS_API_KEY=${MIGAS_API_KEY:-}
       - MIGAS_DEVICE=${MIGAS_DEVICE:-auto}
       - MIGAS_MODEL=${MIGAS_MODEL:-Synthefy/migas-1.5}
       - VLLM_BASE_URL=${VLLM_BASE_URL:-http://localhost:8004/v1}

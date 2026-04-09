@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 import torch
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 
 from .schemas import HealthResponse, PredictRequest, PredictResponse
 
@@ -50,15 +50,6 @@ app = FastAPI(
 )
 
 
-def _check_api_key(request: Request) -> None:
-    api_key = os.environ.get("MIGAS_API_KEY")
-    if api_key is None:
-        return
-    provided = request.headers.get("X-API-Key")
-    if provided != api_key:
-        raise HTTPException(401, "Invalid or missing API key")
-
-
 def _get_pipeline() -> MigasPipeline:
     if _pipeline is None:
         raise HTTPException(503, "Model not loaded yet")
@@ -87,9 +78,7 @@ def health():
     )
 
 
-@app.post(
-    "/predict", response_model=PredictResponse, dependencies=[Depends(_check_api_key)]
-)
+@app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
     pipeline = _get_pipeline()
 
