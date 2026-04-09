@@ -1,12 +1,13 @@
 # Deploying Migas-1.5
 
-Three deployment options:
+Four deployment options:
 
 | Option | Best for | Summary generation |
 |--------|----------|-------------------|
+| **SageMaker + Bedrock** | AWS production, managed scaling | AWS Bedrock (Claude, Llama, Mistral, etc.) |
 | **Baseten (Truss)** | Managed cloud, auto-scaling, no infra to manage | Via Baseten Model APIs |
-| **Docker** | Self-hosting on any cloud or on-prem | Via vLLM sidecar or bring your own |
-| **Docker (CPU)** | Testing without GPU | Pre-computed summaries only |
+| **Docker + vLLM** | Self-hosting with self-hosted LLM | vLLM sidecar (any HF model) |
+| **Docker (standalone)** | Self-hosting with external LLM or pre-computed summaries | Bedrock, OpenAI, Anthropic API, or none |
 
 ---
 
@@ -16,7 +17,7 @@ Three deployment options:
 # Inference only (base)
 uv sync
 
-# Inference + FastAPI server (Docker)
+# Inference + FastAPI server (Docker / SageMaker)
 uv sync --extra api
 
 # Inference + evaluation baselines (notebooks, metrics)
@@ -30,7 +31,81 @@ Base dependencies are inference-only: torch, chronos-forecasting, sentence-trans
 
 ---
 
-## Option 1: Baseten (recommended for production)
+## Option 1: SageMaker + Bedrock (recommended for AWS)
+
+Migas runs as a SageMaker endpoint. Summary generation uses AWS Bedrock — no self-hosted LLM needed.
+
+### Build and push to ECR
+
+```bash
+# Build the image
+docker build -t migas-1.5 .
+
+# Tag and push to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+docker tag migas-1.5 ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/migas-1.5:latest
+docker push ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/migas-1.5:latest
+```
+
+### SageMaker endpoint configuration
+
+The container exposes SageMaker-compatible routes:
+
+- `GET /ping` — health check
+- `POST /invocations` — inference
+
+Set these environment variables on the SageMaker model:
+
+| Variable | Value |
+|----------|-------|
+| `LLM_PROVIDER` | `bedrock` |
+| `LLM_MODEL` | `anthropic.claude-3-5-haiku-20241022-v1:0` (or any Bedrock model) |
+| `AWS_DEFAULT_REGION` | `us-east-1` |
+
+Bedrock authentication uses the SageMaker execution role — no API key needed. Ensure the role has `bedrock:InvokeModel` permission.
+
+### Available Bedrock models
+
+| Model | Bedrock ID |
+|-------|-----------|
+| Claude 3.5 Haiku | `anthropic.claude-3-5-haiku-20241022-v1:0` |
+| Claude 3.7 Sonnet | `anthropic.claude-3-7-sonnet-20250219-v1:0` |
+| Llama 3.3 70B | `meta.llama3-3-70b-instruct-v1:0` |
+| Mistral Large | `mistral.mistral-large-2407-v1:0` |
+
+Full list: `aws bedrock list-foundation-models --query "modelSummaries[].modelId"`
+
+### Test
+
+**Mode 1 — text in, Bedrock generates summaries:**
+```bash
+curl -X POST https://runtime.sagemaker.us-east-1.amazonaws.com/endpoints/YOUR_ENDPOINT/invocations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "series_name": "US_gasoline",
+    "dates": ["2020-03-01", "2020-03-08", "2020-03-15"],
+    "values": [2.555, 2.514, 2.468],
+    "text": ["OPEC talks stall", "Oil price war begins", "COVID lockdowns expand"],
+    "n_summaries": 3,
+    "pred_len": 16
+  }'
+```
+
+**Mode 2 — pre-computed summaries (no LLM needed):**
+```bash
+curl -X POST https://runtime.sagemaker.us-east-1.amazonaws.com/endpoints/YOUR_ENDPOINT/invocations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dates": ["2020-03-01", "2020-03-08", "2020-03-15"],
+    "values": [2.555, 2.514, 2.468],
+    "summaries": ["FACTUAL SUMMARY: ... \n\nPREDICTIVE SIGNALS: ..."],
+    "pred_len": 16
+  }'
+```
+
+---
+
+## Option 2: Baseten (Truss)
 
 Baseten manages GPU provisioning, scaling, and serving. You deploy via the Truss CLI.
 
@@ -43,7 +118,7 @@ truss login  # paste your Baseten API key
 
 ### Set secrets
 
-In the Baseten dashboard under **Settings → Secrets**, add:
+In the Baseten dashboard under **Settings > Secrets**, add:
 
 | Secret | Value |
 |--------|-------|
@@ -60,23 +135,12 @@ Baseten builds the container, provisions a T4 GPU, downloads model weights, and 
 
 ### Test
 
-**Mode 1 — text in, LLM generates summaries:**
-```bash
-curl -X POST https://model-XXXX.api.baseten.co/environments/production/predict \
-  -H "Authorization: Api-Key YOUR_BASETEN_KEY" \
-  -H "Content-Type: application/json" \
-  -d @truss/test_mode1.json
-```
-
-**Mode 2 — pre-computed summaries:**
 ```bash
 curl -X POST https://model-XXXX.api.baseten.co/environments/production/predict \
   -H "Authorization: Api-Key YOUR_BASETEN_KEY" \
   -H "Content-Type: application/json" \
   -d @truss/test_mode2.json
 ```
-
-Summary generation uses Baseten's managed LLM (`openai/gpt-oss-120b` by default) — no separate vLLM deployment needed.
 
 ### Cost
 
@@ -85,58 +149,16 @@ Summary generation uses Baseten's managed LLM (`openai/gpt-oss-120b` by default)
 
 ---
 
-## Option 2: Docker (self-hosted)
+## Option 3: Docker + vLLM (self-hosted LLM)
 
-### Migas only (no vLLM)
-
-You provide pre-computed summaries or point to your own LLM server.
+Two containers: Migas on one GPU, vLLM on others.
 
 ```bash
-docker compose up -d
-```
-
-### Migas + vLLM (self-contained)
-
-Two containers: Migas on one GPU, vLLM on another.
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
-```
-
-### CPU only
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
-```
-
-### Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HF_TOKEN` | — | HuggingFace token (if model repo is private) |
-| `MIGAS_API_KEY` | — | If set, requests must include `X-API-Key` header |
-| `MIGAS_DEVICE` | `auto` | `cuda`, `cpu`, or `auto` |
-| `MIGAS_MODEL` | `Synthefy/migas-1.5` | HuggingFace repo ID or local path |
-| `MIGAS_GPU` | `0` | GPU index for Migas container |
-| `VLLM_MODEL` | `openai/gpt-oss-120b` | LLM model for summary generation |
-| `VLLM_GPUS` | `1` | GPU index(es) for vLLM container |
-| `VLLM_TENSOR_PARALLEL_SIZE` | `1` | Number of GPUs for vLLM |
-| `VLLM_MAX_MODEL_LEN` | `32768` | Max context length |
-| `VLLM_GPU_MEMORY_UTILIZATION` | `0.60` | Fraction of GPU VRAM for vLLM |
-
-### GPU assignment
-
-By default, Migas uses GPU 0 and vLLM uses GPU 1. Override with:
-
-```bash
-# 4 GPUs: Migas on GPU 0, vLLM sharded across GPUs 1,2,3
-MIGAS_GPU=0 VLLM_GPUS=1,2,3 VLLM_TENSOR_PARALLEL_SIZE=3 \
-  docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
-
-# Single GPU (shared): both on GPU 0, limit vLLM memory
-MIGAS_GPU=0 VLLM_GPUS=0 VLLM_GPU_MEMORY_UTILIZATION=0.40 \
+MIGAS_GPU=0 VLLM_GPUS=1,2,3,4 VLLM_TENSOR_PARALLEL_SIZE=4 \
   docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 ```
+
+**IMPORTANT:** `VLLM_TENSOR_PARALLEL_SIZE` must match the number of GPUs in `VLLM_GPUS`.
 
 ### Choosing a vLLM model
 
@@ -147,7 +169,58 @@ MIGAS_GPU=0 VLLM_GPUS=0 VLLM_GPU_MEMORY_UTILIZATION=0.40 \
 | `Qwen/Qwen3-4B` | ~8 GB (1x T4) | Acceptable | `VLLM_MODEL=Qwen/Qwen3-4B` |
 | `microsoft/phi-4` | ~8 GB (1x T4) | Good | `VLLM_MODEL=microsoft/phi-4` |
 
-### GitHub Container Registry
+### vLLM environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VLLM_MODEL` | `openai/gpt-oss-120b` | HuggingFace model for vLLM |
+| `VLLM_GPUS` | `1` | GPU index(es) for vLLM container |
+| `VLLM_TENSOR_PARALLEL_SIZE` | `4` | Number of GPUs for tensor parallelism |
+| `VLLM_MAX_MODEL_LEN` | `32768` | Max context length |
+| `VLLM_GPU_MEMORY_UTILIZATION` | `0.60` | Fraction of GPU VRAM for vLLM |
+
+---
+
+## Option 4: Docker standalone
+
+Migas only — use with pre-computed summaries, Bedrock, or any OpenAI-compatible API.
+
+```bash
+docker compose up -d
+```
+
+### CPU only (no GPU)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+```
+
+---
+
+## Environment variables
+
+### Migas (all deployment modes)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HF_TOKEN` | — | HuggingFace token (if model repo is private) |
+| `MIGAS_DEVICE` | `auto` | `cuda`, `cpu`, or `auto` |
+| `MIGAS_MODEL` | `Synthefy/migas-1.5` | HuggingFace repo ID or local path |
+| `MIGAS_GPU` | `0` | GPU index for Migas container |
+
+### LLM (summary generation)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | `bedrock` | `bedrock`, `openai`, or `anthropic` |
+| `LLM_MODEL` | `anthropic.claude-3-5-haiku-20241022-v1:0` | Model ID for the chosen provider |
+| `LLM_BASE_URL` | — | API base URL (required for `openai` provider, e.g. vLLM) |
+| `LLM_API_KEY` | — | API key (not needed for `bedrock` — uses IAM) |
+| `AWS_DEFAULT_REGION` | `us-east-1` | AWS region for Bedrock |
+
+---
+
+## GitHub Container Registry
 
 Push to `main` or tag a release — the GitHub Actions workflow builds and pushes automatically:
 
@@ -182,13 +255,13 @@ Migas-1.5 uses ~2 GB VRAM (Chronos-2 + FinBERT + fusion head, all float32).
 
 ## API reference
 
-### `GET /health`
+### `GET /health` (also `GET /ping` for SageMaker)
 
 ```json
 {"status": "ok", "model_loaded": true, "device": "cuda", "version": "1.5.0"}
 ```
 
-### `POST /predict`
+### `POST /predict` (also `POST /invocations` for SageMaker)
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -216,34 +289,7 @@ Either `text` or `summaries` must be provided. If both are given, `summaries` ta
 ### `GET /`
 
 ```json
-{"name": "Migas-1.5", "version": "1.5.0", "vllm_url": "...", "vllm_model": "..."}
-```
-
----
-
-## Authentication
-
-### Docker
-
-Set `MIGAS_API_KEY` to require an API key:
-
-```bash
-MIGAS_API_KEY=my-secret-key docker compose up -d
-
-curl -X POST http://localhost:8080/predict \
-  -H "X-API-Key: my-secret-key" \
-  -H "Content-Type: application/json" \
-  -d '{ ... }'
-```
-
-### Baseten
-
-Authentication is handled by Baseten — pass your API key in the `Authorization` header:
-
-```bash
-curl -X POST https://model-XXXX.api.baseten.co/environments/production/predict \
-  -H "Authorization: Api-Key YOUR_BASETEN_KEY" \
-  -d '{ ... }'
+{"name": "Migas-1.5", "version": "1.5.0", "llm_provider": "bedrock", "llm_model": "..."}
 ```
 
 ---
