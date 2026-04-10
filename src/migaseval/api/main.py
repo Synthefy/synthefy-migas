@@ -96,7 +96,7 @@ def predict(req: PredictRequest):
 
     generated_summaries = None
 
-    # ── Mode 1: text provided → generate summaries via vLLM ───────────
+    # ── Mode 1: text provided → generate summaries via LLM ────────────
     if req.summaries is None:
         from migaseval.summary_utils import generate_summary as _generate_summary
 
@@ -108,7 +108,7 @@ def predict(req: PredictRequest):
             llm_provider=LLM_PROVIDER,
             llm_api_key=LLM_API_KEY,
             llm_base_url=LLM_BASE_URL,
-            llm_model=LLM_MODEL,
+            llm_model=req.llm_model or LLM_MODEL,
             text_source="dataframe",
             n_summaries=req.n_summaries,
         )

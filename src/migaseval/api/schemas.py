@@ -16,16 +16,22 @@ class PredictRequest(BaseModel):
     seq_len: int | None = Field(None, ge=1, description="Use last N rows only")
     n_summaries: int = Field(5, ge=1, le=20, description="Number of summaries for ensemble (mode 1 only)")
 
-    # Mode 1: pass per-timestep text → vLLM generates summaries automatically
+    # LLM override (Mode 1 only)
+    llm_model: str | None = Field(
+        None,
+        description="Override the LLM model for summary generation (e.g. 'anthropic.claude-3-5-haiku-20241022-v1:0'). Defaults to server config.",
+    )
+
+    # Mode 1: pass per-timestep text → LLM generates summaries automatically
     text: list[str] | None = Field(
         None,
-        description="Per-timestep text (headlines, notes). Triggers vLLM summary generation.",
+        description="Per-timestep text (headlines, notes). Triggers LLM summary generation.",
     )
 
     # Mode 2: pass pre-computed summary directly
     summaries: list[str] | str | None = Field(
         None,
-        description="Pre-computed summary string(s). Skips vLLM, forecasts directly.",
+        description="Pre-computed summary string(s). Skips LLM, forecasts directly.",
     )
 
     return_univariate: bool = False
