@@ -12,6 +12,7 @@ generated (no external news source).
 
 from __future__ import annotations
 
+import os
 import re
 
 import pandas as pd
@@ -131,7 +132,7 @@ def call_llm(
     elif provider == "bedrock":
         import boto3
 
-        client = boto3.client("bedrock-runtime", region_name=base_url or "us-east-1")
+        client = boto3.client("bedrock-runtime", region_name=base_url or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1")
         resp = client.converse(
             modelId=model or "anthropic.claude-3-5-haiku-20241022-v1:0",
             messages=[{"role": "user", "content": [{"text": prompt}]}],
