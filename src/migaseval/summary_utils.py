@@ -134,7 +134,7 @@ def call_llm(
 
         client = boto3.client("bedrock-runtime", region_name=base_url or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1")
         resp = client.converse(
-            modelId=model or "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            modelId=model or "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             messages=[{"role": "user", "content": [{"text": prompt}]}],
             inferenceConfig={"maxTokens": max_tokens or 2048, "temperature": 0.3},
         )
