@@ -37,9 +37,14 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"
 ENV HF_HOME="/app/.cache/huggingface"
 
+# SageMaker sends "serve" as the command — create a script for it.
+# SageMaker uses port 8080 by default.
+RUN printf '#!/bin/bash\nexec python -m uvicorn migaseval.api.main:app --host 0.0.0.0 --port 8080\n' > /usr/local/bin/serve && \
+    chmod +x /usr/local/bin/serve
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "migaseval.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["serve"]
