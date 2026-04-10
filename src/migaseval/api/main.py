@@ -19,7 +19,7 @@ _pipeline: MigasPipeline | None = None
 
 # LLM configuration (overridable via env vars)
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "bedrock")
-LLM_MODEL = os.environ.get("LLM_MODEL", "anthropic.claude-3-5-haiku-20241022-v1:0")
+LLM_MODEL = os.environ.get("LLM_MODEL", "us.anthropic.claude-3-5-haiku-20241022-v1:0")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL") or None  # vLLM URL or AWS region for Bedrock
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 
