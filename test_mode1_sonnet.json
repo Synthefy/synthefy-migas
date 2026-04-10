@@ -1,0 +1,1 @@
+{"series_name":"US_gasoline","dates":["2020-02-23","2020-03-01","2020-03-08","2020-03-15","2020-03-22","2020-03-29"],"values":[2.518,2.555,2.514,2.468,2.343,2.217],"text":["","OPEC talks collapse","Saudi floods market","WHO declares pandemic","US lockdowns expand","Record unemployment claims"],"llm_model":"us.anthropic.claude-sonnet-4-6","n_summaries":1,"pred_len":8}
